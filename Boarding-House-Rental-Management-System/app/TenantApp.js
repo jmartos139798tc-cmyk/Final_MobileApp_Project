@@ -1,40 +1,28 @@
 import React, { useState } from 'react';
-import { View, StatusBar, TouchableOpacity, Platform } from 'react-native';
+import { View, StatusBar, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { isDesktop, isMobile, safeAreaTop, cardShadow } from './utils/responsive';
 import { useTheme } from './utils/ThemeContext';
 
-// Import all screens
-import CaretakerDashboard from './screens/CaretakerDashboard';
-import RoomsScreen from './screens/RoomsScreen';
-import TenantsScreen from './screens/TenantsScreen';
-import BillingScreen from './screens/BillingScreen';
-import IssuesScreen from './screens/IssuesScreen';
-import AnnouncementsScreen from './screens/AnnouncementsScreen';
+import TenantHomeScreen from './screens/tenant/TenantHomeScreen';
+import TenantComplaintsScreen from './screens/tenant/TenantComplaintsScreen';
+import TenantUpdatesScreen from './screens/tenant/TenantUpdatesScreen';
+import TenantBottomNav from './components/TenantBottomNav';
 
-// Import navigation
-import BottomNav from './components/BottomNav';
-
-export default function CaretakerApp({ user, onLogout }) {
+export default function TenantApp({ user, onLogout }) {
   const [activeScreen, setActiveScreen] = useState('home');
   const { isDark, toggleTheme, colors } = useTheme();
 
   const renderScreen = () => {
     switch (activeScreen) {
       case 'home':
-        return <CaretakerDashboard />;
-      case 'rooms':
-        return <RoomsScreen />;
-      case 'tenants':
-        return <TenantsScreen />;
-      case 'billing':
-        return <BillingScreen />;
-      case 'issues':
-        return <IssuesScreen />;
-      case 'announce':
-        return <AnnouncementsScreen />;
+        return <TenantHomeScreen onNavigateToUpdates={() => setActiveScreen('updates')} />;
+      case 'complaints':
+        return <TenantComplaintsScreen />;
+      case 'updates':
+        return <TenantUpdatesScreen />;
       default:
-        return <CaretakerDashboard />;
+        return <TenantHomeScreen onNavigateToUpdates={() => setActiveScreen('updates')} />;
     }
   };
 
@@ -92,15 +80,16 @@ export default function CaretakerApp({ user, onLogout }) {
 
       {isDesktop ? (
         <View style={{ flex: 1, flexDirection: 'row' }}>
-          <BottomNav activeScreen={activeScreen} onNavigate={setActiveScreen} />
+          <TenantBottomNav activeScreen={activeScreen} onNavigate={setActiveScreen} />
           <View style={{ flex: 1 }}>{renderScreen()}</View>
         </View>
       ) : (
         <>
           <View style={{ flex: 1 }}>{renderScreen()}</View>
-          <BottomNav activeScreen={activeScreen} onNavigate={setActiveScreen} />
+          <TenantBottomNav activeScreen={activeScreen} onNavigate={setActiveScreen} />
         </>
       )}
     </View>
   );
 }
+

@@ -4,37 +4,22 @@ import { Ionicons } from '@expo/vector-icons';
 import { isDesktop, isMobile, safeAreaTop, cardShadow } from './utils/responsive';
 import { useTheme } from './utils/ThemeContext';
 
-// Import all screens
-import CaretakerDashboard from './screens/CaretakerDashboard';
-import RoomsScreen from './screens/RoomsScreen';
-import TenantsScreen from './screens/TenantsScreen';
-import BillingScreen from './screens/BillingScreen';
-import IssuesScreen from './screens/IssuesScreen';
-import AnnouncementsScreen from './screens/AnnouncementsScreen';
+import OwnerDashboard from './screens/owner/OwnerDashboard';
+import OwnerReports from './screens/owner/OwnerReports';
+import OwnerBottomNav from './components/OwnerBottomNav';
 
-// Import navigation
-import BottomNav from './components/BottomNav';
-
-export default function CaretakerApp({ user, onLogout }) {
-  const [activeScreen, setActiveScreen] = useState('home');
+export default function OwnerApp({ user, onLogout }) {
+  const [activeScreen, setActiveScreen] = useState('dashboard');
   const { isDark, toggleTheme, colors } = useTheme();
 
   const renderScreen = () => {
     switch (activeScreen) {
-      case 'home':
-        return <CaretakerDashboard />;
-      case 'rooms':
-        return <RoomsScreen />;
-      case 'tenants':
-        return <TenantsScreen />;
-      case 'billing':
-        return <BillingScreen />;
-      case 'issues':
-        return <IssuesScreen />;
-      case 'announce':
-        return <AnnouncementsScreen />;
+      case 'dashboard':
+        return <OwnerDashboard />;
+      case 'reports':
+        return <OwnerReports />;
       default:
-        return <CaretakerDashboard />;
+        return <OwnerDashboard />;
     }
   };
 
@@ -42,7 +27,7 @@ export default function CaretakerApp({ user, onLogout }) {
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <StatusBar barStyle={colors.statusBarStyle} backgroundColor={colors.bg} />
 
-      {/* Floating theme toggle */}
+      {/* Theme toggle */}
       <TouchableOpacity
         onPress={toggleTheme}
         activeOpacity={0.7}
@@ -92,15 +77,16 @@ export default function CaretakerApp({ user, onLogout }) {
 
       {isDesktop ? (
         <View style={{ flex: 1, flexDirection: 'row' }}>
-          <BottomNav activeScreen={activeScreen} onNavigate={setActiveScreen} />
+          <OwnerBottomNav activeScreen={activeScreen} onNavigate={setActiveScreen} />
           <View style={{ flex: 1 }}>{renderScreen()}</View>
         </View>
       ) : (
         <>
           <View style={{ flex: 1 }}>{renderScreen()}</View>
-          <BottomNav activeScreen={activeScreen} onNavigate={setActiveScreen} />
+          <OwnerBottomNav activeScreen={activeScreen} onNavigate={setActiveScreen} />
         </>
       )}
     </View>
   );
 }
+

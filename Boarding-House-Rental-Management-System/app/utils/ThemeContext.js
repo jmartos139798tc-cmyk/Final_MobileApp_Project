@@ -72,6 +72,15 @@ const darkColors = {
   // Toggle component
   toggleBg: '#1e293b',
   toggleBorder: '#334155',
+
+  // Owner accent (purple — used in Owner portal)
+  ownerAccent: '#7c3aed',
+  ownerAccentBg: 'rgba(124, 58, 237, 0.12)',
+  ownerHero: '#4c1d95',
+  ownerHeroLight: '#7c3aed',
+  ownerIconBgPurple: 'rgba(124, 58, 237, 0.15)',
+  ownerBarDefault: '#334155',
+  ownerBarHighlight: '#7c3aed',
 };
 
 // ─── Light Palette ───────────────────────────────────────────────
@@ -134,6 +143,15 @@ const lightColors = {
 
   toggleBg: '#f1f5f9',
   toggleBorder: '#e2e8f0',
+
+  // Owner accent (purple)
+  ownerAccent: '#7c3aed',
+  ownerAccentBg: 'rgba(124, 58, 237, 0.08)',
+  ownerHero: '#6d28d9',
+  ownerHeroLight: '#8b5cf6',
+  ownerIconBgPurple: 'rgba(124, 58, 237, 0.1)',
+  ownerBarDefault: '#e2e8f0',
+  ownerBarHighlight: '#7c3aed',
 };
 
 // ─── Context ─────────────────────────────────────────────────────
