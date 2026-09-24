@@ -13,6 +13,7 @@ export default function BottomNav({ activeScreen, onNavigate }) {
     { id: 'tenants', label: 'Tenants', icon: 'people', iconOutline: 'people-outline' },
     { id: 'billing', label: 'Billing', icon: 'card', iconOutline: 'card-outline' },
     { id: 'issues', label: 'Issues', icon: 'chatbubble-ellipses', iconOutline: 'chatbubble-ellipses-outline' },
+    { id: 'room-changes', label: 'Changes', icon: 'swap-horizontal', iconOutline: 'swap-horizontal-outline' },
     { id: 'announce', label: 'Announce', icon: 'megaphone', iconOutline: 'megaphone-outline' },
   ];
 

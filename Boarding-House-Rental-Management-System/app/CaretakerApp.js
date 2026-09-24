@@ -11,6 +11,7 @@ import TenantsScreen from './screens/TenantsScreen';
 import BillingScreen from './screens/BillingScreen';
 import IssuesScreen from './screens/IssuesScreen';
 import AnnouncementsScreen from './screens/AnnouncementsScreen';
+import RoomChangeRequestsScreen from './screens/RoomChangeRequestsScreen';
 
 // Import navigation
 import BottomNav from './components/BottomNav';
@@ -31,6 +32,8 @@ export default function CaretakerApp({ user, onLogout }) {
         return <BillingScreen />;
       case 'issues':
         return <IssuesScreen />;
+      case 'room-changes':
+        return <RoomChangeRequestsScreen />;
       case 'announce':
         return <AnnouncementsScreen />;
       default:

@@ -412,4 +412,148 @@ export function submitComplaint({ title, description = '', tenantName = 'Ana Rey
   };
 }
 
+/**
+ * 17. Available rooms for a tenant transfer request.
+ */
+export function getAvailableRoomsForChange() {
+  const store = getStore();
+  return store[COLLECTIONS.ROOMS]
+    .filter((room) => room.status === 'vacant')
+    .map((room) => {
+      const type = store[COLLECTIONS.ROOM_TYPES].find((roomType) => roomType.id === room.type_id);
+      return {
+        id: room.id,
+        number: room.room_number.replace(/^0/, ''),
+        type: type?.name || 'Room',
+        monthlyRent: type?.base_rent || 0,
+      };
+    });
+}
+
+/**
+ * 18. Tenant room-change requests scoped to a tenant.
+ */
+export function getTenantRoomChangeRequests(tenantName = 'Ana Reyes') {
+  const store = getStore();
+  const tenant = store[COLLECTIONS.TENANTS].find((item) =>
+    `${item.first_name} ${item.last_name}`.toLowerCase() === tenantName.toLowerCase(),
+  ) || store[COLLECTIONS.TENANTS][1];
+
+  return (store[COLLECTIONS.ROOM_CHANGE_REQUESTS] || [])
+    .filter((request) => request.tenant_id === tenant.id)
+    .map((request) => {
+      const room = store[COLLECTIONS.ROOMS].find((item) => item.id === request.requested_room_id);
+      const type = room && store[COLLECTIONS.ROOM_TYPES].find((item) => item.id === room.type_id);
+      return {
+        id: request.id,
+        roomNumber: room?.room_number.replace(/^0/, '') || '-',
+        roomType: type?.name || 'Room',
+        reason: request.reason,
+        status: request.status,
+        date: request.requested_at,
+      };
+    });
+}
+
+/**
+ * 19. Submit a tenant room-change request. Room assignments stay unchanged
+ * until the caretaker or owner approves the request.
+ */
+export function submitRoomChangeRequest({ requestedRoomId, reason, tenantName = 'Ana Reyes' }) {
+  const store = getStore();
+  const tenant = store[COLLECTIONS.TENANTS].find((item) =>
+    `${item.first_name} ${item.last_name}`.toLowerCase() === tenantName.toLowerCase(),
+  ) || store[COLLECTIONS.TENANTS][1];
+  const currentLease = store[COLLECTIONS.LEASES].find((lease) => lease.tenant_id === tenant.id && lease.status === 'active');
+  const requestedRoom = store[COLLECTIONS.ROOMS].find((room) => room.id === requestedRoomId && room.status === 'vacant');
+
+  if (!requestedRoom) throw new Error('The selected room is no longer available.');
+
+  const requests = store[COLLECTIONS.ROOM_CHANGE_REQUESTS] || (store[COLLECTIONS.ROOM_CHANGE_REQUESTS] = []);
+  const newRequest = {
+    id: `room-change-${requests.length + 1}`,
+    tenant_id: tenant.id,
+    current_room_id: currentLease?.room_id || null,
+    requested_room_id: requestedRoom.id,
+    reason,
+    status: 'pending',
+    requested_at: 'Sep 23, 2026',
+  };
+  requests.unshift(newRequest);
+
+  const type = store[COLLECTIONS.ROOM_TYPES].find((item) => item.id === requestedRoom.type_id);
+  return {
+    id: newRequest.id,
+    roomNumber: requestedRoom.room_number.replace(/^0/, ''),
+    roomType: type?.name || 'Room',
+    reason,
+    status: 'pending',
+    date: newRequest.requested_at,
+  };
+}
+
+/**
+ * 20. All room-change requests for caretaker review.
+ */
+export function getRoomChangeRequests() {
+  const store = getStore();
+  return (store[COLLECTIONS.ROOM_CHANGE_REQUESTS] || []).map((request) => {
+    const tenant = store[COLLECTIONS.TENANTS].find((item) => item.id === request.tenant_id);
+    const currentRoom = store[COLLECTIONS.ROOMS].find((item) => item.id === request.current_room_id);
+    const requestedRoom = store[COLLECTIONS.ROOMS].find((item) => item.id === request.requested_room_id);
+    const requestedType = requestedRoom && store[COLLECTIONS.ROOM_TYPES].find((item) => item.id === requestedRoom.type_id);
+    return {
+      id: request.id,
+      tenant: tenant ? `${tenant.first_name} ${tenant.last_name}` : 'Tenant',
+      initials: tenant?.initials || 'TN',
+      color: tenant?.avatar_color || '#8b5cf6',
+      currentRoom: currentRoom?.room_number.replace(/^0/, '') || '-',
+      requestedRoom: requestedRoom?.room_number.replace(/^0/, '') || '-',
+      requestedRoomType: requestedType?.name || 'Room',
+      reason: request.reason,
+      status: request.status,
+      date: request.requested_at,
+    };
+  });
+}
+
+/**
+ * 21. Caretaker decision for a room-change request.
+ * Approval closes the old lease, opens a new one, and updates both room statuses.
+ */
+export function reviewRoomChangeRequest(requestId, decision) {
+  if (!['approved', 'declined'].includes(decision)) throw new Error('Invalid room-change decision.');
+
+  const store = getStore();
+  const request = (store[COLLECTIONS.ROOM_CHANGE_REQUESTS] || []).find((item) => item.id === requestId);
+  if (!request || request.status !== 'pending') throw new Error('This request is no longer available for review.');
+
+  if (decision === 'approved') {
+    const requestedRoom = store[COLLECTIONS.ROOMS].find((room) => room.id === request.requested_room_id);
+    const currentRoom = store[COLLECTIONS.ROOMS].find((room) => room.id === request.current_room_id);
+    const currentLease = store[COLLECTIONS.LEASES].find((lease) => lease.tenant_id === request.tenant_id && lease.status === 'active');
+    if (!requestedRoom || requestedRoom.status !== 'vacant') throw new Error('The requested room is no longer available.');
+
+    if (currentLease) {
+      currentLease.status = 'terminated';
+      currentLease.end_date = '2026-09-23';
+      store[COLLECTIONS.LEASES].unshift({
+        id: `lease-${store[COLLECTIONS.LEASES].length + 1}`,
+        tenant_id: request.tenant_id,
+        room_id: requestedRoom.id,
+        start_date: '2026-09-24',
+        agreed_monthly_rent: currentLease.agreed_monthly_rent,
+        due_day: currentLease.due_day,
+        status: 'active',
+      });
+    }
+    if (currentRoom) currentRoom.status = 'vacant';
+    requestedRoom.status = 'occupied';
+  }
+
+  request.status = decision;
+  request.reviewed_at = 'Sep 24, 2026';
+  return getRoomChangeRequests().find((item) => item.id === requestId);
+}
+
 export { seedFirestoreDatabase };

@@ -18,6 +18,7 @@ export const COLLECTIONS = {
   INVOICES: 'invoices',
   PAYMENTS: 'payments',
   COMPLAINTS: 'complaints',
+  ROOM_CHANGE_REQUESTS: 'room_change_requests',
   ANNOUNCEMENTS: 'announcements',
 };
 
@@ -74,8 +75,15 @@ export const COLLECTIONS = {
  *     - FK: tenant_id -> TENANTS.tenant_id
  *     - FK: room_id -> ROOMS.room_id
  *     - Fields: title, description, status ('pending'|'in-progress'|'resolved'), filed_at, resolved_at
+ *
+ * 11. ROOM_CHANGE_REQUESTS: Tenant requests to transfer to an available room
+ *     - PK: request_id
+ *     - FK: tenant_id -> TENANTS.tenant_id
+ *     - FK: current_room_id -> ROOMS.room_id
+ *     - FK: requested_room_id -> ROOMS.room_id
+ *     - Fields: reason, status ('pending'|'approved'|'declined'), requested_at
  * 
- * 11. ANNOUNCEMENTS: Broadcast notices for the property
+ * 12. ANNOUNCEMENTS: Broadcast notices for the property
  *     - PK: announcement_id
  *     - FK: house_id -> BOARDING_HOUSES.house_id
  *     - FK: author_user_id -> USERS.user_id

@@ -7,6 +7,7 @@ import { useTheme } from './utils/ThemeContext';
 import TenantHomeScreen from './screens/tenant/TenantHomeScreen';
 import TenantComplaintsScreen from './screens/tenant/TenantComplaintsScreen';
 import TenantUpdatesScreen from './screens/tenant/TenantUpdatesScreen';
+import TenantRoomChangeScreen from './screens/tenant/TenantRoomChangeScreen';
 import TenantBottomNav from './components/TenantBottomNav';
 
 export default function TenantApp({ user, onLogout }) {
@@ -21,6 +22,8 @@ export default function TenantApp({ user, onLogout }) {
         return <TenantComplaintsScreen />;
       case 'updates':
         return <TenantUpdatesScreen />;
+      case 'room-change':
+        return <TenantRoomChangeScreen />;
       default:
         return <TenantHomeScreen onNavigateToUpdates={() => setActiveScreen('updates')} />;
     }

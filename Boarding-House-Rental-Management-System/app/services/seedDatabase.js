@@ -2,8 +2,8 @@
  * 3NF Normalized Database Seeder & Mock Store
  * 
  * Provides:
- * 1. `getNormalizedMockDatabase()`: Full 11-entity relational database representation
- * 2. `seedFirestoreDatabase(db)`: Direct batch seeder to push all 11 collections to Firestore
+ * 1. `getNormalizedMockDatabase()`: Full normalized relational database representation
+ * 2. `seedFirestoreDatabase(db)`: Direct batch seeder to push all collections to Firestore
  */
 
 import { COLLECTIONS } from './databaseSchema.js';
@@ -141,7 +141,20 @@ export const SEED_DATA = {
     { id: 'comp-4', tenant_id: 'tenant-4', room_id: 'room-5', title: 'Ceiling fan not working', description: 'Ceiling fan speed 3 produces rattling sound.', status: 'pending', filed_at: 'Sep 14, 2026' },
   ],
 
-  // 11. ANNOUNCEMENTS
+  // 11. ROOM_CHANGE_REQUESTS
+  [COLLECTIONS.ROOM_CHANGE_REQUESTS]: [
+    {
+      id: 'room-change-1',
+      tenant_id: 'tenant-2',
+      current_room_id: 'room-2',
+      requested_room_id: 'room-3',
+      reason: 'I would like a quieter room for studying.',
+      status: 'pending',
+      requested_at: 'Sep 23, 2026',
+    },
+  ],
+
+  // 12. ANNOUNCEMENTS
   [COLLECTIONS.ANNOUNCEMENTS]: [
     { id: 'ann-1', house_id: 'bh-1', author_user_id: 'user-caretaker-1', category: 'Payment', title: 'October Rent Reminder', description: 'October rent is due on October 5, 2026. Please settle your balances on time to avoid late fees.', created_at: 'Sep 15, 2026' },
     { id: 'ann-2', house_id: 'bh-1', author_user_id: 'user-caretaker-1', category: 'Maintenance', title: 'Water Interruption Notice', description: 'Water supply will be interrupted on Sep 18 from 8AM–12PM for pipe maintenance. Store water in advance.', created_at: 'Sep 14, 2026' },
