@@ -488,8 +488,9 @@ export default function LoginScreen({ onLoginSuccess }) {
                       placeholder="e.g. 0917-123-4567"
                       placeholderTextColor={colors.textMuted}
                       keyboardType="phone-pad"
+                      maxLength={11}
                       value={regPhone}
-                      onChangeText={setRegPhone}
+                      onChangeText={(text) => setRegPhone(text.replace(/[^0-9]/g, '').slice(0, 11))}
                     />
                   </View>
 
