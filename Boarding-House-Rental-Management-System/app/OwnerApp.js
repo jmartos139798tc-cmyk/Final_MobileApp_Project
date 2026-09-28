@@ -5,6 +5,7 @@ import { isDesktop, isMobile, safeAreaTop, cardShadow } from './utils/responsive
 import { useTheme } from './utils/ThemeContext';
 
 import OwnerDashboard from './screens/owner/OwnerDashboard';
+import OwnerRooms from './screens/owner/OwnerRooms';
 import OwnerReports from './screens/owner/OwnerReports';
 import OwnerBottomNav from './components/OwnerBottomNav';
 
@@ -18,6 +19,8 @@ export default function OwnerApp({ user, onLogout }) {
         return <OwnerDashboard />;
       case 'reports':
         return <OwnerReports />;
+      case 'rooms':
+        return <OwnerRooms />;
       default:
         return <OwnerDashboard />;
     }
