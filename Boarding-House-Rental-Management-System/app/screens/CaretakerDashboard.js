@@ -4,13 +4,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../utils/ThemeContext';
 import {
   isMobile,
-  isTablet,
   isDesktop,
   getResponsivePadding,
   fs,
   spacing,
   cardStyle,
-  cardShadow,
   safeAreaTop,
   accentShadow,
 } from '../utils/responsive';
@@ -20,12 +18,21 @@ export default function CaretakerDashboard({ onNavigate }) {
   const padding = getResponsivePadding();
   const containerMaxWidth = isDesktop ? 1400 : '100%';
 
+  const go = (target) => onNavigate && onNavigate(target);
+
   const getGreeting = () => {
     const hour = new Date().getHours();
-    if (hour < 12) return 'Good morning 👋';
-    if (hour < 18) return 'Good afternoon 👋';
-    return 'Good evening 👋';
+    if (hour < 12) return 'Good morning';
+    if (hour < 18) return 'Good afternoon';
+    return 'Good evening';
   };
+
+  const todayLabel = new Date().toLocaleDateString('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  });
 
   const pendingIssues = [
     { id: 1, room: 'R2', issue: 'Leaking faucet in bathroom', tenant: 'Ana Reyes', date: 'Sep 12, 2026' },
@@ -70,7 +77,7 @@ export default function CaretakerDashboard({ onNavigate }) {
       id: 'issues',
       label: 'Open Issues',
       value: '2',
-      subtext: 'Requires action',
+      subtext: 'Needs your action',
       icon: 'alert-circle',
       color: colors.warning,
       bgColor: colors.iconBgYellow,
@@ -78,27 +85,45 @@ export default function CaretakerDashboard({ onNavigate }) {
     },
   ];
 
+  const sectionTitle = {
+    fontSize: fs(15),
+    fontWeight: '700',
+    color: colors.text,
+  };
+
+  const viewAllLink = (target) => (
+    <TouchableOpacity
+      activeOpacity={0.7}
+      onPress={() => go(target)}
+      style={{ minHeight: 44, justifyContent: 'center', paddingLeft: 12 }}
+    >
+      <Text style={{ fontSize: fs(14), fontWeight: '700', color: colors.accent }}>
+        View all
+      </Text>
+    </TouchableOpacity>
+  );
+
   const renderStatCard = (item) => (
     <TouchableOpacity
       key={item.id}
       activeOpacity={0.7}
-      onPress={() => onNavigate && onNavigate(item.target)}
+      onPress={() => go(item.target)}
       style={{
         ...cardStyle,
         backgroundColor: colors.card,
         borderColor: colors.cardBorder,
         flex: 1,
         padding: isDesktop ? 20 : 16,
-        borderLeftWidth: 3,
+        borderLeftWidth: 4,
         borderLeftColor: item.color,
         justifyContent: 'space-between',
-        minHeight: 115,
+        minHeight: 130,
       }}
     >
       <View
         style={{
-          width: 40,
-          height: 40,
+          width: 44,
+          height: 44,
           borderRadius: 12,
           backgroundColor: item.bgColor,
           alignItems: 'center',
@@ -106,19 +131,18 @@ export default function CaretakerDashboard({ onNavigate }) {
           marginBottom: 10,
         }}
       >
-        <Ionicons name={item.icon} size={20} color={item.color} />
+        <Ionicons name={item.icon} size={24} color={item.color} />
       </View>
       <View>
         <Text
-          style={{ fontSize: fs(12), fontWeight: '600', color: colors.textSecondary, marginBottom: 4 }}
-          numberOfLines={1}
+          style={{ fontSize: fs(13), fontWeight: '600', color: colors.textSecondary, marginBottom: 4 }}
         >
           {item.label}
         </Text>
-        <Text style={{ fontSize: fs(24), fontWeight: '800', color: colors.text }}>
+        <Text style={{ fontSize: fs(26), fontWeight: '800', color: colors.text }}>
           {item.value}
         </Text>
-        <Text style={{ fontSize: fs(11), color: colors.textMuted, marginTop: 2 }} numberOfLines={1}>
+        <Text style={{ fontSize: fs(12), color: colors.textMuted, marginTop: 2 }}>
           {item.subtext}
         </Text>
       </View>
@@ -131,12 +155,12 @@ export default function CaretakerDashboard({ onNavigate }) {
         style={{ flex: 1 }}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{
-          paddingBottom: 20,
+          paddingBottom: 24,
           alignItems: isDesktop ? 'center' : 'stretch',
         }}
       >
         <View style={{ maxWidth: containerMaxWidth, width: '100%' }}>
-          {/* Header Section */}
+          {/* Header */}
           <View
             style={{
               paddingHorizontal: padding,
@@ -145,18 +169,18 @@ export default function CaretakerDashboard({ onNavigate }) {
             }}
           >
             <Text style={{ fontSize: fs(13), color: colors.textMuted, fontWeight: '500', marginBottom: 4 }}>
-              September 2026
+              {todayLabel}
             </Text>
-            <Text style={{ fontSize: fs(14), color: colors.textSecondary, fontWeight: '600' }}>
+            <Text style={{ fontSize: fs(15), color: colors.textSecondary, fontWeight: '600' }}>
               {getGreeting()}
             </Text>
-            <Text style={{ fontSize: fs(32), color: colors.text, fontWeight: '800', marginTop: 2 }}>
+            <Text style={{ fontSize: fs(30), color: colors.text, fontWeight: '800', marginTop: 2 }}>
               Dashboard
             </Text>
           </View>
 
           <View style={{ paddingHorizontal: padding, gap: spacing.lg }}>
-            {/* Occupancy Rate Card */}
+            {/* Occupancy Card */}
             <View
               style={{
                 backgroundColor: colors.heroBg,
@@ -169,16 +193,15 @@ export default function CaretakerDashboard({ onNavigate }) {
                 <View style={{ flex: 1 }}>
                   <Text
                     style={{
-                      fontSize: fs(11),
-                      fontWeight: '800',
+                      fontSize: fs(13),
+                      fontWeight: '700',
                       color: colors.heroSubtext,
-                      letterSpacing: 1,
                       marginBottom: 4,
                     }}
                   >
-                    OCCUPANCY RATE
+                    Occupancy rate
                   </Text>
-                  <Text style={{ fontSize: fs(52), fontWeight: '900', color: colors.heroText }}>
+                  <Text style={{ fontSize: fs(44), fontWeight: '900', color: colors.heroText }}>
                     82%
                   </Text>
                 </View>
@@ -196,17 +219,17 @@ export default function CaretakerDashboard({ onNavigate }) {
                   gap: 8,
                 }}
               >
-                <Text style={{ fontSize: fs(14), fontWeight: '700', color: colors.heroText }}>
+                <Text style={{ fontSize: fs(15), fontWeight: '700', color: colors.heroText }}>
                   14 occupied
                 </Text>
-                <Text style={{ fontSize: fs(13), fontWeight: '600', color: colors.heroSubtext }}>
+                <Text style={{ fontSize: fs(14), fontWeight: '600', color: colors.heroSubtext }}>
                   3 vacant rooms
                 </Text>
               </View>
 
               <View
                 style={{
-                  height: 8,
+                  height: 10,
                   backgroundColor: colors.heroBarBg,
                   borderRadius: 8,
                   overflow: 'hidden',
@@ -216,7 +239,7 @@ export default function CaretakerDashboard({ onNavigate }) {
               </View>
             </View>
 
-            {/* Stats - 2x2 Grid */}
+            {/* Stats 2x2 */}
             <View style={{ gap: spacing.md }}>
               <View style={{ flexDirection: 'row', gap: spacing.md }}>
                 {statsRow1.map(renderStatCard)}
@@ -226,7 +249,7 @@ export default function CaretakerDashboard({ onNavigate }) {
               </View>
             </View>
 
-            {/* Pending Issues Section */}
+            {/* Pending Issues */}
             <View>
               <View
                 style={{
@@ -236,26 +259,8 @@ export default function CaretakerDashboard({ onNavigate }) {
                   marginBottom: spacing.sm,
                 }}
               >
-                <Text
-                  style={{
-                    fontSize: fs(13),
-                    fontWeight: '700',
-                    color: colors.textSecondary,
-                    letterSpacing: 0.5,
-                    textTransform: 'uppercase',
-                  }}
-                >
-                  Pending Issues
-                </Text>
-                <TouchableOpacity
-                  activeOpacity={0.7}
-                  onPress={() => onNavigate && onNavigate('issues')}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                >
-                  <Text style={{ fontSize: fs(13), fontWeight: '600', color: colors.accent }}>
-                    View all
-                  </Text>
-                </TouchableOpacity>
+                <Text style={sectionTitle}>Pending issues</Text>
+                {viewAllLink('issues')}
               </View>
 
               <View style={{ gap: spacing.sm }}>
@@ -263,23 +268,24 @@ export default function CaretakerDashboard({ onNavigate }) {
                   <TouchableOpacity
                     key={issue.id}
                     activeOpacity={0.7}
-                    onPress={() => onNavigate && onNavigate('issues')}
+                    onPress={() => go('issues')}
                     style={{
                       ...cardStyle,
                       backgroundColor: colors.card,
                       borderColor: colors.cardBorder,
-                      borderLeftWidth: 3,
+                      borderLeftWidth: 4,
                       borderLeftColor: colors.warning,
                       padding: isDesktop ? 20 : 16,
                       flexDirection: 'row',
                       alignItems: 'center',
                       gap: 12,
+                      minHeight: 76,
                     }}
                   >
                     <View
                       style={{
-                        width: 44,
-                        height: 44,
+                        width: 48,
+                        height: 48,
                         borderRadius: 12,
                         backgroundColor: colors.iconBgYellow,
                         alignItems: 'center',
@@ -292,21 +298,13 @@ export default function CaretakerDashboard({ onNavigate }) {
                     </View>
 
                     <View style={{ flex: 1 }}>
-                      <View
-                        style={{
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          gap: 8,
-                          marginBottom: 4,
-                        }}
+                      <Text
+                        style={{ fontSize: fs(15), fontWeight: '700', color: colors.text, marginBottom: 4 }}
+                        numberOfLines={2}
                       >
-                        <Text
-                          style={{ fontSize: fs(14), fontWeight: '700', color: colors.text, flex: 1 }}
-                          numberOfLines={1}
-                        >
-                          {issue.issue}
-                        </Text>
+                        {issue.issue}
+                      </Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
                         <View
                           style={{
                             backgroundColor: colors.warningBg,
@@ -315,23 +313,17 @@ export default function CaretakerDashboard({ onNavigate }) {
                             borderRadius: 6,
                           }}
                         >
-                          <Text style={{ fontSize: fs(10), fontWeight: '700', color: colors.warningText }}>
+                          <Text style={{ fontSize: fs(12), fontWeight: '700', color: colors.warningText }}>
                             Pending
                           </Text>
                         </View>
-                      </View>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                        <Ionicons name="person-outline" size={12} color={colors.textMuted} />
-                        <Text style={{ fontSize: fs(12), color: colors.textMuted }} numberOfLines={1}>
-                          {issue.tenant}
-                        </Text>
-                        <Text style={{ fontSize: fs(10), color: colors.textMuted }}>•</Text>
-                        <Ionicons name="calendar-outline" size={12} color={colors.textMuted} />
-                        <Text style={{ fontSize: fs(12), color: colors.textMuted }}>
-                          {issue.date}
+                        <Text style={{ fontSize: fs(13), color: colors.textSecondary }}>
+                          {issue.tenant} · {issue.date}
                         </Text>
                       </View>
                     </View>
+
+                    <Ionicons name="chevron-forward" size={22} color={colors.textMuted} />
                   </TouchableOpacity>
                 ))}
               </View>
@@ -347,36 +339,18 @@ export default function CaretakerDashboard({ onNavigate }) {
                   marginBottom: spacing.sm,
                 }}
               >
-                <Text
-                  style={{
-                    fontSize: fs(13),
-                    fontWeight: '700',
-                    color: colors.textSecondary,
-                    letterSpacing: 0.5,
-                    textTransform: 'uppercase',
-                  }}
-                >
-                  Latest Announcement
-                </Text>
-                <TouchableOpacity
-                  activeOpacity={0.7}
-                  onPress={() => onNavigate && onNavigate('announce')}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                >
-                  <Text style={{ fontSize: fs(13), fontWeight: '600', color: colors.accent }}>
-                    View all
-                  </Text>
-                </TouchableOpacity>
+                <Text style={sectionTitle}>Latest announcement</Text>
+                {viewAllLink('announce')}
               </View>
 
               <TouchableOpacity
                 activeOpacity={0.7}
-                onPress={() => onNavigate && onNavigate('announce')}
+                onPress={() => go('announce')}
                 style={{
                   ...cardStyle,
                   backgroundColor: colors.card,
                   borderColor: colors.cardBorder,
-                  borderLeftWidth: 3,
+                  borderLeftWidth: 4,
                   borderLeftColor: colors.success,
                   padding: isDesktop ? 22 : 18,
                 }}
@@ -392,27 +366,27 @@ export default function CaretakerDashboard({ onNavigate }) {
                   <View
                     style={{
                       backgroundColor: colors.successBg,
-                      paddingHorizontal: 9,
-                      paddingVertical: 3,
+                      paddingHorizontal: 10,
+                      paddingVertical: 4,
                       borderRadius: 6,
                       flexDirection: 'row',
                       alignItems: 'center',
-                      gap: 4,
+                      gap: 5,
                     }}
                   >
-                    <Ionicons name="megaphone" size={11} color={colors.successText} />
-                    <Text style={{ fontSize: fs(10), fontWeight: '700', color: colors.successText }}>
+                    <Ionicons name="megaphone" size={14} color={colors.successText} />
+                    <Text style={{ fontSize: fs(12), fontWeight: '700', color: colors.successText }}>
                       Payment
                     </Text>
                   </View>
-                  <Text style={{ fontSize: fs(11), color: colors.textMuted }}>
+                  <Text style={{ fontSize: fs(12), color: colors.textMuted }}>
                     Sep 15, 2026
                   </Text>
                 </View>
-                <Text style={{ fontSize: fs(15), fontWeight: '700', color: colors.text, marginBottom: 6 }}>
+                <Text style={{ fontSize: fs(16), fontWeight: '700', color: colors.text, marginBottom: 6 }}>
                   October Rent Reminder
                 </Text>
-                <Text style={{ fontSize: fs(13), color: colors.textSecondary, lineHeight: 20 }}>
+                <Text style={{ fontSize: fs(14), color: colors.textSecondary, lineHeight: 22 }}>
                   October rent is due on October 5, 2026. Please settle your balances on time to avoid late fees.
                 </Text>
               </TouchableOpacity>

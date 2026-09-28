@@ -131,7 +131,7 @@ export default function LoginScreen({ onLoginSuccess }) {
           ...cardShadow,
         }}
       >
-        <Ionicons name={isDark ? 'sunny' : 'moon'} size={18} color={isDark ? '#fbbf24' : '#6366f1'} />
+        <Ionicons name={isDark ? 'sunny' : 'moon'} size={18} color={isDark ? '#fbbf24' : colors.accent} />
       </TouchableOpacity>
 
       <KeyboardAvoidingView
@@ -157,7 +157,7 @@ export default function LoginScreen({ onLoginSuccess }) {
                 width: 64,
                 height: 64,
                 borderRadius: 20,
-                backgroundColor: '#7c3aed',
+                backgroundColor: colors.primary,
                 alignItems: 'center',
                 justifyContent: 'center',
                 marginBottom: 14,
@@ -253,7 +253,7 @@ export default function LoginScreen({ onLoginSuccess }) {
                     flex: 1,
                     paddingVertical: 10,
                     borderRadius: 10,
-                    backgroundColor: formMode === 'login' ? '#7c3aed' : 'transparent',
+                    backgroundColor: formMode === 'login' ? colors.primary : 'transparent',
                     alignItems: 'center',
                   }}
                 >
@@ -277,7 +277,7 @@ export default function LoginScreen({ onLoginSuccess }) {
                     flex: 1,
                     paddingVertical: 10,
                     borderRadius: 10,
-                    backgroundColor: formMode === 'register' ? '#7c3aed' : 'transparent',
+                    backgroundColor: formMode === 'register' ? colors.primary : 'transparent',
                     alignItems: 'center',
                   }}
                 >
@@ -331,7 +331,7 @@ export default function LoginScreen({ onLoginSuccess }) {
                       Password
                     </Text>
                     <TouchableOpacity onPress={() => setShowForgotModal(true)}>
-                      <Text style={{ fontSize: fs(11), color: '#8b5cf6', fontWeight: '700' }}>
+                      <Text style={{ fontSize: fs(11), color: colors.accent, fontWeight: '700' }}>
                         Forgot?
                       </Text>
                     </TouchableOpacity>
@@ -375,7 +375,7 @@ export default function LoginScreen({ onLoginSuccess }) {
                     disabled={loading}
                     onPress={() => handleSignIn()}
                     style={{
-                      backgroundColor: '#7c3aed',
+                      backgroundColor: colors.primary,
                       paddingVertical: 14,
                       borderRadius: 12,
                       alignItems: 'center',
@@ -451,8 +451,8 @@ export default function LoginScreen({ onLoginSuccess }) {
 
                   {/* Security Notice: Owner/Caretaker are pre-provisioned */}
                   <View style={{
-                    backgroundColor: 'rgba(124, 58, 237, 0.08)',
-                    borderColor: 'rgba(124, 58, 237, 0.25)',
+                    backgroundColor: colors.accentBg,
+                    borderColor: colors.cardBorder,
                     borderWidth: 1,
                     borderRadius: 12,
                     padding: 12,
@@ -582,7 +582,7 @@ export default function LoginScreen({ onLoginSuccess }) {
                     disabled={loading}
                     onPress={handleRegister}
                     style={{
-                      backgroundColor: '#7c3aed',
+                      backgroundColor: colors.primary,
                       paddingVertical: 14,
                       borderRadius: 12,
                       alignItems: 'center',
@@ -722,7 +722,7 @@ export default function LoginScreen({ onLoginSuccess }) {
             <TouchableOpacity
               onPress={() => setShowForgotModal(false)}
               style={{
-                backgroundColor: '#7c3aed',
+                backgroundColor: colors.primary,
                 paddingVertical: 12,
                 borderRadius: 12,
                 alignItems: 'center',

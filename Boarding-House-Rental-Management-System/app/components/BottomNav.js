@@ -71,7 +71,7 @@ export default function BottomNav({ activeScreen, onNavigate }) {
             >
               <Ionicons
                 name={isActive ? item.icon : item.iconOutline}
-                size={21}
+                size={24}
                 color={isActive ? colors.accent : colors.textSecondary}
               />
               <Text style={{
@@ -125,20 +125,20 @@ export default function BottomNav({ activeScreen, onNavigate }) {
             <View style={{
               alignItems: 'center',
               justifyContent: 'center',
-              width: 48,
-              height: 30,
+              width: 56,
+              height: 34,
               borderRadius: 15,
               backgroundColor: isActive ? colors.accentBg : 'transparent',
               marginBottom: 2,
             }}>
               <Ionicons
                 name={isActive ? item.icon : item.iconOutline}
-                size={21}
+                size={24}
                 color={isActive ? colors.accent : colors.navInactive}
               />
             </View>
             <Text style={{
-              fontSize: 10,
+              fontSize: fs(12),
               fontWeight: isActive ? '700' : '500',
               color: isActive ? colors.accent : colors.navInactive,
               marginTop: 1,

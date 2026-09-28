@@ -1,164 +1,157 @@
 import React, { createContext, useContext, useState } from 'react';
 
-// ─── Dark Palette ────────────────────────────────────────────────
+// ─── Dark Palette (warm neutral) ─────────────────────────────────
 const darkColors = {
-  // Base surfaces
-  bg: '#0f172a',
-  card: '#1e293b',
-  cardBorder: '#283548',
+  bg: '#1C1B19',
+  card: '#262421',
+  cardBorder: '#3A3732',
 
-  // Text
-  text: '#f1f5f9',
-  textSecondary: '#94a3b8',
-  textMuted: '#64748b',
+  text: '#F3F0EB',
+  textSecondary: '#CFC9C0',
+  textMuted: '#A39D94',
 
-  // Brand / Accent
-  accent: '#ff6347',
-  accentBg: 'rgba(255, 99, 71, 0.12)',
+  // Brand / Accent (calm slate-teal)
+  primary: '#3F5D6B',          // buttons, active tabs (use with onPrimary text)
+  onPrimary: '#FFFFFF',
+  accent: '#8FB3C4',
+  accentBg: 'rgba(143, 179, 196, 0.14)',
 
-  // Status
-  success: '#10b981',
-  warning: '#fbbf24',
-  danger: '#ef4444',
-  info: '#3b82f6',
+  success: '#5FBF87',
+  warning: '#E0A03A',
+  danger: '#E5746C',
+  info: '#6FA3C7',
 
-  // Badge / pill backgrounds (light tint + dark text)
-  successBg: '#d1fae5',
-  successText: '#059669',
-  warningBg: '#fef3c7',
-  warningText: '#d97706',
-  dangerBg: '#fee2e2',
-  dangerText: '#dc2626',
-  infoBg: '#dbeafe',
-  infoText: '#0284c7',
+  successBg: '#DCEFE3',
+  successText: '#1F6B41',
+  warningBg: '#F8E8C8',
+  warningText: '#8A5200',
+  dangerBg: '#F6DAD7',
+  dangerText: '#9C2C25',
+  infoBg: '#DCE8F1',
+  infoText: '#245B80',
 
-  // Icon badge backgrounds (15% opacity tints)
-  iconBgBlue: 'rgba(59, 130, 246, 0.15)',
-  iconBgRed: 'rgba(239, 68, 68, 0.15)',
-  iconBgGreen: 'rgba(16, 185, 129, 0.15)',
-  iconBgYellow: 'rgba(251, 191, 36, 0.15)',
+  iconBgBlue: 'rgba(111, 163, 199, 0.18)',
+  iconBgRed: 'rgba(229, 116, 108, 0.18)',
+  iconBgGreen: 'rgba(95, 191, 135, 0.18)',
+  iconBgYellow: 'rgba(224, 160, 58, 0.18)',
 
-  // Navigation
-  navBg: '#0f172a',
-  navBorder: '#1e293b',
-  navInactive: '#64748b',
-  sidebarBg: '#1e293b',
-  sidebarBorder: '#334155',
+  navBg: '#211F1D',
+  navBorder: '#3A3732',
+  navInactive: '#A39D94',
+  sidebarBg: '#211F1D',
+  sidebarBorder: '#3A3732',
 
-  // Controls
-  filterBg: '#1e293b',
-  filterBorder: '#334155',
-  searchBg: '#1e293b',
-  searchBorder: '#334155',
+  filterBg: '#262421',
+  filterBorder: '#4A463F',
+  searchBg: '#2B2926',
+  searchBorder: '#4A463F',
 
-  // Misc
-  divider: '#334155',
+  divider: '#3A3732',
   statusBarStyle: 'light-content',
 
-  // Room card variants
-  roomPaid: '#2d3748',
-  roomBalance: '#4a3f28',
-  roomBalanceBorder: '#8b7355',
-  roomVacant: '#1e293b',
-  vacantBorder: '#475569',
+  roomPaid: '#2B2926',
+  roomBalance: '#3A3225',
+  roomBalanceBorder: '#8B7355',
+  roomVacant: '#262421',
+  vacantBorder: '#4A463F',
 
-  // Occupancy hero card (stays the same both themes)
-  heroBg: '#ff6347',
-  heroText: '#ffffff',
-  heroSubtext: 'rgba(255,255,255,0.8)',
-  heroBarBg: 'rgba(255,255,255,0.2)',
-  heroBarFill: '#ffffff',
+  heroBg: '#3F5D6B',
+  heroText: '#FFFFFF',
+  heroSubtext: 'rgba(255,255,255,0.85)',
+  heroBarBg: 'rgba(255,255,255,0.22)',
+  heroBarFill: '#FFFFFF',
 
-  // Toggle component
-  toggleBg: '#1e293b',
-  toggleBorder: '#334155',
+  toggleBg: '#262421',
+  toggleBorder: '#4A463F',
 
-  // Owner accent (purple — used in Owner portal)
-  ownerAccent: '#7c3aed',
-  ownerAccentBg: 'rgba(124, 58, 237, 0.12)',
-  ownerHero: '#4c1d95',
-  ownerHeroLight: '#7c3aed',
-  ownerIconBgPurple: 'rgba(124, 58, 237, 0.15)',
-  ownerBarDefault: '#334155',
-  ownerBarHighlight: '#7c3aed',
+  // Owner portal (same slate-teal family, no more purple)
+  ownerAccent: '#8FB3C4',
+  ownerAccentBg: 'rgba(143, 179, 196, 0.14)',
+  ownerHero: '#3F5D6B',
+  ownerHeroLight: '#5B7C8B',
+  ownerIconBgPurple: 'rgba(143, 179, 196, 0.18)',
+  ownerBarDefault: '#3A3732',
+  ownerBarHighlight: '#8FB3C4',
 };
 
-// ─── Light Palette ───────────────────────────────────────────────
+// ─── Light Palette (warm neutral) ────────────────────────────────
 const lightColors = {
-  bg: '#f1f5f9',
-  card: '#ffffff',
-  cardBorder: '#e2e8f0',
+  bg: '#F7F5F2',
+  card: '#FFFFFF',
+  cardBorder: '#E4E0DA',
 
-  text: '#1e293b',
-  textSecondary: '#475569',
-  textMuted: '#94a3b8',
+  text: '#1F1D1A',
+  textSecondary: '#4A4640',
+  textMuted: '#6B665F',
 
-  accent: '#ff6347',
-  accentBg: 'rgba(255, 99, 71, 0.08)',
+  primary: '#3F5D6B',
+  onPrimary: '#FFFFFF',
+  accent: '#3F5D6B',
+  accentBg: '#E6ECEF',
 
-  success: '#10b981',
-  warning: '#f59e0b',
-  danger: '#ef4444',
-  info: '#3b82f6',
+  success: '#2F7D4F',
+  warning: '#B26A00',
+  danger: '#B3372F',
+  info: '#2F6E9A',
 
-  successBg: '#d1fae5',
-  successText: '#059669',
-  warningBg: '#fef3c7',
-  warningText: '#92400e',
-  dangerBg: '#fee2e2',
-  dangerText: '#dc2626',
-  infoBg: '#dbeafe',
-  infoText: '#0284c7',
+  successBg: '#DCEFE3',
+  successText: '#1F6B41',
+  warningBg: '#F8E8C8',
+  warningText: '#8A5200',
+  dangerBg: '#F6DAD7',
+  dangerText: '#9C2C25',
+  infoBg: '#DCE8F1',
+  infoText: '#245B80',
 
-  iconBgBlue: 'rgba(59, 130, 246, 0.1)',
-  iconBgRed: 'rgba(239, 68, 68, 0.1)',
-  iconBgGreen: 'rgba(16, 185, 129, 0.1)',
-  iconBgYellow: 'rgba(251, 191, 36, 0.1)',
+  iconBgBlue: 'rgba(47, 110, 154, 0.12)',
+  iconBgRed: 'rgba(179, 55, 47, 0.12)',
+  iconBgGreen: 'rgba(47, 125, 79, 0.12)',
+  iconBgYellow: 'rgba(178, 106, 0, 0.12)',
 
-  navBg: '#ffffff',
-  navBorder: '#e2e8f0',
-  navInactive: '#94a3b8',
-  sidebarBg: '#ffffff',
-  sidebarBorder: '#e2e8f0',
+  navBg: '#FFFFFF',
+  navBorder: '#E4E0DA',
+  navInactive: '#6B665F',
+  sidebarBg: '#FFFFFF',
+  sidebarBorder: '#E4E0DA',
 
-  filterBg: '#ffffff',
-  filterBorder: '#e2e8f0',
-  searchBg: '#f8fafc',
-  searchBorder: '#e2e8f0',
+  filterBg: '#FFFFFF',
+  filterBorder: '#CFC9C0',
+  searchBg: '#FFFFFF',
+  searchBorder: '#CFC9C0',
 
-  divider: '#e2e8f0',
+  divider: '#E4E0DA',
   statusBarStyle: 'dark-content',
 
-  roomPaid: '#ffffff',
-  roomBalance: '#fffbeb',
-  roomBalanceBorder: '#fcd34d',
-  roomVacant: '#f8fafc',
-  vacantBorder: '#cbd5e1',
+  roomPaid: '#FFFFFF',
+  roomBalance: '#FBF3E1',
+  roomBalanceBorder: '#E0B96A',
+  roomVacant: '#F2EFEA',
+  vacantBorder: '#CFC9C0',
 
-  heroBg: '#ff6347',
-  heroText: '#ffffff',
-  heroSubtext: 'rgba(255,255,255,0.8)',
-  heroBarBg: 'rgba(255,255,255,0.2)',
-  heroBarFill: '#ffffff',
+  heroBg: '#3F5D6B',
+  heroText: '#FFFFFF',
+  heroSubtext: 'rgba(255,255,255,0.85)',
+  heroBarBg: 'rgba(255,255,255,0.22)',
+  heroBarFill: '#FFFFFF',
 
-  toggleBg: '#f1f5f9',
-  toggleBorder: '#e2e8f0',
+  toggleBg: '#F2EFEA',
+  toggleBorder: '#E4E0DA',
 
-  // Owner accent (purple)
-  ownerAccent: '#7c3aed',
-  ownerAccentBg: 'rgba(124, 58, 237, 0.08)',
-  ownerHero: '#6d28d9',
-  ownerHeroLight: '#8b5cf6',
-  ownerIconBgPurple: 'rgba(124, 58, 237, 0.1)',
-  ownerBarDefault: '#e2e8f0',
-  ownerBarHighlight: '#7c3aed',
+  ownerAccent: '#3F5D6B',
+  ownerAccentBg: '#E6ECEF',
+  ownerHero: '#3F5D6B',
+  ownerHeroLight: '#5B7C8B',
+  ownerIconBgPurple: '#E6ECEF',
+  ownerBarDefault: '#E4E0DA',
+  ownerBarHighlight: '#3F5D6B',
 };
 
 // ─── Context ─────────────────────────────────────────────────────
 const ThemeContext = createContext();
 
 export function ThemeProvider({ children }) {
-  const [isDark, setIsDark] = useState(true);
+  // Light is the default: easier to read for most users in daylight
+  const [isDark, setIsDark] = useState(false);
 
   const toggleTheme = () => setIsDark((prev) => !prev);
   const colors = isDark ? darkColors : lightColors;
@@ -173,8 +166,7 @@ export function ThemeProvider({ children }) {
 export function useTheme() {
   const context = useContext(ThemeContext);
   if (!context) {
-    throw new Error('useTheme must be used within a ThemeProvider');
+    throw new Error('useTheme must be used within a ThemeContext');
   }
   return context;
 }
-
