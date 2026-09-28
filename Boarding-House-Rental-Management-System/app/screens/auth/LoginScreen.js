@@ -172,7 +172,7 @@ export default function LoginScreen({ onLoginSuccess }) {
                 color: colors.text,
                 letterSpacing: -0.5,
               }}>
-                Neat & Groovy BH
+                Nads & Gracy BH
               </Text>
               <Text style={{
                 fontSize: fs(12),
