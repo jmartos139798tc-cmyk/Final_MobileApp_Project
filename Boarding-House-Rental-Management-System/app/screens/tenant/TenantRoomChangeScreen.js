@@ -45,10 +45,10 @@ export default function TenantRoomChangeScreen() {
   };
 
   const badge = (status) => status === 'approved'
-    ? { label: 'Approved', color: colors.success, bg: 'rgba(16, 185, 129, 0.15)' }
+    ? { label: 'Approved', color: colors.successText, bg: colors.successBg }
     : status === 'declined'
-      ? { label: 'Declined', color: colors.danger, bg: 'rgba(239, 68, 68, 0.15)' }
-      : { label: 'Pending review', color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.15)' };
+      ? { label: 'Declined', color: colors.dangerText, bg: colors.dangerBg }
+      : { label: 'Pending review', color: colors.warningText, bg: colors.warningBg };
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -56,7 +56,7 @@ export default function TenantRoomChangeScreen() {
         <View style={{ maxWidth: containerMaxWidth, width: '100%' }}>
           <View style={{ padding, paddingTop: isMobile ? safeAreaTop + 16 : isDesktop ? 40 : 60 }}>
             <Text style={{ fontSize: fs(28), color: colors.text, fontWeight: '800', letterSpacing: -0.5 }}>Room Change</Text>
-            <Text style={{ fontSize: fs(13), color: colors.textSecondary, marginTop: 6, lineHeight: 20 }}>
+            <Text style={{ fontSize: fs(14), color: colors.textSecondary, marginTop: 6, lineHeight: 21 }}>
               Request a transfer to an available room. Your current room stays assigned until your request is approved.
             </Text>
           </View>
@@ -64,35 +64,35 @@ export default function TenantRoomChangeScreen() {
           <View style={{ paddingHorizontal: padding, gap: spacing.lg }}>
             <View style={{ ...cardStyle, backgroundColor: colors.card, borderColor: colors.cardBorder, padding: isMobile ? 18 : 22 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 18 }}>
-                <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(139, 92, 246, 0.15)', alignItems: 'center', justifyContent: 'center' }}>
-                  <Ionicons name="swap-horizontal" size={21} color="#8b5cf6" />
+                <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.accentBg, alignItems: 'center', justifyContent: 'center' }}>
+                  <Ionicons name="swap-horizontal" size={22} color={colors.accent} />
                 </View>
                 <View>
                   <Text style={{ fontSize: fs(16), color: colors.text, fontWeight: '800' }}>New room request</Text>
-                  <Text style={{ fontSize: fs(12), color: colors.textMuted, marginTop: 2 }}>Current room: Room 2</Text>
+                  <Text style={{ fontSize: fs(13), color: colors.textMuted, marginTop: 2 }}>Current room: Room 2</Text>
                 </View>
               </View>
 
-              <Text style={{ fontSize: fs(13), color: colors.textSecondary, fontWeight: '700', marginBottom: 9 }}>Choose an available room *</Text>
+              <Text style={{ fontSize: fs(14), color: colors.textSecondary, fontWeight: '700', marginBottom: 9 }}>Choose an available room *</Text>
               <View style={{ gap: 10 }}>
                 {availableRooms.map((room) => {
                   const selected = selectedRoomId === room.id;
                   return (
                     <TouchableOpacity key={room.id} activeOpacity={0.75} onPress={() => { setSelectedRoomId(room.id); setError(''); }} style={{
-                      borderWidth: 1.5, borderColor: selected ? '#8b5cf6' : colors.cardBorder, backgroundColor: selected ? 'rgba(139, 92, 246, 0.10)' : colors.bg,
-                      borderRadius: 12, padding: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                      borderWidth: 1.5, borderColor: selected ? colors.accent : colors.cardBorder, backgroundColor: selected ? colors.accentBg : colors.bg,
+                      borderRadius: 12, padding: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 60,
                     }}>
                       <View>
-                        <Text style={{ fontSize: fs(15), color: colors.text, fontWeight: '800' }}>Room {room.number}</Text>
-                        <Text style={{ fontSize: fs(12), color: colors.textMuted, marginTop: 3 }}>{room.type} · ₱{room.monthlyRent.toLocaleString()}/month</Text>
+                        <Text style={{ fontSize: fs(16), color: colors.text, fontWeight: '800' }}>Room {room.number}</Text>
+                        <Text style={{ fontSize: fs(13), color: colors.textMuted, marginTop: 3 }}>{room.type} · ₱{room.monthlyRent.toLocaleString()}/month</Text>
                       </View>
-                      <Ionicons name={selected ? 'radio-button-on' : 'radio-button-off'} size={22} color={selected ? '#8b5cf6' : colors.textMuted} />
+                      <Ionicons name={selected ? 'radio-button-on' : 'radio-button-off'} size={24} color={selected ? colors.accent : colors.textMuted} />
                     </TouchableOpacity>
                   );
                 })}
               </View>
 
-              <Text style={{ fontSize: fs(13), color: colors.textSecondary, fontWeight: '700', marginTop: 18, marginBottom: 7 }}>Reason for transfer *</Text>
+              <Text style={{ fontSize: fs(14), color: colors.textSecondary, fontWeight: '700', marginTop: 18, marginBottom: 7 }}>Reason for transfer *</Text>
               <TextInput
                 value={reason}
                 onChangeText={(value) => { setReason(value); setError(''); }}
@@ -100,21 +100,21 @@ export default function TenantRoomChangeScreen() {
                 placeholderTextColor={colors.textMuted}
                 multiline
                 textAlignVertical="top"
-                style={{ minHeight: 92, backgroundColor: colors.searchBg, borderWidth: 1, borderColor: colors.searchBorder, borderRadius: 12, padding: 13, color: colors.text, fontSize: fs(14) }}
+                style={{ minHeight: 92, backgroundColor: colors.searchBg, borderWidth: 1, borderColor: colors.searchBorder, borderRadius: 12, padding: 13, color: colors.text, fontSize: fs(15) }}
               />
 
-              {!!error && <Text style={{ fontSize: fs(12), color: error.startsWith('Your') ? colors.success : colors.danger, marginTop: 10, fontWeight: '600' }}>{error}</Text>}
-              <TouchableOpacity activeOpacity={0.8} onPress={submitRequest} style={{ backgroundColor: '#8b5cf6', paddingVertical: 14, borderRadius: 12, alignItems: 'center', marginTop: 18 }}>
-                <Text style={{ fontSize: fs(14), fontWeight: '800', color: '#ffffff' }}>Submit Room Change Request</Text>
+              {!!error && <Text style={{ fontSize: fs(13), color: error.startsWith('Your') ? colors.success : colors.danger, marginTop: 10, fontWeight: '600' }}>{error}</Text>}
+              <TouchableOpacity activeOpacity={0.8} onPress={submitRequest} style={{ backgroundColor: colors.primary, paddingVertical: 14, borderRadius: 12, alignItems: 'center', marginTop: 18, minHeight: 48, justifyContent: 'center' }}>
+                <Text style={{ fontSize: fs(15), fontWeight: '800', color: colors.onPrimary }}>Submit Room Change Request</Text>
               </TouchableOpacity>
             </View>
 
             <View>
-              <Text style={{ fontSize: fs(11), fontWeight: '800', color: colors.textSecondary, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 10 }}>My requests</Text>
+              <Text style={{ fontSize: fs(14), fontWeight: '700', color: colors.text, marginBottom: 10 }}>My requests</Text>
               {requests.length === 0 ? (
                 <View style={{ ...cardStyle, backgroundColor: colors.card, borderColor: colors.cardBorder, padding: 24, alignItems: 'center' }}>
                   <Ionicons name="bed-outline" size={34} color={colors.textMuted} />
-                  <Text style={{ fontSize: fs(14), color: colors.textSecondary, marginTop: 10 }}>No room-change requests yet.</Text>
+                  <Text style={{ fontSize: fs(15), color: colors.textSecondary, marginTop: 10 }}>No room-change requests yet.</Text>
                 </View>
               ) : requests.map((request) => {
                 const status = badge(request.status);
@@ -122,14 +122,14 @@ export default function TenantRoomChangeScreen() {
                   <View key={request.id} style={{ ...cardStyle, backgroundColor: colors.card, borderColor: colors.cardBorder, padding: 16, marginBottom: 10 }}>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
                       <View style={{ flex: 1 }}>
-                        <Text style={{ fontSize: fs(15), color: colors.text, fontWeight: '800' }}>Room {request.roomNumber} · {request.roomType}</Text>
-                        <Text style={{ fontSize: fs(13), color: colors.textSecondary, marginTop: 6, lineHeight: 19 }}>{request.reason}</Text>
+                        <Text style={{ fontSize: fs(16), color: colors.text, fontWeight: '800' }}>Room {request.roomNumber} · {request.roomType}</Text>
+                        <Text style={{ fontSize: fs(14), color: colors.textSecondary, marginTop: 6, lineHeight: 20 }}>{request.reason}</Text>
                       </View>
                       <View style={{ backgroundColor: status.bg, borderRadius: 10, paddingHorizontal: 9, paddingVertical: 5, alignSelf: 'flex-start' }}>
-                        <Text style={{ fontSize: fs(11), color: status.color, fontWeight: '800' }}>{status.label}</Text>
+                        <Text style={{ fontSize: fs(12), color: status.color, fontWeight: '800' }}>{status.label}</Text>
                       </View>
                     </View>
-                    <Text style={{ fontSize: fs(11), color: colors.textMuted, marginTop: 10 }}>Submitted {request.date}</Text>
+                    <Text style={{ fontSize: fs(12), color: colors.textMuted, marginTop: 10 }}>Submitted {request.date}</Text>
                   </View>
                 );
               })}

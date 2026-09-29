@@ -32,21 +32,21 @@ export default function TenantComplaintsScreen() {
     switch (status) {
       case 'resolved':
         return {
-          bg: 'rgba(16, 185, 129, 0.15)',
-          text: colors.success,
+          bg: colors.successBg,
+          text: colors.successText,
           label: '● resolved',
         };
       case 'in-progress':
         return {
-          bg: 'rgba(59, 130, 246, 0.15)',
-          text: colors.info,
+          bg: colors.infoBg,
+          text: colors.infoText,
           label: '● in progress',
         };
       case 'pending':
       default:
         return {
-          bg: 'rgba(245, 158, 11, 0.15)',
-          text: '#f59e0b',
+          bg: colors.warningBg,
+          text: colors.warningText,
           label: '● pending',
         };
     }
@@ -73,17 +73,15 @@ export default function TenantComplaintsScreen() {
             }}>
               My Complaints
             </Text>
-            {/* Small accent bar underline */}
             <View style={{
               width: 36,
               height: 3,
-              backgroundColor: '#8b5cf6',
+              backgroundColor: colors.accent,
               borderRadius: 2,
               marginTop: 8,
               marginBottom: spacing.lg,
             }} />
 
-            {/* + Submit New Complaint Button */}
             <TouchableOpacity
               activeOpacity={0.8}
               onPress={() => setModalVisible(true)}
@@ -92,19 +90,20 @@ export default function TenantComplaintsScreen() {
                 paddingVertical: 14,
                 borderRadius: 12,
                 borderWidth: 1.5,
-                borderColor: '#38bdf8',
+                borderColor: colors.accent,
                 borderStyle: 'dashed',
-                backgroundColor: 'rgba(56, 189, 248, 0.04)',
+                backgroundColor: colors.accentBg,
                 alignItems: 'center',
                 justifyContent: 'center',
                 flexDirection: 'row',
                 gap: 8,
+                minHeight: 48,
               }}
             >
               <Text style={{
-                fontSize: fs(14),
+                fontSize: fs(15),
                 fontWeight: '700',
-                color: '#38bdf8',
+                color: colors.accent,
               }}>
                 + Submit New Complaint
               </Text>
@@ -126,7 +125,7 @@ export default function TenantComplaintsScreen() {
                 <Text style={{ fontSize: fs(16), fontWeight: '700', color: colors.text, marginTop: 12 }}>
                   No complaints filed
                 </Text>
-                <Text style={{ fontSize: fs(13), color: colors.textMuted, textAlign: 'center', marginTop: 4 }}>
+                <Text style={{ fontSize: fs(14), color: colors.textMuted, textAlign: 'center', marginTop: 4 }}>
                   Everything in your room is currently in good condition.
                 </Text>
               </View>
@@ -150,16 +149,15 @@ export default function TenantComplaintsScreen() {
                       gap: 12,
                     }}>
                       <Text style={{
-                        fontSize: fs(15),
+                        fontSize: fs(16),
                         fontWeight: '700',
                         color: colors.text,
                         flex: 1,
-                        lineHeight: 22,
+                        lineHeight: 23,
                       }}>
                         {item.title}
                       </Text>
 
-                      {/* Status Pill */}
                       <View style={{
                         backgroundColor: badge.bg,
                         paddingHorizontal: 10,
@@ -167,7 +165,7 @@ export default function TenantComplaintsScreen() {
                         borderRadius: 12,
                       }}>
                         <Text style={{
-                          fontSize: fs(11),
+                          fontSize: fs(12),
                           fontWeight: '800',
                           color: badge.text,
                         }}>
@@ -176,9 +174,8 @@ export default function TenantComplaintsScreen() {
                       </View>
                     </View>
 
-                    {/* Date */}
                     <Text style={{
-                      fontSize: fs(12),
+                      fontSize: fs(13),
                       color: colors.textMuted,
                       marginTop: 8,
                       fontWeight: '500',
@@ -221,16 +218,16 @@ export default function TenantComplaintsScreen() {
               <Text style={{ fontSize: fs(18), fontWeight: '800', color: colors.text }}>
                 Submit New Complaint
               </Text>
-              <TouchableOpacity onPress={() => setModalVisible(false)}>
+              <TouchableOpacity onPress={() => setModalVisible(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                 <Ionicons name="close-circle" size={26} color={colors.textMuted} />
               </TouchableOpacity>
             </View>
 
-            <Text style={{ fontSize: fs(12), color: colors.textMuted, marginBottom: 8 }}>
+            <Text style={{ fontSize: fs(13), color: colors.textMuted, marginBottom: 8 }}>
               Filing for: Room 2 · Ana Reyes
             </Text>
 
-            <Text style={{ fontSize: fs(13), fontWeight: '700', color: colors.textSecondary, marginBottom: 6 }}>
+            <Text style={{ fontSize: fs(14), fontWeight: '700', color: colors.textSecondary, marginBottom: 6 }}>
               Issue Title *
             </Text>
             <TextInput
@@ -241,7 +238,7 @@ export default function TenantComplaintsScreen() {
                 borderRadius: 12,
                 paddingHorizontal: 14,
                 paddingVertical: 12,
-                fontSize: fs(14),
+                fontSize: fs(15),
                 color: colors.text,
                 marginBottom: 14,
               }}
@@ -251,7 +248,7 @@ export default function TenantComplaintsScreen() {
               onChangeText={setNewTitle}
             />
 
-            <Text style={{ fontSize: fs(13), fontWeight: '700', color: colors.textSecondary, marginBottom: 6 }}>
+            <Text style={{ fontSize: fs(14), fontWeight: '700', color: colors.textSecondary, marginBottom: 6 }}>
               Details (Optional)
             </Text>
             <TextInput
@@ -262,7 +259,7 @@ export default function TenantComplaintsScreen() {
                 borderRadius: 12,
                 paddingHorizontal: 14,
                 paddingVertical: 12,
-                fontSize: fs(14),
+                fontSize: fs(15),
                 color: colors.text,
                 minHeight: 80,
                 textAlignVertical: 'top',
@@ -286,21 +283,25 @@ export default function TenantComplaintsScreen() {
                   alignItems: 'center',
                   borderWidth: 1,
                   borderColor: colors.cardBorder,
+                  minHeight: 48,
+                  justifyContent: 'center',
                 }}
               >
-                <Text style={{ fontSize: fs(14), fontWeight: '700', color: colors.textMuted }}>Cancel</Text>
+                <Text style={{ fontSize: fs(15), fontWeight: '700', color: colors.textMuted }}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={handleCreateComplaint}
                 style={{
                   flex: 1,
-                  backgroundColor: '#8b5cf6',
+                  backgroundColor: colors.primary,
                   paddingVertical: 14,
                   borderRadius: 12,
                   alignItems: 'center',
+                  minHeight: 48,
+                  justifyContent: 'center',
                 }}
               >
-                <Text style={{ fontSize: fs(14), fontWeight: '800', color: '#ffffff' }}>Submit</Text>
+                <Text style={{ fontSize: fs(15), fontWeight: '800', color: colors.onPrimary }}>Submit</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -309,4 +310,3 @@ export default function TenantComplaintsScreen() {
     </View>
   );
 }
-

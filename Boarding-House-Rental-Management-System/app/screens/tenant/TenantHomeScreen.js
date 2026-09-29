@@ -33,11 +33,9 @@ export default function TenantHomeScreen({ onNavigateToUpdates }) {
           {/* Header */}
           <View style={{ padding, paddingTop: isMobile ? safeAreaTop + 16 : isDesktop ? 40 : 60 }}>
             <Text style={{
-              fontSize: fs(11),
+              fontSize: fs(13),
               color: colors.textMuted,
-              fontWeight: '700',
-              letterSpacing: 1.5,
-              textTransform: 'uppercase',
+              fontWeight: '600',
               marginBottom: 4,
             }}>
               Welcome Back
@@ -51,7 +49,7 @@ export default function TenantHomeScreen({ onNavigateToUpdates }) {
               {tenant.name}
             </Text>
             <Text style={{
-              fontSize: fs(13),
+              fontSize: fs(14),
               color: colors.textSecondary,
               marginTop: 4,
               fontWeight: '500',
@@ -65,14 +63,13 @@ export default function TenantHomeScreen({ onNavigateToUpdates }) {
             <View style={{
               borderRadius: 22,
               overflow: 'hidden',
-              backgroundColor: '#5b21b6',
+              backgroundColor: colors.heroBg,
               ...cardShadow,
             }}>
               <View style={{
                 padding: isMobile ? 22 : 28,
                 position: 'relative',
               }}>
-                {/* Decorative translucent circle accent on the right */}
                 <View style={{
                   position: 'absolute',
                   top: -20,
@@ -80,15 +77,13 @@ export default function TenantHomeScreen({ onNavigateToUpdates }) {
                   width: 140,
                   height: 140,
                   borderRadius: 70,
-                  backgroundColor: 'rgba(255, 255, 255, 0.12)',
+                  backgroundColor: colors.heroBarBg,
                 }} />
 
                 <Text style={{
-                  fontSize: fs(10),
-                  fontWeight: '800',
-                  color: 'rgba(255, 255, 255, 0.75)',
-                  letterSpacing: 1.5,
-                  textTransform: 'uppercase',
+                  fontSize: fs(12),
+                  fontWeight: '700',
+                  color: colors.heroSubtext,
                   marginBottom: 10,
                 }}>
                   Outstanding Balance
@@ -97,7 +92,7 @@ export default function TenantHomeScreen({ onNavigateToUpdates }) {
                 <Text style={{
                   fontSize: fs(38),
                   fontWeight: '900',
-                  color: '#ffffff',
+                  color: colors.heroText,
                   marginBottom: 6,
                   letterSpacing: -0.5,
                 }}>
@@ -105,8 +100,8 @@ export default function TenantHomeScreen({ onNavigateToUpdates }) {
                 </Text>
 
                 <Text style={{
-                  fontSize: fs(12),
-                  color: 'rgba(255, 255, 255, 0.7)',
+                  fontSize: fs(13),
+                  color: colors.heroSubtext,
                   marginBottom: 20,
                   fontWeight: '500',
                 }}>
@@ -119,30 +114,29 @@ export default function TenantHomeScreen({ onNavigateToUpdates }) {
                   gap: 10,
                   flexWrap: isMobile ? 'wrap' : 'nowrap',
                 }}>
-                  {/* View Receipt Button */}
                   <TouchableOpacity
                     activeOpacity={0.8}
                     onPress={() => setShowReceiptModal(true)}
                     style={{
                       flex: isMobile ? 1 : undefined,
                       paddingHorizontal: 20,
-                      paddingVertical: 12,
+                      paddingVertical: 13,
                       borderRadius: 24,
-                      backgroundColor: '#ffffff',
+                      backgroundColor: colors.heroText,
                       alignItems: 'center',
                       justifyContent: 'center',
+                      minHeight: 44,
                     }}
                   >
                     <Text style={{
-                      fontSize: fs(13),
+                      fontSize: fs(14),
                       fontWeight: '800',
-                      color: '#5b21b6',
+                      color: colors.heroBg,
                     }}>
                       View Receipt
                     </Text>
                   </TouchableOpacity>
 
-                  {/* Request Extension Button */}
                   <TouchableOpacity
                     activeOpacity={0.8}
                     onPress={() => {
@@ -152,19 +146,20 @@ export default function TenantHomeScreen({ onNavigateToUpdates }) {
                     style={{
                       flex: isMobile ? 1 : undefined,
                       paddingHorizontal: 20,
-                      paddingVertical: 12,
+                      paddingVertical: 13,
                       borderRadius: 24,
-                      backgroundColor: 'rgba(255, 255, 255, 0.18)',
+                      backgroundColor: colors.heroBarBg,
                       borderWidth: 1,
-                      borderColor: 'rgba(255, 255, 255, 0.3)',
+                      borderColor: 'rgba(255, 255, 255, 0.4)',
                       alignItems: 'center',
                       justifyContent: 'center',
+                      minHeight: 44,
                     }}
                   >
                     <Text style={{
-                      fontSize: fs(13),
+                      fontSize: fs(14),
                       fontWeight: '700',
-                      color: '#ffffff',
+                      color: colors.heroText,
                     }}>
                       Request Extension
                     </Text>
@@ -176,11 +171,9 @@ export default function TenantHomeScreen({ onNavigateToUpdates }) {
             {/* ── September Billing Breakdown ─────────────── */}
             <View>
               <Text style={{
-                fontSize: fs(11),
-                fontWeight: '800',
-                color: colors.textSecondary,
-                letterSpacing: 1.2,
-                textTransform: 'uppercase',
+                fontSize: fs(15),
+                fontWeight: '700',
+                color: colors.text,
                 marginBottom: 12,
               }}>
                 September Billing
@@ -193,22 +186,20 @@ export default function TenantHomeScreen({ onNavigateToUpdates }) {
                 paddingHorizontal: isMobile ? 18 : 22,
                 paddingVertical: 10,
               }}>
-                {/* Monthly Rent */}
                 <View style={{
                   flexDirection: 'row',
                   justifyContent: 'space-between',
                   alignItems: 'center',
                   paddingVertical: 14,
                 }}>
-                  <Text style={{ fontSize: fs(14), color: colors.textSecondary, fontWeight: '500' }}>
+                  <Text style={{ fontSize: fs(15), color: colors.textSecondary, fontWeight: '500' }}>
                     Monthly Rent
                   </Text>
-                  <Text style={{ fontSize: fs(15), color: colors.text, fontWeight: '700' }}>
+                  <Text style={{ fontSize: fs(16), color: colors.text, fontWeight: '700' }}>
                     ₱{billing.monthlyRent.toLocaleString()}
                   </Text>
                 </View>
 
-                {/* Electricity */}
                 <View style={{
                   flexDirection: 'row',
                   justifyContent: 'space-between',
@@ -217,15 +208,14 @@ export default function TenantHomeScreen({ onNavigateToUpdates }) {
                   borderTopWidth: 1,
                   borderTopColor: colors.divider,
                 }}>
-                  <Text style={{ fontSize: fs(14), color: colors.textSecondary, fontWeight: '500' }}>
+                  <Text style={{ fontSize: fs(15), color: colors.textSecondary, fontWeight: '500' }}>
                     Electricity
                   </Text>
-                  <Text style={{ fontSize: fs(15), color: colors.text, fontWeight: '700' }}>
+                  <Text style={{ fontSize: fs(16), color: colors.text, fontWeight: '700' }}>
                     ₱{billing.electricity.toLocaleString()}
                   </Text>
                 </View>
 
-                {/* Water */}
                 <View style={{
                   flexDirection: 'row',
                   justifyContent: 'space-between',
@@ -234,15 +224,14 @@ export default function TenantHomeScreen({ onNavigateToUpdates }) {
                   borderTopWidth: 1,
                   borderTopColor: colors.divider,
                 }}>
-                  <Text style={{ fontSize: fs(14), color: colors.textSecondary, fontWeight: '500' }}>
+                  <Text style={{ fontSize: fs(15), color: colors.textSecondary, fontWeight: '500' }}>
                     Water
                   </Text>
-                  <Text style={{ fontSize: fs(14), color: colors.textSecondary, fontWeight: '600' }}>
+                  <Text style={{ fontSize: fs(15), color: colors.textSecondary, fontWeight: '600' }}>
                     {billing.water}
                   </Text>
                 </View>
 
-                {/* Total Due */}
                 <View style={{
                   flexDirection: 'row',
                   justifyContent: 'space-between',
@@ -251,10 +240,10 @@ export default function TenantHomeScreen({ onNavigateToUpdates }) {
                   borderTopWidth: 1,
                   borderTopColor: colors.divider,
                 }}>
-                  <Text style={{ fontSize: fs(15), color: colors.text, fontWeight: '800' }}>
+                  <Text style={{ fontSize: fs(16), color: colors.text, fontWeight: '800' }}>
                     Total Due
                   </Text>
-                  <Text style={{ fontSize: fs(16), color: '#a78bfa', fontWeight: '900' }}>
+                  <Text style={{ fontSize: fs(17), color: colors.accent, fontWeight: '900' }}>
                     ₱{billing.totalDue.toLocaleString()}
                   </Text>
                 </View>
@@ -264,11 +253,9 @@ export default function TenantHomeScreen({ onNavigateToUpdates }) {
             {/* ── Latest Notice Section ──────────────────── */}
             <View>
               <Text style={{
-                fontSize: fs(11),
-                fontWeight: '800',
-                color: colors.textSecondary,
-                letterSpacing: 1.2,
-                textTransform: 'uppercase',
+                fontSize: fs(15),
+                fontWeight: '700',
+                color: colors.text,
                 marginBottom: 12,
               }}>
                 Latest Notice
@@ -285,9 +272,8 @@ export default function TenantHomeScreen({ onNavigateToUpdates }) {
                     padding: isMobile ? 18 : 22,
                   }}
                 >
-                  {/* Category Badge */}
                   <View style={{
-                    backgroundColor: 'rgba(217, 119, 6, 0.15)',
+                    backgroundColor: colors.warningBg,
                     alignSelf: 'flex-start',
                     paddingHorizontal: 10,
                     paddingVertical: 4,
@@ -295,9 +281,9 @@ export default function TenantHomeScreen({ onNavigateToUpdates }) {
                     marginBottom: 10,
                   }}>
                     <Text style={{
-                      fontSize: fs(11),
+                      fontSize: fs(12),
                       fontWeight: '800',
-                      color: '#f59e0b',
+                      color: colors.warningText,
                     }}>
                       {latestNotice.category}
                     </Text>
@@ -314,9 +300,9 @@ export default function TenantHomeScreen({ onNavigateToUpdates }) {
 
                   <Text
                     style={{
-                      fontSize: fs(13),
+                      fontSize: fs(14),
                       color: colors.textSecondary,
-                      lineHeight: 20,
+                      lineHeight: 21,
                     }}
                     numberOfLines={2}
                   >
@@ -355,12 +341,12 @@ export default function TenantHomeScreen({ onNavigateToUpdates }) {
           }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <Ionicons name="receipt" size={22} color="#8b5cf6" />
+                <Ionicons name="receipt" size={22} color={colors.accent} />
                 <Text style={{ fontSize: fs(18), fontWeight: '800', color: colors.text }}>
                   Official Receipt
                 </Text>
               </View>
-              <TouchableOpacity onPress={() => setShowReceiptModal(false)}>
+              <TouchableOpacity onPress={() => setShowReceiptModal(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                 <Ionicons name="close-circle" size={26} color={colors.textMuted} />
               </TouchableOpacity>
             </View>
@@ -373,24 +359,24 @@ export default function TenantHomeScreen({ onNavigateToUpdates }) {
               marginBottom: 18,
             }}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <Text style={{ fontSize: fs(12), color: colors.textMuted }}>Receipt No.</Text>
-                <Text style={{ fontSize: fs(12), fontWeight: '700', color: colors.text }}>OR-2026-0902</Text>
+                <Text style={{ fontSize: fs(13), color: colors.textMuted }}>Receipt No.</Text>
+                <Text style={{ fontSize: fs(13), fontWeight: '700', color: colors.text }}>OR-2026-0902</Text>
               </View>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <Text style={{ fontSize: fs(12), color: colors.textMuted }}>Tenant</Text>
-                <Text style={{ fontSize: fs(12), fontWeight: '700', color: colors.text }}>Ana Reyes (Room 2)</Text>
+                <Text style={{ fontSize: fs(13), color: colors.textMuted }}>Tenant</Text>
+                <Text style={{ fontSize: fs(13), fontWeight: '700', color: colors.text }}>Ana Reyes (Room 2)</Text>
               </View>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <Text style={{ fontSize: fs(12), color: colors.textMuted }}>Period</Text>
-                <Text style={{ fontSize: fs(12), fontWeight: '700', color: colors.text }}>September 2026</Text>
+                <Text style={{ fontSize: fs(13), color: colors.textMuted }}>Period</Text>
+                <Text style={{ fontSize: fs(13), fontWeight: '700', color: colors.text }}>September 2026</Text>
               </View>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <Text style={{ fontSize: fs(12), color: colors.textMuted }}>Amount Paid</Text>
-                <Text style={{ fontSize: fs(12), fontWeight: '700', color: colors.success }}>₱2,340.00</Text>
+                <Text style={{ fontSize: fs(13), color: colors.textMuted }}>Amount Paid</Text>
+                <Text style={{ fontSize: fs(13), fontWeight: '700', color: colors.success }}>₱2,340.00</Text>
               </View>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: colors.divider, paddingTop: 8 }}>
-                <Text style={{ fontSize: fs(12), fontWeight: '700', color: colors.textMuted }}>Balance Due</Text>
-                <Text style={{ fontSize: fs(13), fontWeight: '900', color: colors.danger }}>₱500.00</Text>
+                <Text style={{ fontSize: fs(13), fontWeight: '700', color: colors.textMuted }}>Balance Due</Text>
+                <Text style={{ fontSize: fs(14), fontWeight: '900', color: colors.danger }}>₱500.00</Text>
               </View>
             </View>
 
@@ -398,13 +384,15 @@ export default function TenantHomeScreen({ onNavigateToUpdates }) {
               activeOpacity={0.8}
               onPress={() => setShowReceiptModal(false)}
               style={{
-                backgroundColor: '#8b5cf6',
+                backgroundColor: colors.primary,
                 paddingVertical: 14,
                 borderRadius: 12,
                 alignItems: 'center',
+                minHeight: 48,
+                justifyContent: 'center',
               }}
             >
-              <Text style={{ fontSize: fs(14), fontWeight: '800', color: '#ffffff' }}>
+              <Text style={{ fontSize: fs(15), fontWeight: '800', color: colors.onPrimary }}>
                 Close Receipt
               </Text>
             </TouchableOpacity>
@@ -440,7 +428,7 @@ export default function TenantHomeScreen({ onNavigateToUpdates }) {
               <Text style={{ fontSize: fs(18), fontWeight: '800', color: colors.text }}>
                 Request Due Date Extension
               </Text>
-              <TouchableOpacity onPress={() => setShowExtensionModal(false)}>
+              <TouchableOpacity onPress={() => setShowExtensionModal(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                 <Ionicons name="close-circle" size={26} color={colors.textMuted} />
               </TouchableOpacity>
             </View>
@@ -451,25 +439,27 @@ export default function TenantHomeScreen({ onNavigateToUpdates }) {
                 <Text style={{ fontSize: fs(16), fontWeight: '800', color: colors.text, marginTop: 12 }}>
                   Request Sent!
                 </Text>
-                <Text style={{ fontSize: fs(13), color: colors.textMuted, textAlign: 'center', marginTop: 6 }}>
+                <Text style={{ fontSize: fs(14), color: colors.textMuted, textAlign: 'center', marginTop: 6 }}>
                   The caretaker and owner have been notified. New requested due date: Oct 12, 2026.
                 </Text>
                 <TouchableOpacity
                   onPress={() => setShowExtensionModal(false)}
                   style={{
                     marginTop: 20,
-                    backgroundColor: '#8b5cf6',
+                    backgroundColor: colors.primary,
                     paddingHorizontal: 24,
-                    paddingVertical: 12,
+                    paddingVertical: 13,
                     borderRadius: 12,
+                    minHeight: 48,
+                    justifyContent: 'center',
                   }}
                 >
-                  <Text style={{ color: '#ffffff', fontWeight: '800' }}>Done</Text>
+                  <Text style={{ color: colors.onPrimary, fontWeight: '800', fontSize: fs(14) }}>Done</Text>
                 </TouchableOpacity>
               </View>
             ) : (
               <>
-                <Text style={{ fontSize: fs(13), color: colors.textSecondary, marginBottom: 16, lineHeight: 20 }}>
+                <Text style={{ fontSize: fs(14), color: colors.textSecondary, marginBottom: 16, lineHeight: 21 }}>
                   Current balance is <Text style={{ fontWeight: '800', color: colors.text }}>₱500</Text> due on <Text style={{ fontWeight: '800', color: colors.text }}>Oct 5, 2026</Text>. Would you like to request an extension of +7 days to Oct 12, 2026?
                 </Text>
 
@@ -484,21 +474,25 @@ export default function TenantHomeScreen({ onNavigateToUpdates }) {
                       alignItems: 'center',
                       borderWidth: 1,
                       borderColor: colors.cardBorder,
+                      minHeight: 48,
+                      justifyContent: 'center',
                     }}
                   >
-                    <Text style={{ fontSize: fs(14), fontWeight: '700', color: colors.textMuted }}>Cancel</Text>
+                    <Text style={{ fontSize: fs(15), fontWeight: '700', color: colors.textMuted }}>Cancel</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={() => setExtensionSubmitted(true)}
                     style={{
                       flex: 1,
-                      backgroundColor: '#8b5cf6',
+                      backgroundColor: colors.primary,
                       paddingVertical: 14,
                       borderRadius: 12,
                       alignItems: 'center',
+                      minHeight: 48,
+                      justifyContent: 'center',
                     }}
                   >
-                    <Text style={{ fontSize: fs(14), fontWeight: '800', color: '#ffffff' }}>Send Request</Text>
+                    <Text style={{ fontSize: fs(15), fontWeight: '800', color: colors.onPrimary }}>Send Request</Text>
                   </TouchableOpacity>
                 </View>
               </>
@@ -509,4 +503,3 @@ export default function TenantHomeScreen({ onNavigateToUpdates }) {
     </View>
   );
 }
-

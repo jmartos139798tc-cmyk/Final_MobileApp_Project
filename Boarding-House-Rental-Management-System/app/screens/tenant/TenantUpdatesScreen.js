@@ -32,11 +32,10 @@ export default function TenantUpdatesScreen() {
             }}>
               Announcements
             </Text>
-            {/* Green accent underline bar */}
             <View style={{
               width: 36,
               height: 3,
-              backgroundColor: '#10b981',
+              backgroundColor: colors.success,
               borderRadius: 2,
               marginTop: 8,
               marginBottom: spacing.md,
@@ -55,7 +54,6 @@ export default function TenantUpdatesScreen() {
                   padding: isMobile ? 18 : 22,
                 }}
               >
-                {/* Header row: Category Pill & Date */}
                 <View style={{
                   flexDirection: 'row',
                   justifyContent: 'space-between',
@@ -63,22 +61,22 @@ export default function TenantUpdatesScreen() {
                   marginBottom: 12,
                 }}>
                   <View style={{
-                    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                    backgroundColor: colors.successBg,
                     paddingHorizontal: 12,
                     paddingVertical: 4,
                     borderRadius: 12,
                   }}>
                     <Text style={{
-                      fontSize: fs(11),
+                      fontSize: fs(12),
                       fontWeight: '800',
-                      color: '#10b981',
+                      color: colors.successText,
                     }}>
                       {item.category}
                     </Text>
                   </View>
 
                   <Text style={{
-                    fontSize: fs(11),
+                    fontSize: fs(12),
                     fontWeight: '500',
                     color: colors.textMuted,
                   }}>
@@ -86,22 +84,20 @@ export default function TenantUpdatesScreen() {
                   </Text>
                 </View>
 
-                {/* Announcement Title */}
                 <Text style={{
                   fontSize: fs(16),
                   fontWeight: '800',
                   color: colors.text,
                   marginBottom: 8,
-                  lineHeight: 22,
+                  lineHeight: 23,
                 }}>
                   {item.title}
                 </Text>
 
-                {/* Announcement Body */}
                 <Text style={{
-                  fontSize: fs(13),
+                  fontSize: fs(14),
                   color: colors.textSecondary,
-                  lineHeight: 20,
+                  lineHeight: 21,
                   fontWeight: '400',
                 }}>
                   {item.description}
@@ -114,4 +110,3 @@ export default function TenantUpdatesScreen() {
     </View>
   );
 }
-
