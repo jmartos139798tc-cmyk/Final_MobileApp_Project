@@ -464,7 +464,7 @@ export default function LoginScreen({ onLoginSuccess }) {
                     <Ionicons name="shield-checkmark" size={22} color="#8b5cf6" />
                     <Text style={{ fontSize: fs(11), color: colors.textSecondary, flex: 1, lineHeight: 16 }}>
                       <Text style={{ fontWeight: '800', color: colors.text }}>Tenant Self-Registration</Text>
-                      {'\n'}For boarders of Neat & Groovy BH. Owner & Caretaker accounts are pre-migrated by administration.
+                      {'\n'}For boarders of Nads & Gracy BH. Owner & Caretaker accounts are pre-migrated by administration.
                     </Text>
                   </View>
 
