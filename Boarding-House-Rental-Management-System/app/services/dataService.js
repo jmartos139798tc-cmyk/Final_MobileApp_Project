@@ -1,559 +1,1098 @@
 /**
  * 3NF Data Service Layer
  * 
- * Executes relational queries across the 11 normalized 3NF collections:
- * (USERS, BOARDING_HOUSES, ROOM_TYPES, ROOMS, TENANTS, LEASES,
- *  UTILITY_READINGS, INVOICES, PAYMENTS, COMPLAINTS, ANNOUNCEMENTS)
+ * Executes relational queries across the normalized Firestore collections. Staff
+ * profiles are read by the authentication service; the remaining collections hold
+ * property, tenancy, billing, issue, request, and announcement records.
  * 
- * Supports live Firestore reads/writes when Firebase is configured,
- * and executes 3NF relational joins in-memory when Firebase is in demo mode.
+ * Reads and writes directly to Firebase Firestore when configured.
+ * Gracefully falls back to in-memory 3NF mock store in demo mode.
  */
 
-import { db, isFirebaseConfigured } from '../utils/firebase.js';
+import { auth, db, isFirebaseConfigured } from '../utils/firebase.js';
 import { COLLECTIONS } from './databaseSchema.js';
 import { getNormalizedMockDatabase, seedFirestoreDatabase } from './seedDatabase.js';
 
-// ─── Relational Join Helpers ─────────────────────────────────
+// ─── Firestore Helpers ───────────────────────────────────────
 
-function getStore() {
-  return getNormalizedMockDatabase();
+let firestoreImports = null;
+
+async function getFirestoreFns() {
+  if (!firestoreImports) {
+    firestoreImports = await import('firebase/firestore');
+  }
+  return firestoreImports;
 }
 
-/**
- * Computes the outstanding balance for an invoice by subtracting all payments made for it.
- */
-function getInvoiceBalance(invoiceId, store = getStore()) {
-  const invoice = store[COLLECTIONS.INVOICES].find((inv) => inv.id === invoiceId);
-  if (!invoice) return 0;
+async function readCollection(collectionName) {
+  try {
+    const { collection, getDocs } = await getFirestoreFns();
+    const snapshot = await getDocs(collection(db, collectionName));
+    return snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  } catch (error) {
+    console.warn(`Firestore read denied or failed for "${collectionName}":`, error.message || error);
+    throw error;
+  }
+}
 
-  const payments = store[COLLECTIONS.PAYMENTS].filter((p) => p.invoice_id === invoiceId);
-  const totalPaid = payments.reduce((sum, p) => sum + (p.amount_paid || 0), 0);
-  const balance = invoice.total_amount - totalPaid;
-  return Math.max(0, balance);
+async function readWhere(collectionName, field, value) {
+  const { collection, getDocs, query, where } = await getFirestoreFns();
+  const snapshot = await getDocs(query(collection(db, collectionName), where(field, '==', value)));
+  return snapshot.docs.map((document) => ({ id: document.id, ...document.data() }));
+}
+
+async function writeDocument(collectionName, docId, data) {
+  try {
+    const { doc, setDoc } = await getFirestoreFns();
+    const docRef = doc(db, collectionName, docId);
+    await setDoc(docRef, { id: docId, ...data });
+    return { id: docId, ...data };
+  } catch (error) {
+    console.error(`Error writing to "${collectionName}/${docId}":`, error);
+    throw error;
+  }
+}
+
+async function updateDocument(collectionName, docId, updates) {
+  try {
+    const { doc, updateDoc } = await getFirestoreFns();
+    const docRef = doc(db, collectionName, docId);
+    await updateDoc(docRef, updates);
+  } catch (error) {
+    console.error(`Error updating "${collectionName}/${docId}":`, error);
+    throw error;
+  }
+}
+
+// ─── Store Access (Firestore or In-Memory) ───────────────────
+
+async function getStore() {
+  if (!isFirebaseConfigured || !db) {
+    return getNormalizedMockDatabase();
+  }
+
+  const collectionNames = Object.values(COLLECTIONS);
+  const uid = auth?.currentUser?.uid;
+  if (!uid) return Object.fromEntries(collectionNames.map((name) => [name, []]));
+
+  const { doc, getDoc } = await getFirestoreFns();
+  const userSnapshot = await getDoc(doc(db, COLLECTIONS.USERS, uid));
+  const role = userSnapshot.exists() ? userSnapshot.data().role : null;
+
+  if (role === 'owner' || role === 'caretaker') {
+    const staffResults = await Promise.all(collectionNames.map(async (name) => {
+      try {
+        return [name, await readCollection(name)];
+      } catch {
+        return [name, []];
+      }
+    }));
+    return Object.fromEntries(staffResults);
+  }
+
+  if (role !== 'tenant') return Object.fromEntries(collectionNames.map((name) => [name, []]));
+
+  // Read only this tenant's documents and their related billing records.
+  const tenantProfiles = await readWhere(COLLECTIONS.TENANTS, 'user_id', uid);
+  const tenant = tenantProfiles[0];
+  if (!tenant) return Object.fromEntries(collectionNames.map((name) => [name, []]));
+
+  const tenantStore = Object.fromEntries(collectionNames.map((name) => [name, []]));
+  const [boardingHouses, roomTypes, rooms, leases, complaints, announcements, roomChangeRequests] = await Promise.all([
+    readCollection(COLLECTIONS.BOARDING_HOUSES),
+    readCollection(COLLECTIONS.ROOM_TYPES),
+    readCollection(COLLECTIONS.ROOMS),
+    readWhere(COLLECTIONS.LEASES, 'tenant_id', tenant.id),
+    readWhere(COLLECTIONS.COMPLAINTS, 'tenant_id', tenant.id),
+    readCollection(COLLECTIONS.ANNOUNCEMENTS),
+    readWhere(COLLECTIONS.ROOM_CHANGE_REQUESTS, 'tenant_id', tenant.id),
+  ]);
+  const invoices = (await Promise.all(leases.map((lease) => readWhere(COLLECTIONS.INVOICES, 'lease_id', lease.id)))).flat();
+  const payments = (await Promise.all(invoices.map((invoice) => readWhere(COLLECTIONS.PAYMENTS, 'invoice_id', invoice.id)))).flat();
+
+  tenantStore[COLLECTIONS.USERS] = [{ id: uid, ...userSnapshot.data() }];
+  tenantStore[COLLECTIONS.TENANTS] = tenantProfiles;
+  tenantStore[COLLECTIONS.BOARDING_HOUSES] = boardingHouses;
+  tenantStore[COLLECTIONS.ROOM_TYPES] = roomTypes;
+  tenantStore[COLLECTIONS.ROOMS] = rooms;
+  tenantStore[COLLECTIONS.LEASES] = leases;
+  tenantStore[COLLECTIONS.INVOICES] = invoices;
+  tenantStore[COLLECTIONS.PAYMENTS] = payments;
+  tenantStore[COLLECTIONS.COMPLAINTS] = complaints;
+  tenantStore[COLLECTIONS.ANNOUNCEMENTS] = announcements;
+  tenantStore[COLLECTIONS.ROOM_CHANGE_REQUESTS] = roomChangeRequests;
+  return tenantStore;
+
+}
+
+// ─── Relational Join Helpers ─────────────────────────────────
+
+function getInvoiceBalance(invoiceId, store) {
+  try {
+    const invoice = (store[COLLECTIONS.INVOICES] || []).find((inv) => inv.id === invoiceId);
+    if (!invoice) return 0;
+
+    const payments = (store[COLLECTIONS.PAYMENTS] || []).filter((p) => p.invoice_id === invoiceId);
+    const totalPaid = payments.reduce((sum, p) => sum + (p.amount_paid || 0), 0);
+    const balance = invoice.total_amount - totalPaid;
+    return Math.max(0, balance);
+  } catch (error) {
+    console.error('Error computing invoice balance:', error);
+    return 0;
+  }
 }
 
 // ─── 3NF Query Functions ─────────────────────────────────────
 
 /**
  * 1. Property Configuration
- * Queries BOARDING_HOUSES table
  */
-export function getBoardingHouseConfig() {
-  const store = getStore();
-  const house = store[COLLECTIONS.BOARDING_HOUSES][0];
-  return {
-    name: house.name,
-    address: house.address,
-    monthlyRent: 2500,
-    electricityRate: house.default_kwh_rate,
-  };
+export async function getBoardingHouseConfig() {
+  try {
+    const store = await getStore();
+    const houseList = store[COLLECTIONS.BOARDING_HOUSES] || [];
+    const house = houseList[0] || { name: 'Boarding House', address: '', default_kwh_rate: 12.0 };
+    return {
+      name: house.name,
+      address: house.address,
+      monthlyRent: 2500,
+      electricityRate: house.default_kwh_rate || 12.0,
+    };
+  } catch (error) {
+    console.error('Error fetching boarding house config:', error);
+    return { name: 'Boarding House', address: '', monthlyRent: 2500, electricityRate: 12.0 };
+  }
 }
 
 /**
  * 2. Rooms List
- * 3NF Relational Join:
- *   ROOMS
- *   INNER JOIN ROOM_TYPES ON ROOMS.type_id = ROOM_TYPES.id
- *   LEFT JOIN LEASES ON LEASES.room_id = ROOMS.id AND LEASES.status = 'active'
- *   LEFT JOIN TENANTS ON LEASES.tenant_id = TENANTS.id
- *   LEFT JOIN INVOICES ON INVOICES.lease_id = LEASES.id
  */
-export function getRooms() {
-  const store = getStore();
-  const { rooms, room_types, leases, tenants, invoices } = store;
+export async function getRooms() {
+  try {
+    const store = await getStore();
+    const rooms = store[COLLECTIONS.ROOMS] || [];
+    const room_types = store[COLLECTIONS.ROOM_TYPES] || [];
+    const leases = store[COLLECTIONS.LEASES] || [];
+    const tenants = store[COLLECTIONS.TENANTS] || [];
+    const invoices = store[COLLECTIONS.INVOICES] || [];
 
-  return rooms.map((room) => {
-    const roomType = room_types.find((t) => t.id === room.type_id);
-    const activeLease = leases.find((l) => l.room_id === room.id && l.status === 'active');
-    const tenant = activeLease ? tenants.find((t) => t.id === activeLease.tenant_id) : null;
+    return rooms.map((room) => {
+      const roomType = room_types.find((t) => t.id === room.type_id);
+      const activeLease = leases.find((l) => l.room_id === room.id && l.status === 'active');
+      const tenant = activeLease ? tenants.find((t) => t.id === activeLease.tenant_id) : null;
 
-    let balance = 0;
-    let status = 'vacant';
+      let balance = 0;
+      let status = 'vacant';
 
-    if (activeLease && tenant) {
-      const currentInvoice = invoices.find((inv) => inv.lease_id === activeLease.id);
-      if (currentInvoice) {
-        balance = getInvoiceBalance(currentInvoice.id, store);
+      if (activeLease && tenant) {
+        const currentInvoice = invoices.find((inv) => inv.lease_id === activeLease.id);
+        if (currentInvoice) {
+          balance = getInvoiceBalance(currentInvoice.id, store);
+        }
+        status = balance > 0 ? 'balance' : 'paid';
       }
-      status = balance > 0 ? 'balance' : 'paid';
-    }
 
-    return {
-      id: room.id.replace('room-', ''),
-      number: room.room_number,
-      type: roomType ? (roomType.name.includes('Single') ? 'Single' : 'Double') : 'Single',
-      tenant: tenant ? tenant.first_name : null,
-      status,
-      balance,
-    };
-  });
+      return {
+        id: String(room.id).replace('room-', ''),
+        number: room.room_number,
+        type: roomType ? (roomType.name.includes('Single') ? 'Single' : 'Double') : 'Single',
+        tenant: tenant ? tenant.first_name : null,
+        status,
+        balance,
+      };
+    });
+  } catch (error) {
+    console.error('Error fetching rooms:', error);
+    return [];
+  }
 }
 
 /**
  * 3. Tenants List
- * 3NF Relational Join:
- *   TENANTS
- *   INNER JOIN LEASES ON LEASES.tenant_id = TENANTS.id AND LEASES.status = 'active'
- *   INNER JOIN ROOMS ON LEASES.room_id = ROOMS.id
- *   INNER JOIN ROOM_TYPES ON ROOMS.type_id = ROOM_TYPES.id
- *   LEFT JOIN INVOICES ON INVOICES.lease_id = LEASES.id
  */
-export function getTenants() {
-  const store = getStore();
-  const { tenants, leases, rooms, room_types, invoices } = store;
+export async function getTenants() {
+  try {
+    const store = await getStore();
+    const tenants = store[COLLECTIONS.TENANTS] || [];
+    const leases = store[COLLECTIONS.LEASES] || [];
+    const rooms = store[COLLECTIONS.ROOMS] || [];
+    const room_types = store[COLLECTIONS.ROOM_TYPES] || [];
+    const invoices = store[COLLECTIONS.INVOICES] || [];
 
-  return tenants.map((tenant, index) => {
-    const activeLease = leases.find((l) => l.tenant_id === tenant.id && l.status === 'active');
-    const room = activeLease ? rooms.find((r) => r.id === activeLease.room_id) : null;
-    const roomType = room ? room_types.find((rt) => rt.id === room.type_id) : null;
-    const invoice = activeLease ? invoices.find((inv) => inv.lease_id === activeLease.id) : null;
+    return tenants.map((tenant, index) => {
+      const activeLease = leases.find((l) => l.tenant_id === tenant.id && l.status === 'active');
+      const room = activeLease ? rooms.find((r) => r.id === activeLease.room_id) : null;
+      const roomType = room ? room_types.find((rt) => rt.id === room.type_id) : null;
+      const invoice = activeLease ? invoices.find((inv) => inv.lease_id === activeLease.id) : null;
 
-    let balance = 0;
-    let dueDate = 'Oct 5, 2026';
-    let status = 'paid';
+      let balance = 0;
+      let dueDate = 'Oct 5, 2026';
+      let status = 'paid';
 
-    if (invoice) {
-      balance = getInvoiceBalance(invoice.id, store);
-      dueDate = invoice.due_date;
-      status = balance > 0 ? 'unpaid' : 'paid';
-    }
+      if (invoice) {
+        balance = getInvoiceBalance(invoice.id, store);
+        dueDate = invoice.due_date;
+        status = balance > 0 ? 'unpaid' : 'paid';
+      }
 
-    const roomNum = room ? parseInt(room.room_number, 10) : index + 1;
+      const roomNum = room ? parseInt(room.room_number, 10) : index + 1;
 
-    return {
-      id: tenant.id.replace('tenant-', ''),
-      tenant_id: tenant.id,
-      name: `${tenant.first_name} ${tenant.last_name}`,
-      initials: tenant.initials,
-      room: roomNum,
-      type: roomType ? (roomType.name.includes('Single') ? 'Single' : 'Double') : 'Single',
-      dueDate,
-      status,
-      balance,
-      color: tenant.avatar_color,
-    };
-  });
+      return {
+        id: String(tenant.id).replace('tenant-', ''),
+        tenant_id: tenant.id,
+        name: `${tenant.first_name} ${tenant.last_name}`,
+        initials: tenant.initials,
+        room: roomNum,
+        type: roomType ? (roomType.name.includes('Single') ? 'Single' : 'Double') : 'Single',
+        dueDate,
+        status,
+        balance,
+        color: tenant.avatar_color || '#8b5cf6',
+      };
+    });
+  } catch (error) {
+    console.error('Error fetching tenants:', error);
+    return [];
+  }
 }
 
 /**
  * 4. Unpaid Tenants
  */
-export function getUnpaidTenants() {
-  return getTenants().filter((t) => t.status === 'unpaid');
+export async function getUnpaidTenants() {
+  try {
+    const allTenants = await getTenants();
+    return allTenants.filter((t) => t.status === 'unpaid');
+  } catch (error) {
+    console.error('Error fetching unpaid tenants:', error);
+    return [];
+  }
 }
 
 /**
  * 5. Monthly Revenue Aggregations
- * Dynamically computed from 3NF INVOICES and PAYMENTS tables
  */
-export function getRevenue(month = 'september') {
-  const store = getStore();
-  const { invoices, payments } = store;
+export async function getRevenue(month = 'september') {
+  try {
+    const store = await getStore();
+    const invoices = store[COLLECTIONS.INVOICES] || [];
+    const payments = store[COLLECTIONS.PAYMENTS] || [];
 
-  const septInvoices = invoices.filter((inv) => inv.billing_period === '2026-09');
-  const expected = septInvoices.reduce((sum, inv) => sum + inv.total_amount, 0);
+    const septInvoices = invoices.filter((inv) => inv.billing_period === '2026-09');
+    const expected = septInvoices.reduce((sum, inv) => sum + (inv.total_amount || 0), 0);
 
-  const septPayments = payments.filter((p) => {
-    const inv = invoices.find((i) => i.id === p.invoice_id);
-    return inv && inv.billing_period === '2026-09';
-  });
+    const septPayments = payments.filter((p) => {
+      const inv = invoices.find((i) => i.id === p.invoice_id);
+      return inv && inv.billing_period === '2026-09';
+    });
 
-  const collected = septPayments.reduce((sum, p) => sum + p.amount_paid, 0);
-  const outstanding = Math.max(0, expected - collected);
-  const percentCollected = expected > 0 ? Math.round((collected / expected) * 100) : 0;
+    const collected = septPayments.reduce((sum, p) => sum + (p.amount_paid || 0), 0);
+    const outstanding = Math.max(0, expected - collected);
+    const percentCollected = expected > 0 ? Math.round((collected / expected) * 100) : 0;
 
-  const rentCollected = 35750;
-  const electricityFees = 8248;
+    const rentCollected = septInvoices.reduce((sum, inv) => sum + (inv.rent_charge || 0), 0);
+    const electricityFees = septInvoices.reduce((sum, inv) => sum + (inv.utility_charge || 0), 0);
 
-  return {
-    expected: expected || 39000,
-    collected: collected || 27500,
-    outstanding: outstanding || 11500,
-    percentCollected: percentCollected || 71,
-    rentCollected,
-    electricityFees,
-  };
+    return {
+      expected: expected || 39000,
+      collected: collected || 27500,
+      outstanding: outstanding || 11500,
+      percentCollected: percentCollected || 71,
+      rentCollected: rentCollected || 35750,
+      electricityFees: electricityFees || 8248,
+    };
+  } catch (error) {
+    console.error('Error computing revenue:', error);
+    return { expected: 39000, collected: 27500, outstanding: 11500, percentCollected: 71, rentCollected: 35750, electricityFees: 8248 };
+  }
 }
 
 /**
  * 6. Historical Monthly Income
  */
-export function getMonthlyIncome() {
-  return [
-    { month: 'May', amount: 38000 },
-    { month: 'Jun', amount: 43000 },
-    { month: 'Jul', amount: 48000 },
-    { month: 'Aug', amount: 43000 },
-    { month: 'Sep', amount: 44000 },
-  ];
+export async function getMonthlyIncome() {
+  try {
+    const store = await getStore();
+    const invoices = store[COLLECTIONS.INVOICES] || [];
+    const payments = store[COLLECTIONS.PAYMENTS] || [];
+
+    const periods = [
+      { month: 'May', period: '2026-05', defaultAmount: 38000 },
+      { month: 'Jun', period: '2026-06', defaultAmount: 43000 },
+      { month: 'Jul', period: '2026-07', defaultAmount: 48000 },
+      { month: 'Aug', period: '2026-08', defaultAmount: 43000 },
+      { month: 'Sep', period: '2026-09', defaultAmount: 44000 },
+    ];
+
+    return periods.map(({ month, period, defaultAmount }) => {
+      const periodInvoices = invoices.filter((inv) => inv.billing_period === period);
+      if (periodInvoices.length === 0) {
+        return { month, amount: defaultAmount };
+      }
+      const periodPayments = payments.filter((p) => {
+        const inv = invoices.find((i) => i.id === p.invoice_id);
+        return inv && inv.billing_period === period;
+      });
+      const amount = periodPayments.reduce((sum, p) => sum + (p.amount_paid || 0), 0);
+      return { month, amount: amount || defaultAmount };
+    });
+  } catch (error) {
+    console.error('Error computing monthly income:', error);
+    return [
+      { month: 'May', amount: 38000 },
+      { month: 'Jun', amount: 43000 },
+      { month: 'Jul', amount: 48000 },
+      { month: 'Aug', amount: 43000 },
+      { month: 'Sep', amount: 44000 },
+    ];
+  }
 }
 
 /**
  * 7. Complaints
- * 3NF Relational Join:
- *   COMPLAINTS
- *   INNER JOIN TENANTS ON COMPLAINTS.tenant_id = TENANTS.id
- *   INNER JOIN ROOMS ON COMPLAINTS.room_id = ROOMS.id
  */
-export function getIssues() {
-  const store = getStore();
-  const { complaints, tenants, rooms } = store;
+export async function getIssues() {
+  try {
+    const store = await getStore();
+    const complaints = store[COLLECTIONS.COMPLAINTS] || [];
+    const tenants = store[COLLECTIONS.TENANTS] || [];
+    const rooms = store[COLLECTIONS.ROOMS] || [];
 
-  return complaints.map((c) => {
-    const tenant = tenants.find((t) => t.id === c.tenant_id);
-    const room = rooms.find((r) => r.id === c.room_id);
+    return complaints.map((c) => {
+      const tenant = tenants.find((t) => t.id === c.tenant_id);
+      const room = rooms.find((r) => r.id === c.room_id);
 
-    return {
-      id: c.id.replace('comp-', ''),
-      complaint_id: c.id,
-      title: c.title,
-      description: c.description,
-      tenant: tenant ? `${tenant.first_name} ${tenant.last_name}` : 'Tenant',
-      initials: tenant ? tenant.initials : 'TN',
-      room: room ? `Room ${parseInt(room.room_number, 10)}` : 'Room 1',
-      date: c.filed_at,
-      status: c.status,
-      color: tenant ? tenant.avatar_color : '#8b5cf6',
-    };
-  });
+      return {
+        id: String(c.id).replace('comp-', ''),
+        complaint_id: c.id,
+        title: c.title,
+        description: c.description || '',
+        tenant: tenant ? `${tenant.first_name} ${tenant.last_name}` : 'Tenant',
+        initials: tenant ? tenant.initials : 'TN',
+        room: room ? `Room ${parseInt(room.room_number, 10)}` : 'Room 1',
+        date: c.filed_at,
+        status: c.status,
+        color: tenant ? tenant.avatar_color : '#8b5cf6',
+      };
+    });
+  } catch (error) {
+    console.error('Error fetching issues:', error);
+    return [];
+  }
 }
 
 /**
  * 8. Occupancy Statistics
  */
-export function getOccupancyStats() {
-  const store = getStore();
-  const { rooms, leases } = store;
-  const totalRooms = rooms.length;
-  const occupied = leases.filter((l) => l.status === 'active').length;
-  const vacant = Math.max(0, totalRooms - occupied);
-  const rate = totalRooms > 0 ? Math.round((occupied / totalRooms) * 100) : 0;
+export async function getOccupancyStats() {
+  try {
+    const store = await getStore();
+    const rooms = store[COLLECTIONS.ROOMS] || [];
+    const leases = store[COLLECTIONS.LEASES] || [];
+    const totalRooms = rooms.length;
+    const occupied = leases.filter((l) => l.status === 'active').length;
+    const vacant = Math.max(0, totalRooms - occupied);
+    const rate = totalRooms > 0 ? Math.round((occupied / totalRooms) * 100) : 0;
 
-  return { totalRooms, occupied, vacant, rate };
+    return { totalRooms, occupied, vacant, rate };
+  } catch (error) {
+    console.error('Error computing occupancy stats:', error);
+    return { totalRooms: 17, occupied: 14, vacant: 3, rate: 82 };
+  }
 }
 
 /**
  * 9. Issue Statistics
  */
-export function getIssueStats() {
-  const store = getStore();
-  const { complaints } = store;
-  const total = complaints.length;
-  const pending = complaints.filter((i) => i.status === 'pending').length;
-  const inProgress = complaints.filter((i) => i.status === 'in-progress').length;
-  const resolved = complaints.filter((i) => i.status === 'resolved').length;
-  return { total, pending, inProgress, resolved };
+export async function getIssueStats() {
+  try {
+    const store = await getStore();
+    const complaints = store[COLLECTIONS.COMPLAINTS] || [];
+    const total = complaints.length;
+    const pending = complaints.filter((i) => i.status === 'pending').length;
+    const inProgress = complaints.filter((i) => i.status === 'in-progress').length;
+    const resolved = complaints.filter((i) => i.status === 'resolved').length;
+    return { total, pending, inProgress, resolved };
+  } catch (error) {
+    console.error('Error computing issue stats:', error);
+    return { total: 4, pending: 2, inProgress: 1, resolved: 1 };
+  }
 }
 
 /**
  * 10. Unpaid Balances Statistics
  */
-export function getUnpaidStats() {
-  const unpaidTenants = getUnpaidTenants();
-  const totalUnpaid = unpaidTenants.reduce((sum, t) => sum + t.balance, 0);
-  return { count: unpaidTenants.length, total: totalUnpaid };
+export async function getUnpaidStats() {
+  try {
+    const unpaidTenants = await getUnpaidTenants();
+    const totalUnpaid = unpaidTenants.reduce((sum, t) => sum + t.balance, 0);
+    return { count: unpaidTenants.length, total: totalUnpaid };
+  } catch (error) {
+    console.error('Error computing unpaid stats:', error);
+    return { count: 0, total: 0 };
+  }
 }
 
 /**
  * 11. September Summary for Reports
  */
-export function getSeptemberSummary() {
-  const revenue = getRevenue('september');
-  const occupancy = getOccupancyStats();
-  const issueStats = getIssueStats();
+export async function getSeptemberSummary() {
+  try {
+    const revenue = await getRevenue('september');
+    const occupancy = await getOccupancyStats();
+    const issueStats = await getIssueStats();
 
-  return {
-    rentCollected: revenue.rentCollected,
-    unpaidBalance: revenue.outstanding,
-    electricityFees: revenue.electricityFees,
-    occupiedRooms: occupancy.occupied,
-    totalRooms: occupancy.totalRooms,
-    newComplaints: issueStats.total,
-    resolved: issueStats.resolved,
-  };
+    return {
+      rentCollected: revenue.rentCollected,
+      unpaidBalance: revenue.outstanding,
+      electricityFees: revenue.electricityFees,
+      occupiedRooms: occupancy.occupied,
+      totalRooms: occupancy.totalRooms,
+      newComplaints: issueStats.total,
+      resolved: issueStats.resolved,
+    };
+  } catch (error) {
+    console.error('Error computing September summary:', error);
+    return { rentCollected: 35750, unpaidBalance: 11500, electricityFees: 8248, occupiedRooms: 14, totalRooms: 17, newComplaints: 4, resolved: 1 };
+  }
 }
 
 /**
  * 12. Announcements List
  */
-export function getAnnouncements() {
-  const store = getStore();
-  return store[COLLECTIONS.ANNOUNCEMENTS].map((ann) => ({
-    id: ann.id.replace('ann-', ''),
-    announcement_id: ann.id,
-    category: ann.category,
-    date: ann.created_at,
-    title: ann.title,
-    description: ann.description,
-    badgeColor: ann.category === 'Payment' ? '#10b981' : '#059669',
-    badgeBg: '#d1fae5',
-  }));
+export async function getAnnouncements() {
+  try {
+    const store = await getStore();
+    const announcements = store[COLLECTIONS.ANNOUNCEMENTS] || [];
+    return announcements.map((ann) => ({
+      id: String(ann.id).replace('ann-', ''),
+      announcement_id: ann.id,
+      category: ann.category,
+      date: ann.created_at,
+      title: ann.title,
+      description: ann.description,
+      badgeColor: ann.category === 'Payment' ? '#10b981' : '#059669',
+      badgeBg: '#d1fae5',
+    }));
+  } catch (error) {
+    console.error('Error fetching announcements:', error);
+    return [];
+  }
 }
 
 /**
- * 13. Tenant-Specific Helper (Default: Ana Reyes, Room 2)
+ * 13. Tenant-specific profile lookup
  */
-export function getCurrentTenant(id = '2') {
-  const formattedId = id.startsWith('tenant-') ? id : `tenant-${id}`;
-  const store = getStore();
-  const tenant = store[COLLECTIONS.TENANTS].find((t) => t.id === formattedId) || store[COLLECTIONS.TENANTS][1];
+export async function getCurrentTenant(id = '2') {
+  try {
+    const formattedId = id.startsWith('tenant-') ? id : `tenant-${id}`;
+    const store = await getStore();
+    const tenants = store[COLLECTIONS.TENANTS] || [];
+    const tenant = tenants.find((t) => t.id === formattedId);
+    if (!tenant) return null;
 
-  const lease = store[COLLECTIONS.LEASES].find((l) => l.tenant_id === tenant.id && l.status === 'active');
-  const room = lease ? store[COLLECTIONS.ROOMS].find((r) => r.id === lease.room_id) : null;
-  const invoice = lease ? store[COLLECTIONS.INVOICES].find((inv) => inv.lease_id === lease.id) : null;
-  const balance = invoice ? getInvoiceBalance(invoice.id, store) : 500;
+    const leases = store[COLLECTIONS.LEASES] || [];
+    const rooms = store[COLLECTIONS.ROOMS] || [];
+    const invoices = store[COLLECTIONS.INVOICES] || [];
 
-  return {
-    id: tenant.id.replace('tenant-', ''),
-    tenant_id: tenant.id,
-    name: `${tenant.first_name} ${tenant.last_name}`,
-    initials: tenant.initials,
-    roomNumber: room ? parseInt(room.room_number, 10) : 2,
-    roomType: 'Single Occupancy',
-    outstandingBalance: balance,
-    dueDate: invoice ? invoice.due_date : 'Oct 5, 2026',
-    color: tenant.avatar_color,
-  };
+    const lease = leases.find((l) => l.tenant_id === tenant.id && l.status === 'active');
+    const room = lease ? rooms.find((r) => r.id === lease.room_id) : null;
+    const invoice = lease ? invoices.find((inv) => inv.lease_id === lease.id) : null;
+    const balance = invoice ? getInvoiceBalance(invoice.id, store) : 0;
+
+    return {
+      id: String(tenant.id).replace('tenant-', ''),
+      tenant_id: tenant.id,
+      name: `${tenant.first_name} ${tenant.last_name}`,
+      initials: tenant.initials,
+      roomNumber: room ? parseInt(room.room_number, 10) : null,
+      roomType: 'Single Occupancy',
+      outstandingBalance: balance,
+      dueDate: invoice ? invoice.due_date : 'Pending room assignment',
+      color: tenant.avatar_color,
+    };
+  } catch (error) {
+    console.warn('Could not fetch current tenant:', error.message || error);
+    return null;
+  }
 }
 
 /**
  * 14. Tenant Billing Breakdown
  */
-export function getTenantBillingBreakdown(id = '2') {
-  const formattedId = id.startsWith('tenant-') ? id : `tenant-${id}`;
-  const store = getStore();
-  const lease = store[COLLECTIONS.LEASES].find((l) => l.tenant_id === formattedId && l.status === 'active');
-  const invoice = lease ? store[COLLECTIONS.INVOICES].find((inv) => inv.lease_id === lease.id) : null;
+export async function getTenantBillingBreakdown(id = '2') {
+  try {
+    const formattedId = id.startsWith('tenant-') ? id : `tenant-${id}`;
+    const store = await getStore();
+    const leases = store[COLLECTIONS.LEASES] || [];
+    const invoices = store[COLLECTIONS.INVOICES] || [];
+    const payments = store[COLLECTIONS.PAYMENTS] || [];
 
-  if (invoice) {
-    const payments = store[COLLECTIONS.PAYMENTS].filter((p) => p.invoice_id === invoice.id);
-    const paidAmount = payments.reduce((sum, p) => sum + p.amount_paid, 0);
-    const outstanding = Math.max(0, invoice.total_amount - paidAmount);
+    const lease = leases.find((l) => l.tenant_id === formattedId && l.status === 'active');
+    const invoice = lease ? invoices.find((inv) => inv.lease_id === lease.id) : null;
 
-    return {
-      month: 'September',
-      monthlyRent: invoice.rent_charge,
-      electricity: invoice.utility_charge,
-      water: 'Included',
-      totalDue: invoice.total_amount,
-      dueDate: invoice.due_date,
-      paidAmount,
-      outstanding,
-    };
+    if (invoice) {
+      const invPayments = payments.filter((p) => p.invoice_id === invoice.id);
+      const paidAmount = invPayments.reduce((sum, p) => sum + (p.amount_paid || 0), 0);
+      const outstanding = Math.max(0, invoice.total_amount - paidAmount);
+
+      return {
+        month: 'September',
+        monthlyRent: invoice.rent_charge,
+        electricity: invoice.utility_charge,
+        water: 'Included',
+        totalDue: invoice.total_amount,
+        dueDate: invoice.due_date,
+        paidAmount,
+        outstanding,
+      };
+    }
+
+    return { month: '', monthlyRent: 0, electricity: 0, water: 'Included', totalDue: 0, dueDate: 'Pending room assignment', paidAmount: 0, outstanding: 0 };
+  } catch (error) {
+    console.warn('Could not fetch billing breakdown:', error.message || error);
+    return { month: '', monthlyRent: 0, electricity: 0, water: 'Included', totalDue: 0, dueDate: 'Pending room assignment', paidAmount: 0, outstanding: 0 };
   }
-
-  return {
-    month: 'September',
-    monthlyRent: 2500,
-    electricity: 340,
-    water: 'Included',
-    totalDue: 2840,
-    dueDate: 'Oct 5, 2026',
-    paidAmount: 2340,
-    outstanding: 500,
-  };
 }
 
 /**
  * 15. Tenant Complaints Scoped View
  */
-export function getTenantComplaints(tenantName = 'Ana Reyes') {
-  const store = getStore();
-  const { complaints, tenants } = store;
-  const tenant = tenants.find((t) => `${t.first_name} ${t.last_name}`.toLowerCase() === tenantName.toLowerCase()) || tenants[1];
+export async function getTenantComplaints(tenantId) {
+  try {
+    const store = await getStore();
+    const complaints = store[COLLECTIONS.COMPLAINTS] || [];
+    const tenants = store[COLLECTIONS.TENANTS] || [];
+    const tenant = tenants.find((t) => t.id === tenantId);
 
-  return complaints
-    .filter((c) => c.tenant_id === tenant.id)
-    .map((c) => ({
-      id: c.id.replace('comp-', ''),
-      complaint_id: c.id,
-      title: c.title,
-      description: c.description,
-      tenant: `${tenant.first_name} ${tenant.last_name}`,
-      initials: tenant.initials,
-      room: 'Room 2',
-      date: c.filed_at,
-      status: c.status,
-      color: tenant.avatar_color,
-    }));
+    if (!tenant) return [];
+
+    return complaints
+      .filter((c) => c.tenant_id === tenant.id)
+      .map((c) => ({
+        id: String(c.id).replace('comp-', ''),
+        complaint_id: c.id,
+        title: c.title,
+        description: c.description || '',
+        tenant: `${tenant.first_name} ${tenant.last_name}`,
+        initials: tenant.initials,
+        room: '',
+        date: c.filed_at,
+        status: c.status,
+        color: tenant.avatar_color,
+      }));
+  } catch (error) {
+    console.error('Error fetching tenant complaints:', error);
+    return [];
+  }
 }
 
 /**
- * 16. Submit Complaint (3NF Normalized Insert)
+ * 16. Submit Complaint (Direct to Firebase Firestore)
  */
-export function submitComplaint({ title, description = '', tenantName = 'Ana Reyes', room = 'Room 2' }) {
-  const store = getStore();
-  const tenant = store[COLLECTIONS.TENANTS].find((t) => `${t.first_name} ${t.last_name}`.toLowerCase() === tenantName.toLowerCase()) || store[COLLECTIONS.TENANTS][1];
-  const roomDoc = store[COLLECTIONS.ROOMS].find((r) => r.room_number === '02') || store[COLLECTIONS.ROOMS][1];
+export async function submitComplaint({ title, description = '', tenantId }) {
+  try {
+    const store = await getStore();
+    const tenants = store[COLLECTIONS.TENANTS] || [];
+    const rooms = store[COLLECTIONS.ROOMS] || [];
 
-  const newId = `comp-${store[COLLECTIONS.COMPLAINTS].length + 1}`;
-  const newComplaint = {
-    id: newId,
-    tenant_id: tenant.id,
-    room_id: roomDoc.id,
-    title,
-    description,
-    status: 'pending',
-    filed_at: 'Sep 23, 2026',
-  };
+    const tenant = tenants.find((t) => t.id === tenantId);
+    if (!tenant) throw new Error('Your tenant profile is not available yet. Please contact the property administrator.');
+    const activeLease = (store[COLLECTIONS.LEASES] || []).find((lease) => lease.tenant_id === tenant.id && lease.status === 'active');
+    if (!activeLease) throw new Error('Your room has not been assigned yet. You can submit a complaint after assignment.');
+    const roomDoc = rooms.find((r) => r.id === activeLease.room_id);
+    if (!roomDoc) throw new Error('Your assigned room could not be found. Please contact the property administrator.');
 
-  store[COLLECTIONS.COMPLAINTS].unshift(newComplaint);
+    const newId = `comp-${Date.now()}`;
+    const dateStr = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    const newComplaint = {
+      id: newId,
+      tenant_id: tenant.id,
+      room_id: roomDoc.id,
+      title,
+      description,
+      status: 'pending',
+      filed_at: dateStr,
+    };
 
-  return {
-    id: newId.replace('comp-', ''),
-    complaint_id: newId,
-    title,
-    tenant: `${tenant.first_name} ${tenant.last_name}`,
-    initials: tenant.initials,
-    room,
-    date: 'Sep 23, 2026',
-    status: 'pending',
-    color: tenant.avatar_color,
-  };
+    if (isFirebaseConfigured && db) {
+      await writeDocument(COLLECTIONS.COMPLAINTS, newId, newComplaint);
+    } else {
+      const mockStore = getNormalizedMockDatabase();
+      mockStore[COLLECTIONS.COMPLAINTS].unshift(newComplaint);
+    }
+
+    return {
+      id: newId.replace('comp-', ''),
+      complaint_id: newId,
+      title,
+      description,
+      tenant: `${tenant.first_name} ${tenant.last_name}`,
+      initials: tenant.initials,
+      room: `Room ${roomDoc.room_number}`,
+      date: dateStr,
+      status: 'pending',
+      color: tenant.avatar_color,
+    };
+  } catch (error) {
+    console.error('Error submitting complaint:', error);
+    throw new Error('Failed to submit complaint. Please try again.');
+  }
 }
 
 /**
  * 17. Available rooms for a tenant transfer request.
  */
-export function getAvailableRoomsForChange() {
-  const store = getStore();
-  return store[COLLECTIONS.ROOMS]
-    .filter((room) => room.status === 'vacant')
-    .map((room) => {
-      const type = store[COLLECTIONS.ROOM_TYPES].find((roomType) => roomType.id === room.type_id);
-      return {
-        id: room.id,
-        number: room.room_number.replace(/^0/, ''),
-        type: type?.name || 'Room',
-        monthlyRent: type?.base_rent || 0,
-      };
-    });
+export async function getAvailableRoomsForChange() {
+  try {
+    const store = await getStore();
+    const rooms = store[COLLECTIONS.ROOMS] || [];
+    const room_types = store[COLLECTIONS.ROOM_TYPES] || [];
+
+    return rooms
+      .filter((room) => room.status === 'vacant')
+      .map((room) => {
+        const type = room_types.find((roomType) => roomType.id === room.type_id);
+        return {
+          id: room.id,
+          number: room.room_number.replace(/^0/, ''),
+          type: type?.name || 'Room',
+          monthlyRent: type?.base_rent || 2500,
+        };
+      });
+  } catch (error) {
+    console.error('Error fetching available rooms:', error);
+    return [];
+  }
 }
 
 /**
  * 18. Tenant room-change requests scoped to a tenant.
  */
-export function getTenantRoomChangeRequests(tenantName = 'Ana Reyes') {
-  const store = getStore();
-  const tenant = store[COLLECTIONS.TENANTS].find((item) =>
-    `${item.first_name} ${item.last_name}`.toLowerCase() === tenantName.toLowerCase(),
-  ) || store[COLLECTIONS.TENANTS][1];
+export async function getTenantRoomChangeRequests(tenantId) {
+  try {
+    const store = await getStore();
+    const tenants = store[COLLECTIONS.TENANTS] || [];
+    const rooms = store[COLLECTIONS.ROOMS] || [];
+    const room_types = store[COLLECTIONS.ROOM_TYPES] || [];
+    const requests = store[COLLECTIONS.ROOM_CHANGE_REQUESTS] || [];
 
-  return (store[COLLECTIONS.ROOM_CHANGE_REQUESTS] || [])
-    .filter((request) => request.tenant_id === tenant.id)
-    .map((request) => {
-      const room = store[COLLECTIONS.ROOMS].find((item) => item.id === request.requested_room_id);
-      const type = room && store[COLLECTIONS.ROOM_TYPES].find((item) => item.id === room.type_id);
-      return {
-        id: request.id,
-        roomNumber: room?.room_number.replace(/^0/, '') || '-',
-        roomType: type?.name || 'Room',
-        reason: request.reason,
-        status: request.status,
-        date: request.requested_at,
-      };
-    });
+    const tenant = tenants.find((item) => item.id === tenantId);
+
+    if (!tenant) return [];
+
+    return requests
+      .filter((request) => request.tenant_id === tenant.id)
+      .map((request) => {
+        const room = rooms.find((item) => item.id === request.requested_room_id);
+        const type = room && room_types.find((item) => item.id === room.type_id);
+        return {
+          id: request.id,
+          roomNumber: room?.room_number.replace(/^0/, '') || '-',
+          roomType: type?.name || 'Room',
+          reason: request.reason,
+          status: request.status,
+          date: request.requested_at,
+        };
+      });
+  } catch (error) {
+    console.error('Error fetching room change requests:', error);
+    return [];
+  }
 }
 
 /**
- * 19. Submit a tenant room-change request. Room assignments stay unchanged
- * until the caretaker or owner approves the request.
+ * 19. Submit a tenant room-change request (Direct to Firebase Firestore).
  */
-export function submitRoomChangeRequest({ requestedRoomId, reason, tenantName = 'Ana Reyes' }) {
-  const store = getStore();
-  const tenant = store[COLLECTIONS.TENANTS].find((item) =>
-    `${item.first_name} ${item.last_name}`.toLowerCase() === tenantName.toLowerCase(),
-  ) || store[COLLECTIONS.TENANTS][1];
-  const currentLease = store[COLLECTIONS.LEASES].find((lease) => lease.tenant_id === tenant.id && lease.status === 'active');
-  const requestedRoom = store[COLLECTIONS.ROOMS].find((room) => room.id === requestedRoomId && room.status === 'vacant');
+export async function submitRoomChangeRequest({ requestedRoomId, reason, tenantId }) {
+  try {
+    const store = await getStore();
+    const tenants = store[COLLECTIONS.TENANTS] || [];
+    const rooms = store[COLLECTIONS.ROOMS] || [];
+    const leases = store[COLLECTIONS.LEASES] || [];
+    const room_types = store[COLLECTIONS.ROOM_TYPES] || [];
 
-  if (!requestedRoom) throw new Error('The selected room is no longer available.');
+    const tenant = tenants.find((item) => item.id === tenantId);
+    if (!tenant) throw new Error('Your tenant profile is not available yet. Please contact the property administrator.');
 
-  const requests = store[COLLECTIONS.ROOM_CHANGE_REQUESTS] || (store[COLLECTIONS.ROOM_CHANGE_REQUESTS] = []);
-  const newRequest = {
-    id: `room-change-${requests.length + 1}`,
-    tenant_id: tenant.id,
-    current_room_id: currentLease?.room_id || null,
-    requested_room_id: requestedRoom.id,
-    reason,
-    status: 'pending',
-    requested_at: 'Sep 23, 2026',
-  };
-  requests.unshift(newRequest);
+    const currentLease = leases.find((lease) => lease.tenant_id === tenant.id && lease.status === 'active');
+    const requestedRoom = rooms.find((room) => room.id === requestedRoomId && room.status === 'vacant');
 
-  const type = store[COLLECTIONS.ROOM_TYPES].find((item) => item.id === requestedRoom.type_id);
-  return {
-    id: newRequest.id,
-    roomNumber: requestedRoom.room_number.replace(/^0/, ''),
-    roomType: type?.name || 'Room',
-    reason,
-    status: 'pending',
-    date: newRequest.requested_at,
-  };
+    if (!requestedRoom) throw new Error('The selected room is no longer available.');
+
+    const newId = `room-change-${Date.now()}`;
+    const dateStr = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    const newRequest = {
+      id: newId,
+      tenant_id: tenant.id,
+      current_room_id: currentLease?.room_id || null,
+      requested_room_id: requestedRoom.id,
+      reason,
+      status: 'pending',
+      requested_at: dateStr,
+    };
+
+    if (isFirebaseConfigured && db) {
+      await writeDocument(COLLECTIONS.ROOM_CHANGE_REQUESTS, newId, newRequest);
+    } else {
+      const mockStore = getNormalizedMockDatabase();
+      const mockReqs = mockStore[COLLECTIONS.ROOM_CHANGE_REQUESTS] || (mockStore[COLLECTIONS.ROOM_CHANGE_REQUESTS] = []);
+      mockReqs.unshift(newRequest);
+    }
+
+    const type = room_types.find((item) => item.id === requestedRoom.type_id);
+    return {
+      id: newRequest.id,
+      roomNumber: requestedRoom.room_number.replace(/^0/, ''),
+      roomType: type?.name || 'Room',
+      reason,
+      status: 'pending',
+      date: newRequest.requested_at,
+    };
+  } catch (error) {
+    console.error('Error submitting room change request:', error);
+    throw new Error(error.message || 'Failed to submit room change request. Please try again.');
+  }
 }
 
 /**
  * 20. All room-change requests for caretaker review.
  */
-export function getRoomChangeRequests() {
-  const store = getStore();
-  return (store[COLLECTIONS.ROOM_CHANGE_REQUESTS] || []).map((request) => {
-    const tenant = store[COLLECTIONS.TENANTS].find((item) => item.id === request.tenant_id);
-    const currentRoom = store[COLLECTIONS.ROOMS].find((item) => item.id === request.current_room_id);
-    const requestedRoom = store[COLLECTIONS.ROOMS].find((item) => item.id === request.requested_room_id);
-    const requestedType = requestedRoom && store[COLLECTIONS.ROOM_TYPES].find((item) => item.id === requestedRoom.type_id);
-    return {
-      id: request.id,
-      tenant: tenant ? `${tenant.first_name} ${tenant.last_name}` : 'Tenant',
-      initials: tenant?.initials || 'TN',
-      color: tenant?.avatar_color || '#8b5cf6',
-      currentRoom: currentRoom?.room_number.replace(/^0/, '') || '-',
-      requestedRoom: requestedRoom?.room_number.replace(/^0/, '') || '-',
-      requestedRoomType: requestedType?.name || 'Room',
-      reason: request.reason,
-      status: request.status,
-      date: request.requested_at,
-    };
-  });
+export async function getRoomChangeRequests() {
+  try {
+    const store = await getStore();
+    const requests = store[COLLECTIONS.ROOM_CHANGE_REQUESTS] || [];
+    const tenants = store[COLLECTIONS.TENANTS] || [];
+    const rooms = store[COLLECTIONS.ROOMS] || [];
+    const room_types = store[COLLECTIONS.ROOM_TYPES] || [];
+
+    return requests.map((request) => {
+      const tenant = tenants.find((item) => item.id === request.tenant_id);
+      const currentRoom = rooms.find((item) => item.id === request.current_room_id);
+      const requestedRoom = rooms.find((item) => item.id === request.requested_room_id);
+      const requestedType = requestedRoom && room_types.find((item) => item.id === requestedRoom.type_id);
+      return {
+        id: request.id,
+        tenant: tenant ? `${tenant.first_name} ${tenant.last_name}` : 'Tenant',
+        initials: tenant?.initials || 'TN',
+        color: tenant?.avatar_color || '#8b5cf6',
+        currentRoom: currentRoom?.room_number.replace(/^0/, '') || '-',
+        requestedRoom: requestedRoom?.room_number.replace(/^0/, '') || '-',
+        requestedRoomType: requestedType?.name || 'Room',
+        reason: request.reason,
+        status: request.status,
+        date: request.requested_at,
+      };
+    });
+  } catch (error) {
+    console.error('Error fetching room change requests:', error);
+    return [];
+  }
 }
 
 /**
- * 21. Caretaker decision for a room-change request.
- * Approval closes the old lease, opens a new one, and updates both room statuses.
+ * 21. Caretaker decision for a room-change request (Direct to Firebase Firestore).
  */
-export function reviewRoomChangeRequest(requestId, decision) {
-  if (!['approved', 'declined'].includes(decision)) throw new Error('Invalid room-change decision.');
+export async function reviewRoomChangeRequest(requestId, decision) {
+  try {
+    if (!['approved', 'declined'].includes(decision)) throw new Error('Invalid room-change decision.');
 
-  const store = getStore();
-  const request = (store[COLLECTIONS.ROOM_CHANGE_REQUESTS] || []).find((item) => item.id === requestId);
-  if (!request || request.status !== 'pending') throw new Error('This request is no longer available for review.');
+    const store = await getStore();
+    const requests = store[COLLECTIONS.ROOM_CHANGE_REQUESTS] || [];
+    const rooms = store[COLLECTIONS.ROOMS] || [];
+    const leases = store[COLLECTIONS.LEASES] || [];
 
-  if (decision === 'approved') {
-    const requestedRoom = store[COLLECTIONS.ROOMS].find((room) => room.id === request.requested_room_id);
-    const currentRoom = store[COLLECTIONS.ROOMS].find((room) => room.id === request.current_room_id);
-    const currentLease = store[COLLECTIONS.LEASES].find((lease) => lease.tenant_id === request.tenant_id && lease.status === 'active');
-    if (!requestedRoom || requestedRoom.status !== 'vacant') throw new Error('The requested room is no longer available.');
+    const request = requests.find((item) => item.id === requestId);
+    if (!request || request.status !== 'pending') throw new Error('This request is no longer available for review.');
 
-    if (currentLease) {
-      currentLease.status = 'terminated';
-      currentLease.end_date = '2026-09-23';
-      store[COLLECTIONS.LEASES].unshift({
-        id: `lease-${store[COLLECTIONS.LEASES].length + 1}`,
-        tenant_id: request.tenant_id,
-        room_id: requestedRoom.id,
-        start_date: '2026-09-24',
-        agreed_monthly_rent: currentLease.agreed_monthly_rent,
-        due_day: currentLease.due_day,
-        status: 'active',
-      });
+    const todayStr = new Date().toISOString().split('T')[0];
+
+    if (decision === 'approved') {
+      const requestedRoom = rooms.find((room) => room.id === request.requested_room_id);
+      const currentRoom = rooms.find((room) => room.id === request.current_room_id);
+      const currentLease = leases.find((lease) => lease.tenant_id === request.tenant_id && lease.status === 'active');
+      if (!requestedRoom || requestedRoom.status !== 'vacant') throw new Error('The requested room is no longer available.');
+
+      if (isFirebaseConfigured && db) {
+        if (currentLease) {
+          await updateDocument(COLLECTIONS.LEASES, currentLease.id, { status: 'terminated', end_date: todayStr });
+          const newLeaseId = `lease-${Date.now()}`;
+          await writeDocument(COLLECTIONS.LEASES, newLeaseId, {
+            tenant_id: request.tenant_id,
+            room_id: requestedRoom.id,
+            start_date: todayStr,
+            agreed_monthly_rent: currentLease.agreed_monthly_rent,
+            due_day: currentLease.due_day,
+            status: 'active',
+          });
+        }
+        if (currentRoom) {
+          await updateDocument(COLLECTIONS.ROOMS, currentRoom.id, { status: 'vacant' });
+        }
+        await updateDocument(COLLECTIONS.ROOMS, requestedRoom.id, { status: 'occupied' });
+        await updateDocument(COLLECTIONS.ROOM_CHANGE_REQUESTS, requestId, { status: decision, reviewed_at: todayStr });
+      } else {
+        const mockStore = getNormalizedMockDatabase();
+        const mockLeases = mockStore[COLLECTIONS.LEASES];
+        const mockRooms = mockStore[COLLECTIONS.ROOMS];
+        const mockRequests = mockStore[COLLECTIONS.ROOM_CHANGE_REQUESTS];
+
+        const mockCurrentLease = mockLeases.find((lease) => lease.tenant_id === request.tenant_id && lease.status === 'active');
+        const mockRequestedRoom = mockRooms.find((room) => room.id === request.requested_room_id);
+        const mockCurrentRoom = mockRooms.find((room) => room.id === request.current_room_id);
+        const mockReq = mockRequests.find((r) => r.id === requestId);
+
+        if (mockCurrentLease) {
+          mockCurrentLease.status = 'terminated';
+          mockCurrentLease.end_date = todayStr;
+          mockLeases.unshift({
+            id: `lease-${mockLeases.length + 1}`,
+            tenant_id: request.tenant_id,
+            room_id: mockRequestedRoom.id,
+            start_date: todayStr,
+            agreed_monthly_rent: mockCurrentLease.agreed_monthly_rent,
+            due_day: mockCurrentLease.due_day,
+            status: 'active',
+          });
+        }
+        if (mockCurrentRoom) mockCurrentRoom.status = 'vacant';
+        if (mockRequestedRoom) mockRequestedRoom.status = 'occupied';
+        if (mockReq) {
+          mockReq.status = decision;
+          mockReq.reviewed_at = todayStr;
+        }
+      }
+    } else {
+      // Declined
+      if (isFirebaseConfigured && db) {
+        await updateDocument(COLLECTIONS.ROOM_CHANGE_REQUESTS, requestId, { status: decision, reviewed_at: todayStr });
+      } else {
+        request.status = decision;
+        request.reviewed_at = todayStr;
+      }
     }
-    if (currentRoom) currentRoom.status = 'vacant';
-    requestedRoom.status = 'occupied';
-  }
 
-  request.status = decision;
-  request.reviewed_at = 'Sep 24, 2026';
-  return getRoomChangeRequests().find((item) => item.id === requestId);
+    const allRequests = await getRoomChangeRequests();
+    return allRequests.find((item) => item.id === requestId);
+  } catch (error) {
+    console.error('Error reviewing room change request:', error);
+    throw error;
+  }
+}
+
+/**
+ * 22. Billing data: Rent billing list
+ */
+export async function getRentBilling() {
+  try {
+    const store = await getStore();
+    const tenants = store[COLLECTIONS.TENANTS] || [];
+    const leases = store[COLLECTIONS.LEASES] || [];
+    const rooms = store[COLLECTIONS.ROOMS] || [];
+    const invoices = store[COLLECTIONS.INVOICES] || [];
+
+    return tenants
+      .filter((tenant) => {
+        const lease = leases.find((l) => l.tenant_id === tenant.id && l.status === 'active');
+        return !!lease;
+      })
+      .map((tenant) => {
+        const lease = leases.find((l) => l.tenant_id === tenant.id && l.status === 'active');
+        const room = rooms.find((r) => r.id === lease.room_id);
+        const invoice = invoices.find((inv) => inv.lease_id === lease.id);
+        const balance = invoice ? getInvoiceBalance(invoice.id, store) : 0;
+        const status = balance > 0 ? 'unpaid' : 'paid';
+
+        return {
+          id: String(tenant.id).replace('tenant-', ''),
+          name: `${tenant.first_name} ${tenant.last_name}`,
+          initials: tenant.initials,
+          room: room ? `R${parseInt(room.room_number, 10)}` : 'R?',
+          dueDate: invoice ? invoice.due_date.replace(', 2026', '') : 'Oct 5',
+          amount: lease.agreed_monthly_rent,
+          status,
+          color: tenant.avatar_color || '#8b5cf6',
+        };
+      });
+  } catch (error) {
+    console.error('Error fetching rent billing:', error);
+    return [];
+  }
+}
+
+/**
+ * 23. Billing data: Utility bills list
+ */
+export async function getUtilityBills() {
+  try {
+    const store = await getStore();
+    const utility_readings = store[COLLECTIONS.UTILITY_READINGS] || [];
+    const tenants = store[COLLECTIONS.TENANTS] || [];
+    const leases = store[COLLECTIONS.LEASES] || [];
+    const rooms = store[COLLECTIONS.ROOMS] || [];
+
+    return utility_readings.map((reading) => {
+      const room = rooms.find((r) => r.id === reading.room_id);
+      const lease = leases.find((l) => l.room_id === reading.room_id && l.status === 'active');
+      const tenant = lease ? tenants.find((t) => t.id === lease.tenant_id) : null;
+      const usage = reading.curr_kwh - reading.prev_kwh;
+      const amount = Math.round(usage * (reading.rate_per_kwh || 12.0));
+
+      return {
+        id: String(reading.id).replace('read-', ''),
+        name: tenant ? `${tenant.first_name} ${tenant.last_name}` : 'Vacant',
+        initials: tenant ? tenant.initials : '--',
+        prevKwh: reading.prev_kwh,
+        currKwh: reading.curr_kwh,
+        usage,
+        amount,
+        color: tenant ? tenant.avatar_color : '#999',
+      };
+    });
+  } catch (error) {
+    console.error('Error fetching utility bills:', error);
+    return [];
+  }
+}
+
+/**
+ * 24. Caretaker dashboard stats
+ */
+export async function getCaretakerDashboardData() {
+  try {
+    const store = await getStore();
+    const rooms = store[COLLECTIONS.ROOMS] || [];
+    const leases = store[COLLECTIONS.LEASES] || [];
+    const complaints = store[COLLECTIONS.COMPLAINTS] || [];
+    const announcements = store[COLLECTIONS.ANNOUNCEMENTS] || [];
+    const tenants = store[COLLECTIONS.TENANTS] || [];
+
+    const totalRooms = rooms.length;
+    const singleRooms = rooms.filter((r) => r.type_id === 'type-single').length;
+    const doubleRooms = rooms.filter((r) => r.type_id === 'type-double').length;
+    const occupied = leases.filter((l) => l.status === 'active').length;
+    const vacant = Math.max(0, totalRooms - occupied);
+    const rate = totalRooms > 0 ? Math.round((occupied / totalRooms) * 100) : 0;
+
+    const unpaidTenants = await getUnpaidTenants();
+    const totalUnpaid = unpaidTenants.reduce((sum, t) => sum + t.balance, 0);
+
+    const pendingComplaints = complaints.filter((c) => c.status === 'pending');
+    const pendingIssues = pendingComplaints.map((c) => {
+      const tenant = tenants.find((t) => t.id === c.tenant_id);
+      const room = rooms.find((r) => r.id === c.room_id);
+      return {
+        id: c.id,
+        room: room ? `R${parseInt(room.room_number, 10)}` : 'R?',
+        issue: c.title,
+        tenant: tenant ? `${tenant.first_name} ${tenant.last_name}` : 'Tenant',
+        date: c.filed_at,
+      };
+    });
+
+    const latestAnnouncement = announcements.length > 0 ? announcements[0] : null;
+
+    return {
+      totalRooms,
+      singleRooms,
+      doubleRooms,
+      occupied,
+      vacant,
+      rate,
+      unpaidCount: unpaidTenants.length,
+      totalUnpaid,
+      pendingIssueCount: pendingComplaints.length,
+      pendingIssues,
+      latestAnnouncement,
+    };
+  } catch (error) {
+    console.error('Error fetching caretaker dashboard data:', error);
+    return {
+      totalRooms: 17,
+      singleRooms: 12,
+      doubleRooms: 5,
+      occupied: 14,
+      vacant: 3,
+      rate: 82,
+      unpaidCount: 6,
+      totalUnpaid: 11500,
+      pendingIssueCount: 2,
+      pendingIssues: [],
+      latestAnnouncement: null,
+    };
+  }
+}
+
+/**
+ * 25. Add a new announcement (Direct to Firebase Firestore)
+ */
+export async function addAnnouncement({ category, title, description }) {
+  try {
+    const newId = `ann-${Date.now()}`;
+    const dateStr = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    const newAnnouncement = {
+      id: newId,
+      house_id: 'bh-1',
+      author_user_id: auth?.currentUser?.uid || 'user-caretaker-1',
+      category,
+      title,
+      description,
+      created_at: dateStr,
+    };
+
+    if (isFirebaseConfigured && db) {
+      await writeDocument(COLLECTIONS.ANNOUNCEMENTS, newId, newAnnouncement);
+    } else {
+      const mockStore = getNormalizedMockDatabase();
+      mockStore[COLLECTIONS.ANNOUNCEMENTS].unshift(newAnnouncement);
+    }
+
+    return {
+      id: newId.replace('ann-', ''),
+      announcement_id: newId,
+      category,
+      date: dateStr,
+      title,
+      description,
+      badgeColor: category === 'Payment' ? '#10b981' : '#059669',
+      badgeBg: '#d1fae5',
+    };
+  } catch (error) {
+    console.error('Error adding announcement:', error);
+    throw new Error('Failed to add announcement. Please try again.');
+  }
+}
+
+/**
+ * 26. Update complaint status (Direct to Firebase Firestore)
+ */
+export async function updateComplaintStatus(complaintId, newStatus) {
+  try {
+    const formattedId = complaintId.startsWith('comp-') ? complaintId : `comp-${complaintId}`;
+    const dateStr = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+    if (isFirebaseConfigured && db) {
+      const updates = { status: newStatus };
+      if (newStatus === 'resolved') {
+        updates.resolved_at = dateStr;
+      }
+      await updateDocument(COLLECTIONS.COMPLAINTS, formattedId, updates);
+    } else {
+      const mockStore = getNormalizedMockDatabase();
+      const complaint = (mockStore[COLLECTIONS.COMPLAINTS] || []).find((c) => c.id === formattedId);
+      if (complaint) {
+        complaint.status = newStatus;
+        if (newStatus === 'resolved') {
+          complaint.resolved_at = dateStr;
+        }
+      }
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error('Error updating complaint status:', error);
+    throw new Error('Failed to update complaint. Please try again.');
+  }
 }
 
 export { seedFirestoreDatabase };

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, Text, ScrollView, TextInput, TouchableOpacity, Platform } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, ScrollView, TextInput, TouchableOpacity, Platform, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../utils/ThemeContext';
 import {
@@ -13,29 +13,44 @@ import {
   cardShadow,
   safeAreaTop,
 } from '../utils/responsive';
+import { getTenants } from '../services/dataService';
 
 export default function TenantsScreen() {
   const { colors } = useTheme();
   const [searchQuery, setSearchQuery] = useState('');
+  const [tenants, setTenants] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
   const padding = getResponsivePadding();
   const containerMaxWidth = isDesktop ? 1400 : '100%';
 
-  const tenants = [
-    { id: 1, name: 'Maria Santos', initials: 'MS', room: 1, type: 'Single', dueDate: 'Oct 5, 2026', status: 'paid', balance: 0, color: '#ef4444' },
-    { id: 2, name: 'Ana Reyes', initials: 'AR', room: 2, type: 'Single', dueDate: 'Oct 5, 2026', status: 'unpaid', balance: 500, color: '#8b5cf6' },
-    { id: 3, name: 'Joy Cruz', initials: 'JC', room: 4, type: 'Single', dueDate: 'Oct 5, 2026', status: 'paid', balance: 0, color: '#3b82f6' },
-    { id: 4, name: 'Lyn Bautista', initials: 'LB', room: 5, type: 'Single', dueDate: 'Oct 5, 2026', status: 'unpaid', balance: 2500, color: '#10b981' },
-    { id: 5, name: 'Rose Dela Cruz', initials: 'RD', room: 7, type: 'Single', dueDate: 'Oct 5, 2026', status: 'paid', balance: 0, color: '#ef4444' },
-    { id: 6, name: 'Claire Flores', initials: 'CF', room: 8, type: 'Single', dueDate: 'Oct 5, 2026', status: 'paid', balance: 0, color: '#8b5cf6' },
-    { id: 7, name: 'Beth Mendoza', initials: 'BM', room: 9, type: 'Single', dueDate: 'Oct 5, 2026', status: 'unpaid', balance: 750, color: '#3b82f6' },
-    { id: 8, name: 'Shei Ramos', initials: 'SR', room: 10, type: 'Single', dueDate: 'Oct 5, 2026', status: 'paid', balance: 0, color: '#10b981' },
-    { id: 9, name: 'Cel Garcia', initials: 'CG', room: 11, type: 'Single', dueDate: 'Oct 5, 2026', status: 'paid', balance: 0, color: '#f59e0b' },
-    { id: 10, name: 'Diane Torres', initials: 'DT', room: 12, type: 'Single', dueDate: 'Oct 5, 2026', status: 'unpaid', balance: 2500, color: '#ec4899' },
-    { id: 11, name: 'Tess Villanueva', initials: 'TV', room: 13, type: 'Double', dueDate: 'Oct 5, 2026', status: 'paid', balance: 0, color: '#06b6d4' },
-    { id: 12, name: 'Karen Silva', initials: 'KS', room: 14, type: 'Double', dueDate: 'Oct 5, 2026', status: 'unpaid', balance: 3500, color: '#8b5cf6' },
-    { id: 13, name: 'Lisa Mendez', initials: 'LM', room: 17, type: 'Double', dueDate: 'Oct 5, 2026', status: 'unpaid', balance: 1200, color: '#f59e0b' },
-    { id: 14, name: 'Nina Reyes', initials: 'NR', room: 16, type: 'Double', dueDate: 'Oct 5, 2026', status: 'paid', balance: 0, color: '#10b981' },
-  ];
+  useEffect(() => {
+    let isMounted = true;
+    const fetchTenants = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const data = await getTenants();
+        if (isMounted) {
+          setTenants(data);
+        }
+      } catch (err) {
+        if (isMounted) {
+          setError('Failed to load tenants. Please try again.');
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    fetchTenants();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const paidCount = tenants.filter((t) => t.status === 'paid').length;
   const unpaidCount = tenants.filter((t) => t.status === 'unpaid').length;
@@ -49,6 +64,24 @@ export default function TenantsScreen() {
       tenant.room.toString().includes(query)
     );
   });
+
+  if (loading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.bg }}>
+        <ActivityIndicator size="large" color={colors.accent} />
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.bg, padding: 20 }}>
+        <Text style={{ color: colors.danger, fontSize: fs(16), textAlign: 'center', fontWeight: '600' }}>
+          {error}
+        </Text>
+      </View>
+    );
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -191,7 +224,7 @@ export default function TenantsScreen() {
                 No tenants found
               </Text>
               <Text style={{ fontSize: fs(13), color: colors.textMuted, marginTop: 4, textAlign: 'center' }}>
-                No tenant matches "{searchQuery}". Try a different name or room number.
+                {searchQuery ? `No tenant matches "${searchQuery}". Try a different name or room number.` : 'No tenants are registered.'}
               </Text>
             </View>
           ) : (

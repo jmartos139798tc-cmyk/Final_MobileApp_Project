@@ -12,17 +12,24 @@ import { initializeApp, getApps } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
-  apiKey: 'YOUR_API_KEY',
-  authDomain: 'YOUR_PROJECT.firebaseapp.com',
-  projectId: 'YOUR_PROJECT_ID',
-  storageBucket: 'YOUR_PROJECT.appspot.com',
-  messagingSenderId: 'YOUR_SENDER_ID',
-  appId: 'YOUR_APP_ID',
+  apiKey: "AIzaSyChaN7HCrI9jqshYyqJLWA6neWE6bRPiwE",
+  authDomain: "boardinghouse-rental-mgt.firebaseapp.com",
+  projectId: "boardinghouse-rental-mgt",
+  storageBucket: "boardinghouse-rental-mgt.firebasestorage.app",
+  messagingSenderId: "187056162619",
+  appId: "1:187056162619:web:a37245ade9a828104b191e",
+  measurementId: "G-LVTZ428VV6"
 };
 
-// Check if Firebase config has been set up
-export const isFirebaseConfigured = firebaseConfig.apiKey !== 'YOUR_API_KEY';
+// Treat the app as configured when real project values replace the placeholders.
+export const isFirebaseConfigured = Boolean(
+  firebaseConfig.apiKey &&
+  firebaseConfig.apiKey !== 'YOUR_API_KEY' &&
+  firebaseConfig.projectId &&
+  firebaseConfig.projectId !== 'YOUR_PROJECT_ID'
+);
 
 // Initialize Firebase only if configured (prevents crashes with placeholder config)
 let app = null;
@@ -36,4 +43,3 @@ if (isFirebaseConfigured && getApps().length === 0) {
 }
 
 export { app, db, auth };
-

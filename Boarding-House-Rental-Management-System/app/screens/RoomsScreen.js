@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../utils/ThemeContext';
 import {
@@ -14,10 +14,15 @@ import {
   safeAreaTop,
   getGridColumns,
 } from '../utils/responsive';
+import { getRooms } from '../services/dataService';
 
 export default function RoomsScreen() {
   const { colors } = useTheme();
   const [filter, setFilter] = useState('all');
+  const [rooms, setRooms] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
   const padding = getResponsivePadding();
   const containerMaxWidth = isDesktop ? 1400 : '100%';
 
@@ -33,25 +38,32 @@ export default function RoomsScreen() {
   };
   const cardWidth = getCardWidth();
 
-  const rooms = [
-    { id: 1, number: '01', type: 'Single', tenant: 'Maria', status: 'paid', balance: 0 },
-    { id: 2, number: '02', type: 'Single', tenant: 'Ana', status: 'balance', balance: 500 },
-    { id: 3, number: '03', type: 'Single', tenant: null, status: 'vacant', balance: 0 },
-    { id: 4, number: '04', type: 'Single', tenant: 'Joy', status: 'paid', balance: 0 },
-    { id: 5, number: '05', type: 'Single', tenant: 'Lyn', status: 'balance', balance: 2500 },
-    { id: 6, number: '06', type: 'Single', tenant: null, status: 'vacant', balance: 0 },
-    { id: 7, number: '07', type: 'Single', tenant: 'Rose', status: 'paid', balance: 0 },
-    { id: 8, number: '08', type: 'Single', tenant: 'Claire', status: 'paid', balance: 0 },
-    { id: 9, number: '09', type: 'Single', tenant: 'Beth', status: 'balance', balance: 750 },
-    { id: 10, number: '10', type: 'Single', tenant: 'Shei', status: 'paid', balance: 0 },
-    { id: 11, number: '11', type: 'Single', tenant: 'Cel', status: 'paid', balance: 0 },
-    { id: 12, number: '12', type: 'Single', tenant: 'Diane', status: 'balance', balance: 2500 },
-    { id: 13, number: '13', type: 'Double', tenant: 'Tess', status: 'paid', balance: 0 },
-    { id: 14, number: '14', type: 'Double', tenant: 'Karen', status: 'balance', balance: 3500 },
-    { id: 15, number: '15', type: 'Double', tenant: null, status: 'vacant', balance: 0 },
-    { id: 16, number: '16', type: 'Double', tenant: null, status: 'vacant', balance: 0 },
-    { id: 17, number: '17', type: 'Double', tenant: 'Lisa', status: 'balance', balance: 1200 },
-  ];
+  useEffect(() => {
+    let isMounted = true;
+    const fetchRooms = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const data = await getRooms();
+        if (isMounted) {
+          setRooms(data);
+        }
+      } catch (err) {
+        if (isMounted) {
+          setError('Failed to load rooms. Please try again.');
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    fetchRooms();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const totalCount = rooms.length;
   const occupiedCount = rooms.filter((r) => r.tenant !== null).length;
@@ -85,6 +97,24 @@ export default function RoomsScreen() {
     }
     return { backgroundColor: colors.roomVacant };
   };
+
+  if (loading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.bg }}>
+        <ActivityIndicator size="large" color={colors.accent} />
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.bg, padding: 20 }}>
+        <Text style={{ color: colors.danger, fontSize: fs(16), textAlign: 'center', fontWeight: '600' }}>
+          {error}
+        </Text>
+      </View>
+    );
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>

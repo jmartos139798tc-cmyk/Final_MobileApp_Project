@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { isMobile, isDesktop, getResponsivePadding, fs, spacing, cardStyle, cardShadow, safeAreaTop, accentShadow } from '../../utils/responsive';
 import { useTheme } from '../../utils/ThemeContext';
@@ -10,12 +10,42 @@ export default function OwnerDashboard() {
   const padding = getResponsivePadding();
   const containerMaxWidth = isDesktop ? 1400 : '100%';
 
-  const config = getBoardingHouseConfig();
-  const revenue = getRevenue('september');
-  const occupancy = getOccupancyStats();
-  const unpaidStats = getUnpaidStats();
-  const issueStats = getIssueStats();
-  const unpaidTenants = getUnpaidTenants();
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [config, setConfig] = useState(null);
+  const [revenue, setRevenue] = useState(null);
+  const [occupancy, setOccupancy] = useState(null);
+  const [unpaidStats, setUnpaidStats] = useState(null);
+  const [issueStats, setIssueStats] = useState(null);
+  const [unpaidTenants, setUnpaidTenants] = useState([]);
+
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const configData = await getBoardingHouseConfig();
+        const revenueData = await getRevenue('september');
+        const occupancyData = await getOccupancyStats();
+        const unpaidStatsData = await getUnpaidStats();
+        const issueStatsData = await getIssueStats();
+        const unpaidTenantsData = await getUnpaidTenants();
+
+        setConfig(configData);
+        setRevenue(revenueData);
+        setOccupancy(occupancyData);
+        setUnpaidStats(unpaidStatsData);
+        setIssueStats(issueStatsData);
+        setUnpaidTenants(unpaidTenantsData);
+      } catch (err) {
+        setError('Failed to load dashboard data.');
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadData();
+  }, []);
+
+  if (loading) return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.bg }}><ActivityIndicator size="large" color={colors.accent} /></View>;
+  if (error) return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.bg }}><Text style={{ color: colors.danger, fontSize: 16 }}>{error}</Text></View>;
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -267,4 +297,3 @@ export default function OwnerDashboard() {
     </View>
   );
 }
-

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, TextInput } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, TextInput, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { isMobile, isDesktop, getResponsivePadding, fs, spacing, cardStyle, safeAreaTop } from '../../utils/responsive';
 import { useTheme } from '../../utils/ThemeContext';
@@ -9,17 +9,40 @@ import {
   submitRoomChangeRequest,
 } from '../../services/dataService';
 
-export default function TenantRoomChangeScreen() {
+export default function TenantRoomChangeScreen({ user }) {
   const { colors } = useTheme();
   const padding = getResponsivePadding();
-  const [availableRooms] = useState(() => getAvailableRoomsForChange());
-  const [requests, setRequests] = useState(() => getTenantRoomChangeRequests('Ana Reyes'));
+  const [availableRooms, setAvailableRooms] = useState([]);
+  const [requests, setRequests] = useState([]);
   const [selectedRoomId, setSelectedRoomId] = useState(null);
   const [reason, setReason] = useState('');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   const containerMaxWidth = isDesktop ? 1400 : '100%';
 
-  const submitRequest = () => {
+  const loadData = async () => {
+    try {
+      setLoading(true);
+      setError('');
+      const [rooms, reqs] = await Promise.all([
+        getAvailableRoomsForChange(),
+        getTenantRoomChangeRequests(user?.tenant_id),
+      ]);
+      setAvailableRooms(rooms);
+      setRequests(reqs);
+    } catch (err) {
+      setError('Failed to load room change data.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, [user?.tenant_id]);
+
+  const submitRequest = async () => {
     if (!selectedRoomId) {
       setError('Please select an available room.');
       return;
@@ -30,10 +53,12 @@ export default function TenantRoomChangeScreen() {
     }
 
     try {
-      const request = submitRoomChangeRequest({
+      setSubmitting(true);
+      setError('');
+      const request = await submitRoomChangeRequest({
         requestedRoomId: selectedRoomId,
         reason: reason.trim(),
-        tenantName: 'Ana Reyes',
+        tenantId: user?.tenant_id,
       });
       setRequests((current) => [request, ...current]);
       setSelectedRoomId(null);
@@ -41,6 +66,8 @@ export default function TenantRoomChangeScreen() {
       setError('Your room-change request has been submitted for review.');
     } catch (submissionError) {
       setError(submissionError.message || 'Unable to submit your request. Please try again.');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -49,6 +76,14 @@ export default function TenantRoomChangeScreen() {
     : status === 'declined'
       ? { label: 'Declined', color: colors.dangerText, bg: colors.dangerBg }
       : { label: 'Pending review', color: colors.warningText, bg: colors.warningBg };
+
+  if (loading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.bg }}>
+        <ActivityIndicator size="large" color={colors.accent} />
+      </View>
+    );
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -69,27 +104,33 @@ export default function TenantRoomChangeScreen() {
                 </View>
                 <View>
                   <Text style={{ fontSize: fs(16), color: colors.text, fontWeight: '800' }}>New room request</Text>
-                  <Text style={{ fontSize: fs(13), color: colors.textMuted, marginTop: 2 }}>Current room: Room 2</Text>
+                  <Text style={{ fontSize: fs(13), color: colors.textMuted, marginTop: 2 }}>Your assigned room will appear here after the caretaker assigns it.</Text>
                 </View>
               </View>
 
               <Text style={{ fontSize: fs(14), color: colors.textSecondary, fontWeight: '700', marginBottom: 9 }}>Choose an available room *</Text>
               <View style={{ gap: 10 }}>
-                {availableRooms.map((room) => {
-                  const selected = selectedRoomId === room.id;
-                  return (
-                    <TouchableOpacity key={room.id} activeOpacity={0.75} onPress={() => { setSelectedRoomId(room.id); setError(''); }} style={{
-                      borderWidth: 1.5, borderColor: selected ? colors.accent : colors.cardBorder, backgroundColor: selected ? colors.accentBg : colors.bg,
-                      borderRadius: 12, padding: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 60,
-                    }}>
-                      <View>
-                        <Text style={{ fontSize: fs(16), color: colors.text, fontWeight: '800' }}>Room {room.number}</Text>
-                        <Text style={{ fontSize: fs(13), color: colors.textMuted, marginTop: 3 }}>{room.type} · ₱{room.monthlyRent.toLocaleString()}/month</Text>
-                      </View>
-                      <Ionicons name={selected ? 'radio-button-on' : 'radio-button-off'} size={24} color={selected ? colors.accent : colors.textMuted} />
-                    </TouchableOpacity>
-                  );
-                })}
+                {availableRooms.length === 0 ? (
+                  <Text style={{ fontSize: fs(13), color: colors.textMuted, fontStyle: 'italic', paddingVertical: 8 }}>
+                    No rooms are currently vacant for transfer.
+                  </Text>
+                ) : (
+                  availableRooms.map((room) => {
+                    const selected = selectedRoomId === room.id;
+                    return (
+                      <TouchableOpacity key={room.id} activeOpacity={0.75} onPress={() => { setSelectedRoomId(room.id); setError(''); }} style={{
+                        borderWidth: 1.5, borderColor: selected ? colors.accent : colors.cardBorder, backgroundColor: selected ? colors.accentBg : colors.bg,
+                        borderRadius: 12, padding: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 60,
+                      }}>
+                        <View>
+                          <Text style={{ fontSize: fs(16), color: colors.text, fontWeight: '800' }}>Room {room.number}</Text>
+                          <Text style={{ fontSize: fs(13), color: colors.textMuted, marginTop: 3 }}>{room.type} · ₱{room.monthlyRent.toLocaleString()}/month</Text>
+                        </View>
+                        <Ionicons name={selected ? 'radio-button-on' : 'radio-button-off'} size={24} color={selected ? colors.accent : colors.textMuted} />
+                      </TouchableOpacity>
+                    );
+                  })
+                )}
               </View>
 
               <Text style={{ fontSize: fs(14), color: colors.textSecondary, fontWeight: '700', marginTop: 18, marginBottom: 7 }}>Reason for transfer *</Text>
@@ -104,8 +145,17 @@ export default function TenantRoomChangeScreen() {
               />
 
               {!!error && <Text style={{ fontSize: fs(13), color: error.startsWith('Your') ? colors.success : colors.danger, marginTop: 10, fontWeight: '600' }}>{error}</Text>}
-              <TouchableOpacity activeOpacity={0.8} onPress={submitRequest} style={{ backgroundColor: colors.primary, paddingVertical: 14, borderRadius: 12, alignItems: 'center', marginTop: 18, minHeight: 48, justifyContent: 'center' }}>
-                <Text style={{ fontSize: fs(15), fontWeight: '800', color: colors.onPrimary }}>Submit Room Change Request</Text>
+              <TouchableOpacity
+                activeOpacity={0.8}
+                disabled={submitting}
+                onPress={submitRequest}
+                style={{ backgroundColor: colors.primary, paddingVertical: 14, borderRadius: 12, alignItems: 'center', marginTop: 18, minHeight: 48, justifyContent: 'center', opacity: submitting ? 0.6 : 1 }}
+              >
+                {submitting ? (
+                  <ActivityIndicator size="small" color={colors.onPrimary} />
+                ) : (
+                  <Text style={{ fontSize: fs(15), fontWeight: '800', color: colors.onPrimary }}>Submit Room Change Request</Text>
+                )}
               </TouchableOpacity>
             </View>
 

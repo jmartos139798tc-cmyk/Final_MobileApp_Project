@@ -1,31 +1,65 @@
-import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Modal, TextInput } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, Modal, TextInput, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { isMobile, isDesktop, getResponsivePadding, fs, spacing, cardStyle, cardShadow, safeAreaTop } from '../../utils/responsive';
 import { useTheme } from '../../utils/ThemeContext';
 import { getTenantComplaints, submitComplaint } from '../../services/dataService';
 
-export default function TenantComplaintsScreen() {
+export default function TenantComplaintsScreen({ user }) {
   const { colors } = useTheme();
   const padding = getResponsivePadding();
   const containerMaxWidth = isDesktop ? 1400 : '100%';
 
-  const [complaints, setComplaints] = useState(() => getTenantComplaints('Ana Reyes'));
+  const [complaints, setComplaints] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
   const [modalVisible, setModalVisible] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newDescription, setNewDescription] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
 
-  const handleCreateComplaint = () => {
-    if (!newTitle.trim()) return;
-    const added = submitComplaint({
-      title: newTitle.trim(),
-      tenantName: 'Ana Reyes',
-      room: 'Room 2',
-    });
-    setComplaints([added, ...complaints]);
-    setNewTitle('');
-    setNewDescription('');
-    setModalVisible(false);
+  const loadComplaints = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await getTenantComplaints(user?.tenant_id);
+      setComplaints(data);
+    } catch (err) {
+      setError('Failed to load your complaints.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadComplaints();
+  }, [user?.tenant_id]);
+
+  const handleCreateComplaint = async () => {
+    if (!newTitle.trim()) {
+      setSubmitError('Please enter an issue title.');
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      setSubmitError('');
+      const added = await submitComplaint({
+        title: newTitle.trim(),
+        description: newDescription.trim(),
+        tenantId: user?.tenant_id,
+      });
+      setComplaints((prev) => [added, ...prev]);
+      setNewTitle('');
+      setNewDescription('');
+      setModalVisible(false);
+    } catch (err) {
+      setSubmitError(err.message || 'Failed to submit complaint. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const getStatusBadge = (status) => {
@@ -51,6 +85,24 @@ export default function TenantComplaintsScreen() {
         };
     }
   };
+
+  if (loading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.bg }}>
+        <ActivityIndicator size="large" color={colors.accent} />
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.bg, padding: 20 }}>
+        <Text style={{ color: colors.danger, fontSize: fs(16), textAlign: 'center', fontWeight: '600' }}>
+          {error}
+        </Text>
+      </View>
+    );
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -84,7 +136,10 @@ export default function TenantComplaintsScreen() {
 
             <TouchableOpacity
               activeOpacity={0.8}
-              onPress={() => setModalVisible(true)}
+              onPress={() => {
+                setSubmitError('');
+                setModalVisible(true);
+              }}
               style={{
                 width: '100%',
                 paddingVertical: 14,
@@ -134,7 +189,7 @@ export default function TenantComplaintsScreen() {
                 const badge = getStatusBadge(item.status);
                 return (
                   <View
-                    key={item.id}
+                    key={item.id || item.complaint_id}
                     style={{
                       ...cardStyle,
                       backgroundColor: colors.card,
@@ -224,7 +279,7 @@ export default function TenantComplaintsScreen() {
             </View>
 
             <Text style={{ fontSize: fs(13), color: colors.textMuted, marginBottom: 8 }}>
-              Filing for: Room 2 · Ana Reyes
+              Filing under: {user?.name || user?.email}
             </Text>
 
             <Text style={{ fontSize: fs(14), fontWeight: '700', color: colors.textSecondary, marginBottom: 6 }}>
@@ -263,7 +318,7 @@ export default function TenantComplaintsScreen() {
                 color: colors.text,
                 minHeight: 80,
                 textAlignVertical: 'top',
-                marginBottom: 20,
+                marginBottom: 14,
               }}
               placeholder="Provide any additional details or urgency..."
               placeholderTextColor={colors.textMuted}
@@ -271,6 +326,12 @@ export default function TenantComplaintsScreen() {
               value={newDescription}
               onChangeText={setNewDescription}
             />
+
+            {!!submitError && (
+              <Text style={{ fontSize: fs(13), color: colors.danger, marginBottom: 12, fontWeight: '600' }}>
+                {submitError}
+              </Text>
+            )}
 
             <View style={{ flexDirection: 'row', gap: 10 }}>
               <TouchableOpacity
@@ -291,6 +352,7 @@ export default function TenantComplaintsScreen() {
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={handleCreateComplaint}
+                disabled={submitting}
                 style={{
                   flex: 1,
                   backgroundColor: colors.primary,
@@ -299,9 +361,14 @@ export default function TenantComplaintsScreen() {
                   alignItems: 'center',
                   minHeight: 48,
                   justifyContent: 'center',
+                  opacity: submitting ? 0.6 : 1,
                 }}
               >
-                <Text style={{ fontSize: fs(15), fontWeight: '800', color: colors.onPrimary }}>Submit</Text>
+                {submitting ? (
+                  <ActivityIndicator size="small" color={colors.onPrimary} />
+                ) : (
+                  <Text style={{ fontSize: fs(15), fontWeight: '800', color: colors.onPrimary }}>Submit</Text>
+                )}
               </TouchableOpacity>
             </View>
           </View>

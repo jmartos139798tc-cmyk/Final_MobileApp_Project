@@ -11,10 +11,16 @@ import { COLLECTIONS } from './databaseSchema.js';
 export const SEED_DATA = {
   // 1. USERS
   [COLLECTIONS.USERS]: [
-    { id: 'user-owner-1', email: 'owner@bh.com', role: 'owner', name: 'Boarding House Owner', created_at: '2026-01-01' },
-    { id: 'user-caretaker-1', email: 'caretaker@bh.com', role: 'caretaker', name: 'Property Caretaker', created_at: '2026-01-01' },
-    { id: 'user-tenant-2', email: 'ana@bh.com', role: 'tenant', name: 'Ana Reyes', tenant_id: 'tenant-2', created_at: '2026-02-15' },
-    { id: 'user-tenant-1', email: 'maria@bh.com', role: 'tenant', name: 'Maria Santos', tenant_id: 'tenant-1', created_at: '2026-01-10' },
+    // Demo identities only; credentials belong in Firebase Authentication.
+    { id: 'user-owner-1', email: 'owner@bh.com', role: 'owner', created_at: '2026-01-01' },
+    { id: 'user-caretaker-1', email: 'caretaker@bh.com', role: 'caretaker', created_at: '2026-01-01' },
+    { id: 'user-tenant-2', email: 'ana@bh.com', role: 'tenant', created_at: '2026-02-15' },
+    { id: 'user-tenant-1', email: 'maria@bh.com', role: 'tenant', created_at: '2026-01-10' },
+  ],
+
+  [COLLECTIONS.STAFF_PROFILES]: [
+    { id: 'user-owner-1', user_id: 'user-owner-1', first_name: 'Boarding House', last_name: 'Owner', phone: '' },
+    { id: 'user-caretaker-1', user_id: 'user-caretaker-1', first_name: 'Property', last_name: 'Caretaker', phone: '' },
   ],
 
   // 2. BOARDING_HOUSES
@@ -24,7 +30,6 @@ export const SEED_DATA = {
       name: 'Neat & Groovy BH',
       address: 'University Belt, Sampaloc, Manila',
       default_kwh_rate: 12.0,
-      total_rooms: 17,
       created_at: '2026-01-01',
     },
   ],
@@ -102,20 +107,20 @@ export const SEED_DATA = {
 
   // 8. INVOICES (Monthly billing per lease)
   [COLLECTIONS.INVOICES]: [
-    { id: 'inv-1', lease_id: 'lease-1', tenant_id: 'tenant-1', billing_period: '2026-09', rent_charge: 2500, utility_charge: 300, total_amount: 2800, due_date: 'Oct 5, 2026', status: 'paid' },
-    { id: 'inv-2', lease_id: 'lease-2', tenant_id: 'tenant-2', billing_period: '2026-09', rent_charge: 2500, utility_charge: 340, total_amount: 2840, due_date: 'Oct 5, 2026', status: 'partial' },
-    { id: 'inv-3', lease_id: 'lease-3', tenant_id: 'tenant-3', billing_period: '2026-09', rent_charge: 2500, utility_charge: 300, total_amount: 2800, due_date: 'Oct 5, 2026', status: 'paid' },
-    { id: 'inv-4', lease_id: 'lease-4', tenant_id: 'tenant-4', billing_period: '2026-09', rent_charge: 2500, utility_charge: 420, total_amount: 2920, due_date: 'Oct 5, 2026', status: 'unpaid' },
-    { id: 'inv-5', lease_id: 'lease-5', tenant_id: 'tenant-5', billing_period: '2026-09', rent_charge: 2500, utility_charge: 280, total_amount: 2780, due_date: 'Oct 5, 2026', status: 'paid' },
-    { id: 'inv-6', lease_id: 'lease-6', tenant_id: 'tenant-6', billing_period: '2026-09', rent_charge: 2500, utility_charge: 290, total_amount: 2790, due_date: 'Oct 5, 2026', status: 'paid' },
-    { id: 'inv-7', lease_id: 'lease-7', tenant_id: 'tenant-7', billing_period: '2026-09', rent_charge: 2500, utility_charge: 350, total_amount: 2850, due_date: 'Oct 5, 2026', status: 'partial' },
-    { id: 'inv-8', lease_id: 'lease-8', tenant_id: 'tenant-8', billing_period: '2026-09', rent_charge: 2500, utility_charge: 310, total_amount: 2810, due_date: 'Oct 5, 2026', status: 'paid' },
-    { id: 'inv-9', lease_id: 'lease-9', tenant_id: 'tenant-9', billing_period: '2026-09', rent_charge: 2500, utility_charge: 330, total_amount: 2830, due_date: 'Oct 5, 2026', status: 'paid' },
-    { id: 'inv-10', lease_id: 'lease-10', tenant_id: 'tenant-10', billing_period: '2026-09', rent_charge: 2500, utility_charge: 350, total_amount: 2850, due_date: 'Oct 5, 2026', status: 'unpaid' },
-    { id: 'inv-11', lease_id: 'lease-11', tenant_id: 'tenant-11', billing_period: '2026-09', rent_charge: 3500, utility_charge: 500, total_amount: 4000, due_date: 'Oct 5, 2026', status: 'paid' },
-    { id: 'inv-12', lease_id: 'lease-12', tenant_id: 'tenant-12', billing_period: '2026-09', rent_charge: 3500, utility_charge: 520, total_amount: 4020, due_date: 'Oct 5, 2026', status: 'unpaid' },
-    { id: 'inv-13', lease_id: 'lease-13', tenant_id: 'tenant-13', billing_period: '2026-09', rent_charge: 3500, utility_charge: 480, total_amount: 3980, due_date: 'Oct 5, 2026', status: 'partial' },
-    { id: 'inv-14', lease_id: 'lease-14', tenant_id: 'tenant-14', billing_period: '2026-09', rent_charge: 3500, utility_charge: 490, total_amount: 3990, due_date: 'Oct 5, 2026', status: 'paid' },
+    { id: 'inv-1', lease_id: 'lease-1', billing_period: '2026-09', rent_charge: 2500, utility_charge: 300, total_amount: 2800, due_date: 'Oct 5, 2026', status: 'paid' },
+    { id: 'inv-2', lease_id: 'lease-2', billing_period: '2026-09', rent_charge: 2500, utility_charge: 340, total_amount: 2840, due_date: 'Oct 5, 2026', status: 'partial' },
+    { id: 'inv-3', lease_id: 'lease-3', billing_period: '2026-09', rent_charge: 2500, utility_charge: 300, total_amount: 2800, due_date: 'Oct 5, 2026', status: 'paid' },
+    { id: 'inv-4', lease_id: 'lease-4', billing_period: '2026-09', rent_charge: 2500, utility_charge: 420, total_amount: 2920, due_date: 'Oct 5, 2026', status: 'unpaid' },
+    { id: 'inv-5', lease_id: 'lease-5', billing_period: '2026-09', rent_charge: 2500, utility_charge: 280, total_amount: 2780, due_date: 'Oct 5, 2026', status: 'paid' },
+    { id: 'inv-6', lease_id: 'lease-6', billing_period: '2026-09', rent_charge: 2500, utility_charge: 290, total_amount: 2790, due_date: 'Oct 5, 2026', status: 'paid' },
+    { id: 'inv-7', lease_id: 'lease-7', billing_period: '2026-09', rent_charge: 2500, utility_charge: 350, total_amount: 2850, due_date: 'Oct 5, 2026', status: 'partial' },
+    { id: 'inv-8', lease_id: 'lease-8', billing_period: '2026-09', rent_charge: 2500, utility_charge: 310, total_amount: 2810, due_date: 'Oct 5, 2026', status: 'paid' },
+    { id: 'inv-9', lease_id: 'lease-9', billing_period: '2026-09', rent_charge: 2500, utility_charge: 330, total_amount: 2830, due_date: 'Oct 5, 2026', status: 'paid' },
+    { id: 'inv-10', lease_id: 'lease-10', billing_period: '2026-09', rent_charge: 2500, utility_charge: 350, total_amount: 2850, due_date: 'Oct 5, 2026', status: 'unpaid' },
+    { id: 'inv-11', lease_id: 'lease-11', billing_period: '2026-09', rent_charge: 3500, utility_charge: 500, total_amount: 4000, due_date: 'Oct 5, 2026', status: 'paid' },
+    { id: 'inv-12', lease_id: 'lease-12', billing_period: '2026-09', rent_charge: 3500, utility_charge: 520, total_amount: 4020, due_date: 'Oct 5, 2026', status: 'unpaid' },
+    { id: 'inv-13', lease_id: 'lease-13', billing_period: '2026-09', rent_charge: 3500, utility_charge: 480, total_amount: 3980, due_date: 'Oct 5, 2026', status: 'partial' },
+    { id: 'inv-14', lease_id: 'lease-14', billing_period: '2026-09', rent_charge: 3500, utility_charge: 490, total_amount: 3990, due_date: 'Oct 5, 2026', status: 'paid' },
   ],
 
   // 9. PAYMENTS (Transactions settling invoices)
@@ -175,7 +180,7 @@ export function resetNormalizedMockDatabase() {
 }
 
 /**
- * Seeds all 11 collections into Firestore when a live Firebase project is connected.
+ * Seeds all normalized collections into Firestore when a live Firebase project is connected.
  */
 export async function seedFirestoreDatabase(firestoreInstance) {
   if (!firestoreInstance) throw new Error('Firestore instance required');
@@ -191,7 +196,6 @@ export async function seedFirestoreDatabase(firestoreInstance) {
   }
 
   await batch.commit();
-  console.log('✅ Successfully seeded all 11 3NF collections to Firestore!');
+  console.log('✅ Successfully seeded all normalized 3NF collections to Firestore!');
   return true;
 }
-

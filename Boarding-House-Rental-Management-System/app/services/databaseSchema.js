@@ -13,6 +13,7 @@ export const COLLECTIONS = {
   ROOM_TYPES: 'room_types',
   ROOMS: 'rooms',
   TENANTS: 'tenants',
+  STAFF_PROFILES: 'staff_profiles',
   LEASES: 'leases',
   UTILITY_READINGS: 'utility_readings',
   INVOICES: 'invoices',
@@ -28,6 +29,7 @@ export const COLLECTIONS = {
  * 1. USERS: Authentication & base authorization
  *    - PK: user_id
  *    - Fields: email, role ('owner'|'caretaker'|'tenant'), created_at
+ *    - Authentication credentials remain in Firebase Authentication.
  * 
  * 2. BOARDING_HOUSES: Property details
  *    - PK: house_id
@@ -47,43 +49,47 @@ export const COLLECTIONS = {
  *    - PK: tenant_id
  *    - FK: user_id -> USERS.user_id (nullable for offline tenants)
  *    - Fields: first_name, last_name, initials, phone, emergency_contact, avatar_color
+ *
+ * 6. STAFF_PROFILES: Owner/caretaker personal records
+ *    - PK: user_id (also FK -> USERS.user_id)
+ *    - Fields: first_name, last_name, phone
  * 
- * 6. LEASES: Room occupancy & tenancy agreement (Many-to-many over time)
+ * 7. LEASES: Room occupancy & tenancy agreement (Many-to-many over time)
  *    - PK: lease_id
  *    - FK: tenant_id -> TENANTS.tenant_id
  *    - FK: room_id -> ROOMS.room_id
  *    - Fields: start_date, end_date, agreed_monthly_rent, due_day_of_month, status ('active'|'terminated')
  * 
- * 7. UTILITY_READINGS: Electricity consumption records per room
+ * 8. UTILITY_READINGS: Electricity consumption records per room
  *    - PK: reading_id
  *    - FK: room_id -> ROOMS.room_id
  *    - Fields: billing_period ('2026-09'), prev_kwh, curr_kwh, rate_per_kwh, reading_date
  * 
- * 8. INVOICES: Monthly billing statements per lease
+ * 9. INVOICES: Monthly billing statements per lease
  *    - PK: invoice_id
  *    - FK: lease_id -> LEASES.lease_id
- *    - FK: tenant_id -> TENANTS.tenant_id
  *    - Fields: billing_period ('2026-09'), rent_charge, utility_charge, total_amount, due_date, status ('paid'|'unpaid'|'partial')
+ *    - Tenant is determined through lease_id -> LEASES.tenant_id; do not duplicate tenant_id here.
  * 
- * 9. PAYMENTS: Financial transactions settling invoices
+ * 10. PAYMENTS: Financial transactions settling invoices
  *    - PK: payment_id
  *    - FK: invoice_id -> INVOICES.invoice_id
  *    - Fields: amount_paid, payment_date, payment_method ('cash'|'gcash'), reference_no, received_by_user_id
  * 
- * 10. COMPLAINTS: Issues filed by tenants
+ * 11. COMPLAINTS: Issues filed by tenants
  *     - PK: complaint_id
  *     - FK: tenant_id -> TENANTS.tenant_id
  *     - FK: room_id -> ROOMS.room_id
  *     - Fields: title, description, status ('pending'|'in-progress'|'resolved'), filed_at, resolved_at
  *
- * 11. ROOM_CHANGE_REQUESTS: Tenant requests to transfer to an available room
+ * 12. ROOM_CHANGE_REQUESTS: Tenant requests to transfer to an available room
  *     - PK: request_id
  *     - FK: tenant_id -> TENANTS.tenant_id
  *     - FK: current_room_id -> ROOMS.room_id
  *     - FK: requested_room_id -> ROOMS.room_id
  *     - Fields: reason, status ('pending'|'approved'|'declined'), requested_at
  * 
- * 12. ANNOUNCEMENTS: Broadcast notices for the property
+ * 13. ANNOUNCEMENTS: Broadcast notices for the property
  *     - PK: announcement_id
  *     - FK: house_id -> BOARDING_HOUSES.house_id
  *     - FK: author_user_id -> USERS.user_id
@@ -106,5 +112,7 @@ export const COLLECTIONS = {
  * - Why separate INVOICES and PAYMENTS?
  *   Tenants can make partial payments (e.g. paying ₱2,340 now and ₱500 later). Storing payment
  *   directly in INVOICES violates 1NF (repeating groups) or creates update anomalies.
+ * - USERS stores no tenant_id or personal name; those details belong to the matching
+ *   tenant or staff profile. House room totals and invoice tenant IDs are derived
+ *   through relationships and are not persisted as duplicate facts.
  */
-

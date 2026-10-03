@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useMemo, useState, useEffect } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { isMobile, isDesktop, getResponsivePadding, fs, spacing, cardStyle, safeAreaTop } from '../utils/responsive';
 import { useTheme } from '../utils/ThemeContext';
@@ -8,21 +8,45 @@ import { getRoomChangeRequests, reviewRoomChangeRequest } from '../services/data
 export default function RoomChangeRequestsScreen() {
   const { colors } = useTheme();
   const padding = getResponsivePadding();
-  const [requests, setRequests] = useState(() => getRoomChangeRequests());
+  const [requests, setRequests] = useState([]);
   const [filter, setFilter] = useState('All');
   const [notice, setNotice] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [processingId, setProcessingId] = useState(null);
+
   const containerMaxWidth = isDesktop ? 1400 : '100%';
+
+  const fetchRequests = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await getRoomChangeRequests();
+      setRequests(data);
+    } catch (err) {
+      setError('Failed to load room change requests.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchRequests();
+  }, []);
 
   const filteredRequests = useMemo(() => requests.filter((request) => filter === 'All' || request.status === filter.toLowerCase()), [filter, requests]);
   const pendingCount = requests.filter((request) => request.status === 'pending').length;
 
-  const reviewRequest = (id, decision) => {
+  const reviewRequest = async (id, decision) => {
     try {
-      const updated = reviewRoomChangeRequest(id, decision);
+      setProcessingId(id);
+      const updated = await reviewRoomChangeRequest(id, decision);
       setRequests((current) => current.map((request) => request.id === id ? updated : request));
-      setNotice(decision === 'approved' ? 'Request approved and tenant room assignment updated.' : 'Request declined. The tenant remains in their current room.');
-    } catch (error) {
-      setNotice(error.message || 'Unable to update this request.');
+      setNotice(decision === 'approved' ? 'Request approved and tenant room assignment updated in database.' : 'Request declined. The tenant remains in their current room.');
+    } catch (err) {
+      setNotice(err.message || 'Unable to update this request.');
+    } finally {
+      setProcessingId(null);
     }
   };
 
@@ -31,6 +55,24 @@ export default function RoomChangeRequestsScreen() {
     : status === 'declined'
       ? { bg: 'rgba(239, 68, 68, 0.15)', color: colors.danger, label: 'Declined' }
       : { bg: colors.warningBg, color: colors.warningText, label: 'Pending' };
+
+  if (loading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.bg }}>
+        <ActivityIndicator size="large" color={colors.accent} />
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.bg, padding: 20 }}>
+        <Text style={{ color: colors.danger, fontSize: fs(16), textAlign: 'center', fontWeight: '600' }}>
+          {error}
+        </Text>
+      </View>
+    );
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -56,6 +98,8 @@ export default function RoomChangeRequestsScreen() {
 
             {filteredRequests.map((request) => {
               const status = statusStyle(request.status);
+              const isProcessing = processingId === request.id;
+
               return <View key={request.id} style={{ ...cardStyle, backgroundColor: colors.card, borderColor: colors.cardBorder, padding: isMobile ? 17 : 22, borderLeftWidth: 3, borderLeftColor: request.status === 'pending' ? colors.warning : status.color }}>
                 <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
                   <View style={{ flexDirection: 'row', gap: 10, flex: 1 }}>
@@ -77,8 +121,14 @@ export default function RoomChangeRequestsScreen() {
                 <Text style={{ color: colors.textSecondary, fontSize: fs(13), lineHeight: 20, marginTop: 14 }}>{request.reason}</Text>
 
                 {request.status === 'pending' && <View style={{ flexDirection: 'row', gap: 10, marginTop: 18 }}>
-                  <TouchableOpacity activeOpacity={0.8} onPress={() => reviewRequest(request.id, 'declined')} style={{ flex: 1, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 12, paddingVertical: 12, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6 }}><Ionicons name="close-circle-outline" size={18} color={colors.danger} /><Text style={{ color: colors.danger, fontSize: fs(13), fontWeight: '800' }}>Decline</Text></TouchableOpacity>
-                  <TouchableOpacity activeOpacity={0.8} onPress={() => reviewRequest(request.id, 'approved')} style={{ flex: 1, backgroundColor: colors.accent, borderRadius: 12, paddingVertical: 12, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6 }}><Ionicons name="checkmark-circle-outline" size={18} color="#ffffff" /><Text style={{ color: '#ffffff', fontSize: fs(13), fontWeight: '800' }}>Approve</Text></TouchableOpacity>
+                  <TouchableOpacity activeOpacity={0.8} disabled={isProcessing} onPress={() => reviewRequest(request.id, 'declined')} style={{ flex: 1, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 12, paddingVertical: 12, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6, opacity: isProcessing ? 0.6 : 1 }}>
+                    <Ionicons name="close-circle-outline" size={18} color={colors.danger} />
+                    <Text style={{ color: colors.danger, fontSize: fs(13), fontWeight: '800' }}>Decline</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity activeOpacity={0.8} disabled={isProcessing} onPress={() => reviewRequest(request.id, 'approved')} style={{ flex: 1, backgroundColor: colors.accent, borderRadius: 12, paddingVertical: 12, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6, opacity: isProcessing ? 0.6 : 1 }}>
+                    <Ionicons name="checkmark-circle-outline" size={18} color="#ffffff" />
+                    <Text style={{ color: '#ffffff', fontSize: fs(13), fontWeight: '800' }}>Approve</Text>
+                  </TouchableOpacity>
                 </View>}
               </View>;
             })}

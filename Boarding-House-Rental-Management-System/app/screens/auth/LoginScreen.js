@@ -3,7 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, ScrollView, ActivityIndicator,
 import { Ionicons } from '@expo/vector-icons';
 import { isMobile, isDesktop, getResponsivePadding, fs, spacing, cardStyle, cardShadow, safeAreaTop } from '../../utils/responsive';
 import { useTheme } from '../../utils/ThemeContext';
-import { loginWithEmail, registerUser, DEMO_ACCOUNTS } from '../../services/authService';
+import { loginWithEmail, registerUser } from '../../services/authService';
 
 export default function LoginScreen({ onLoginSuccess }) {
   const { colors, isDark, toggleTheme } = useTheme();
@@ -25,7 +25,6 @@ export default function LoginScreen({ onLoginSuccess }) {
   const [regPassword, setRegPassword] = useState('');
   const [regConfirmPassword, setRegConfirmPassword] = useState('');
   const [regRole, setRegRole] = useState('tenant'); // 'tenant' | 'caretaker' | 'owner'
-  const [regRoom, setRegRoom] = useState('02');
   const [showRegPassword, setShowRegPassword] = useState(false);
 
   const [loading, setLoading] = useState(false);
@@ -86,7 +85,6 @@ export default function LoginScreen({ onLoginSuccess }) {
         email: regEmail.trim(),
         password: regPassword.trim(),
         phone: regPhone.trim(),
-        room: regRoom,
       });
 
       setLoading(false);
@@ -98,15 +96,6 @@ export default function LoginScreen({ onLoginSuccess }) {
       setLoading(false);
       setErrorMessage(err.message || 'Registration failed');
     }
-  };
-
-  const handleQuickFill = (account) => {
-    setFormMode('login');
-    setEmail(account.email);
-    setPassword(account.password);
-    setErrorMessage('');
-    setSuccessMessage('');
-    handleSignIn(account.email, account.password);
   };
 
   return (
@@ -494,31 +483,6 @@ export default function LoginScreen({ onLoginSuccess }) {
                     />
                   </View>
 
-                  {/* Assigned Room */}
-                  <Text style={{ fontSize: fs(12), fontWeight: '700', color: colors.textSecondary, marginBottom: 6 }}>
-                    Assigned Room (01 – 17) *
-                  </Text>
-                  <View style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    backgroundColor: colors.searchBg,
-                    borderColor: colors.searchBorder,
-                    borderWidth: 1,
-                    borderRadius: 12,
-                    paddingHorizontal: 14,
-                    marginBottom: 14,
-                  }}>
-                    <Ionicons name="bed-outline" size={18} color={colors.textMuted} style={{ marginRight: 10 }} />
-                    <TextInput
-                      style={{ flex: 1, paddingVertical: 12, fontSize: fs(14), color: colors.text }}
-                      placeholder="Room number (e.g. 03)"
-                      placeholderTextColor={colors.textMuted}
-                      keyboardType="numeric"
-                      value={regRoom}
-                      onChangeText={setRegRoom}
-                    />
-                  </View>
-
                   {/* Password */}
                   <Text style={{ fontSize: fs(12), fontWeight: '700', color: colors.textSecondary, marginBottom: 6 }}>
                     Create Password *
@@ -606,77 +570,6 @@ export default function LoginScreen({ onLoginSuccess }) {
               )}
             </View>
 
-            {/* Quick Test Accounts Section */}
-            <View style={{ marginTop: 4 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12 }}>
-                <Ionicons name="flash" size={16} color="#fbbf24" />
-                <View>
-                  <Text style={{
-                    fontSize: fs(11),
-                    fontWeight: '800',
-                    color: colors.textSecondary,
-                    letterSpacing: 0.5,
-                    textTransform: 'uppercase',
-                  }}>
-                    Quick Sign-In
-                  </Text>
-                  <Text style={{ fontSize: fs(10), color: colors.textMuted }}>
-                    Pre-Migrated Administrative & Demo Accounts
-                  </Text>
-                </View>
-              </View>
-
-              <View style={{ gap: 10 }}>
-                {DEMO_ACCOUNTS.map((acc) => (
-                  <TouchableOpacity
-                    key={acc.role}
-                    activeOpacity={0.7}
-                    onPress={() => handleQuickFill(acc)}
-                    style={{
-                      ...cardStyle,
-                      backgroundColor: colors.card,
-                      borderColor: colors.cardBorder,
-                      padding: 13,
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: 12,
-                    }}
-                  >
-                    <View style={{
-                      width: 38,
-                      height: 38,
-                      borderRadius: 12,
-                      backgroundColor: acc.accent + '20',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}>
-                      <Ionicons name={acc.icon} size={19} color={acc.accent} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                        <Text style={{ fontSize: fs(13), fontWeight: '800', color: colors.text }}>
-                          {acc.name}
-                        </Text>
-                        <View style={{
-                          backgroundColor: acc.accent + '15',
-                          paddingHorizontal: 8,
-                          paddingVertical: 2,
-                          borderRadius: 8,
-                        }}>
-                          <Text style={{ fontSize: fs(10), fontWeight: '800', color: acc.accent }}>
-                            {acc.roleLabel}
-                          </Text>
-                        </View>
-                      </View>
-                      <Text style={{ fontSize: fs(11), color: colors.textMuted, marginTop: 2 }}>
-                        {acc.email} · {acc.password}
-                      </Text>
-                    </View>
-                    <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -715,8 +608,7 @@ export default function LoginScreen({ onLoginSuccess }) {
             </View>
 
             <Text style={{ fontSize: fs(13), color: colors.textSecondary, marginBottom: 16, lineHeight: 20 }}>
-              For security, password resets are coordinated with the property caretaker.
-              Please reach out to the caretaker office or test with the pre-set demo passwords.
+              Enter your email on the sign-in screen, then use Firebase password recovery to regain access.
             </Text>
 
             <TouchableOpacity

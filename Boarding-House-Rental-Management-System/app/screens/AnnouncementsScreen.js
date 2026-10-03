@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, Modal, TextInput, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../utils/ThemeContext';
 import {
@@ -14,38 +14,70 @@ import {
   safeAreaTop,
   accentShadow,
 } from '../utils/responsive';
+import { getAnnouncements, addAnnouncement } from '../services/dataService';
 
 export default function AnnouncementsScreen() {
   const { colors } = useTheme();
   const padding = getResponsivePadding();
   const containerMaxWidth = isDesktop ? 1400 : '100%';
 
-  const announcements = [
-    {
-      id: 1,
-      category: 'Payment',
-      title: 'October Rent Reminder',
-      description: 'October rent is due on October 5, 2026. Please settle your balances on time to avoid late fees.',
-      date: 'Sep 14, 2026',
-      categoryColor: { bg: colors.successBg, text: colors.successText },
-    },
-    {
-      id: 2,
-      category: 'Maintenance',
-      title: 'Water Interruption Notice',
-      description: 'Water supply will be interrupted on Sep 18 from 8AM-12PM for pipe maintenance. Store water in advance.',
-      date: 'Sep 14, 2026',
-      categoryColor: { bg: colors.infoBg, text: colors.infoText },
-    },
-    {
-      id: 3,
-      category: 'House Rules',
-      title: 'Curfew Reminder',
-      description: 'Please be reminded that curfew is strictly at 10PM. Gates will be locked promptly after.',
-      date: 'Sep 10, 2026',
-      categoryColor: { bg: colors.warningBg, text: colors.warningText },
-    },
-  ];
+  const [announcements, setAnnouncements] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  // New announcement modal states
+  const [modalVisible, setModalVisible] = useState(false);
+  const [newTitle, setNewTitle] = useState('');
+  const [newDescription, setNewDescription] = useState('');
+  const [newCategory, setNewCategory] = useState('Payment');
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
+
+  const fetchAnnouncements = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await getAnnouncements();
+      setAnnouncements(data);
+    } catch (err) {
+      setError('Failed to load announcements.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchAnnouncements();
+  }, []);
+
+  const handleCreateAnnouncement = async () => {
+    if (!newTitle.trim()) {
+      setSubmitError('Please enter a title.');
+      return;
+    }
+    if (!newDescription.trim()) {
+      setSubmitError('Please enter a description.');
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      setSubmitError('');
+      const created = await addAnnouncement({
+        category: newCategory,
+        title: newTitle.trim(),
+        description: newDescription.trim(),
+      });
+      setAnnouncements((prev) => [created, ...prev]);
+      setNewTitle('');
+      setNewDescription('');
+      setModalVisible(false);
+    } catch (err) {
+      setSubmitError('Failed to publish announcement. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const getCategoryBorderColor = (category) => {
     switch (category) {
@@ -57,6 +89,19 @@ export default function AnnouncementsScreen() {
         return colors.warning;
       default:
         return colors.accent;
+    }
+  };
+
+  const getCategoryColors = (category) => {
+    switch (category) {
+      case 'Payment':
+        return { bg: colors.successBg, text: colors.successText };
+      case 'Maintenance':
+        return { bg: colors.infoBg, text: colors.infoText };
+      case 'House Rules':
+        return { bg: colors.warningBg, text: colors.warningText };
+      default:
+        return { bg: colors.accentBg, text: colors.accent };
     }
   };
 
@@ -72,6 +117,24 @@ export default function AnnouncementsScreen() {
         return 'notifications';
     }
   };
+
+  if (loading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.bg }}>
+        <ActivityIndicator size="large" color={colors.accent} />
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.bg, padding: 20 }}>
+        <Text style={{ color: colors.danger, fontSize: fs(16), textAlign: 'center', fontWeight: '600' }}>
+          {error}
+        </Text>
+      </View>
+    );
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -139,97 +202,112 @@ export default function AnnouncementsScreen() {
         }}
       >
         <View style={{ maxWidth: containerMaxWidth, width: '100%', gap: spacing.lg }}>
-          {announcements.map((announcement) => (
-            <TouchableOpacity
-              key={announcement.id}
-              activeOpacity={0.7}
-              style={{
-                ...cardStyle,
-                backgroundColor: colors.card,
-                borderColor: colors.cardBorder,
-                borderLeftWidth: 3,
-                borderLeftColor: getCategoryBorderColor(announcement.category),
-                padding: isDesktop ? 24 : 18,
-              }}
-            >
-              {/* Category Badge & Date */}
-              <View
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  marginBottom: 12,
-                  flexWrap: 'wrap',
-                  gap: 8,
-                }}
-              >
+          {announcements.length === 0 ? (
+            <View style={{ ...cardStyle, backgroundColor: colors.card, borderColor: colors.cardBorder, padding: 32, alignItems: 'center' }}>
+              <Ionicons name="notifications-off-outline" size={40} color={colors.textMuted} />
+              <Text style={{ fontSize: fs(16), fontWeight: '700', color: colors.text, marginTop: 12 }}>
+                No announcements
+              </Text>
+              <Text style={{ fontSize: fs(13), color: colors.textMuted, marginTop: 4 }}>
+                Tap the + button below to create one.
+              </Text>
+            </View>
+          ) : (
+            announcements.map((announcement) => {
+              const catColors = getCategoryColors(announcement.category);
+              return (
                 <View
+                  key={announcement.id || announcement.announcement_id}
                   style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    backgroundColor: announcement.categoryColor.bg,
-                    paddingHorizontal: 10,
-                    paddingVertical: 5,
-                    borderRadius: 8,
-                    gap: 6,
+                    ...cardStyle,
+                    backgroundColor: colors.card,
+                    borderColor: colors.cardBorder,
+                    borderLeftWidth: 3,
+                    borderLeftColor: getCategoryBorderColor(announcement.category),
+                    padding: isDesktop ? 24 : 18,
                   }}
                 >
-                  <Ionicons
-                    name={getCategoryIcon(announcement.category)}
-                    size={13}
-                    color={announcement.categoryColor.text}
-                  />
-                  <Text
+                  {/* Category Badge & Date */}
+                  <View
                     style={{
-                      fontSize: fs(11),
-                      fontWeight: '700',
-                      color: announcement.categoryColor.text,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      marginBottom: 12,
+                      flexWrap: 'wrap',
+                      gap: 8,
                     }}
                   >
-                    {announcement.category}
+                    <View
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        backgroundColor: catColors.bg,
+                        paddingHorizontal: 10,
+                        paddingVertical: 5,
+                        borderRadius: 8,
+                        gap: 6,
+                      }}
+                    >
+                      <Ionicons
+                        name={getCategoryIcon(announcement.category)}
+                        size={13}
+                        color={catColors.text}
+                      />
+                      <Text
+                        style={{
+                          fontSize: fs(11),
+                          fontWeight: '700',
+                          color: catColors.text,
+                        }}
+                      >
+                        {announcement.category}
+                      </Text>
+                    </View>
+
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                      <Ionicons name="time-outline" size={14} color={colors.textMuted} />
+                      <Text style={{ fontSize: fs(12), fontWeight: '500', color: colors.textMuted }}>
+                        {announcement.date || announcement.created_at}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Title */}
+                  <Text
+                    style={{
+                      fontSize: fs(18),
+                      fontWeight: '700',
+                      color: colors.text,
+                      marginBottom: 8,
+                      lineHeight: fs(24),
+                    }}
+                  >
+                    {announcement.title}
+                  </Text>
+
+                  {/* Description */}
+                  <Text
+                    style={{
+                      fontSize: fs(14),
+                      fontWeight: '400',
+                      color: colors.textSecondary,
+                      lineHeight: 22,
+                    }}
+                  >
+                    {announcement.description}
                   </Text>
                 </View>
-
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                  <Ionicons name="time-outline" size={14} color={colors.textMuted} />
-                  <Text style={{ fontSize: fs(12), fontWeight: '500', color: colors.textMuted }}>
-                    {announcement.date}
-                  </Text>
-                </View>
-              </View>
-
-              {/* Title */}
-              <Text
-                style={{
-                  fontSize: fs(18),
-                  fontWeight: '700',
-                  color: colors.text,
-                  marginBottom: 8,
-                  lineHeight: fs(24),
-                }}
-              >
-                {announcement.title}
-              </Text>
-
-              {/* Description */}
-              <Text
-                style={{
-                  fontSize: fs(14),
-                  fontWeight: '400',
-                  color: colors.textSecondary,
-                  lineHeight: 22,
-                }}
-              >
-                {announcement.description}
-              </Text>
-            </TouchableOpacity>
-          ))}
+              );
+            })
+          )}
         </View>
       </ScrollView>
 
       {/* Floating Action Button (FAB) */}
       <TouchableOpacity
         activeOpacity={0.7}
+        onPress={() => setModalVisible(true)}
         style={{
           position: 'absolute',
           bottom: 20,
@@ -246,6 +324,160 @@ export default function AnnouncementsScreen() {
       >
         <Ionicons name="add" size={28} color="#ffffff" />
       </TouchableOpacity>
+
+      {/* Create Announcement Modal */}
+      <Modal
+        visible={modalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <View style={{
+          flex: 1,
+          backgroundColor: 'rgba(0,0,0,0.7)',
+          justifyContent: 'center',
+          alignItems: 'center',
+          padding: 24,
+        }}>
+          <View style={{
+            width: '100%',
+            maxWidth: 440,
+            backgroundColor: colors.card,
+            borderRadius: 20,
+            borderWidth: 1,
+            borderColor: colors.cardBorder,
+            padding: 24,
+            ...cardShadow,
+          }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <Text style={{ fontSize: fs(18), fontWeight: '800', color: colors.text }}>
+                New Announcement
+              </Text>
+              <TouchableOpacity onPress={() => setModalVisible(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Ionicons name="close-circle" size={26} color={colors.textMuted} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Category Selector */}
+            <Text style={{ fontSize: fs(14), fontWeight: '700', color: colors.textSecondary, marginBottom: 8 }}>
+              Category
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
+              {['Payment', 'Maintenance', 'House Rules'].map((cat) => {
+                const isSelected = newCategory === cat;
+                return (
+                  <TouchableOpacity
+                    key={cat}
+                    onPress={() => setNewCategory(cat)}
+                    style={{
+                      paddingHorizontal: 12,
+                      paddingVertical: 6,
+                      borderRadius: 12,
+                      backgroundColor: isSelected ? colors.accent : colors.filterBg,
+                      borderWidth: 1,
+                      borderColor: isSelected ? colors.accent : colors.cardBorder,
+                    }}
+                  >
+                    <Text style={{ color: isSelected ? '#ffffff' : colors.textSecondary, fontSize: fs(12), fontWeight: '700' }}>
+                      {cat}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <Text style={{ fontSize: fs(14), fontWeight: '700', color: colors.textSecondary, marginBottom: 6 }}>
+              Title *
+            </Text>
+            <TextInput
+              style={{
+                backgroundColor: colors.searchBg,
+                borderColor: colors.searchBorder,
+                borderWidth: 1,
+                borderRadius: 12,
+                paddingHorizontal: 14,
+                paddingVertical: 12,
+                fontSize: fs(15),
+                color: colors.text,
+                marginBottom: 14,
+              }}
+              placeholder="Announcement title..."
+              placeholderTextColor={colors.textMuted}
+              value={newTitle}
+              onChangeText={setNewTitle}
+            />
+
+            <Text style={{ fontSize: fs(14), fontWeight: '700', color: colors.textSecondary, marginBottom: 6 }}>
+              Description *
+            </Text>
+            <TextInput
+              style={{
+                backgroundColor: colors.searchBg,
+                borderColor: colors.searchBorder,
+                borderWidth: 1,
+                borderRadius: 12,
+                paddingHorizontal: 14,
+                paddingVertical: 12,
+                fontSize: fs(15),
+                color: colors.text,
+                minHeight: 80,
+                textAlignVertical: 'top',
+                marginBottom: 14,
+              }}
+              placeholder="Write the full announcement details here..."
+              placeholderTextColor={colors.textMuted}
+              multiline
+              value={newDescription}
+              onChangeText={setNewDescription}
+            />
+
+            {!!submitError && (
+              <Text style={{ fontSize: fs(13), color: colors.danger, marginBottom: 10, fontWeight: '600' }}>
+                {submitError}
+              </Text>
+            )}
+
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <TouchableOpacity
+                onPress={() => setModalVisible(false)}
+                style={{
+                  flex: 1,
+                  backgroundColor: colors.bg,
+                  paddingVertical: 14,
+                  borderRadius: 12,
+                  alignItems: 'center',
+                  borderWidth: 1,
+                  borderColor: colors.cardBorder,
+                  minHeight: 48,
+                  justifyContent: 'center',
+                }}
+              >
+                <Text style={{ fontSize: fs(15), fontWeight: '700', color: colors.textMuted }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleCreateAnnouncement}
+                disabled={submitting}
+                style={{
+                  flex: 1,
+                  backgroundColor: colors.primary,
+                  paddingVertical: 14,
+                  borderRadius: 12,
+                  alignItems: 'center',
+                  minHeight: 48,
+                  justifyContent: 'center',
+                  opacity: submitting ? 0.6 : 1,
+                }}
+              >
+                {submitting ? (
+                  <ActivityIndicator size="small" color={colors.onPrimary} />
+                ) : (
+                  <Text style={{ fontSize: fs(15), fontWeight: '800', color: colors.onPrimary }}>Publish</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }

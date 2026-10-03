@@ -17,15 +17,15 @@ export default function TenantApp({ user, onLogout }) {
   const renderScreen = () => {
     switch (activeScreen) {
       case 'home':
-        return <TenantHomeScreen onNavigateToUpdates={() => setActiveScreen('updates')} />;
+        return <TenantHomeScreen user={user} onNavigateToUpdates={() => setActiveScreen('updates')} />;
       case 'complaints':
-        return <TenantComplaintsScreen />;
+        return <TenantComplaintsScreen user={user} />;
       case 'updates':
         return <TenantUpdatesScreen />;
       case 'room-change':
-        return <TenantRoomChangeScreen />;
+        return <TenantRoomChangeScreen user={user} />;
       default:
-        return <TenantHomeScreen onNavigateToUpdates={() => setActiveScreen('updates')} />;
+        return <TenantHomeScreen user={user} onNavigateToUpdates={() => setActiveScreen('updates')} />;
     }
   };
 
@@ -95,4 +95,3 @@ export default function TenantApp({ user, onLogout }) {
     </View>
   );
 }
-

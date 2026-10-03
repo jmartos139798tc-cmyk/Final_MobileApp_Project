@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, ScrollView } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, ScrollView, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { isMobile, isDesktop, getResponsivePadding, fs, spacing, cardStyle, cardShadow, safeAreaTop } from '../../utils/responsive';
 import { useTheme } from '../../utils/ThemeContext';
@@ -10,8 +10,30 @@ export default function OwnerReports() {
   const padding = getResponsivePadding();
   const containerMaxWidth = isDesktop ? 1400 : '100%';
 
-  const monthlyIncome = getMonthlyIncome();
-  const summary = getSeptemberSummary();
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [monthlyIncome, setMonthlyIncome] = useState([]);
+  const [summary, setSummary] = useState(null);
+
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const monthlyIncomeData = await getMonthlyIncome();
+        const summaryData = await getSeptemberSummary();
+
+        setMonthlyIncome(monthlyIncomeData);
+        setSummary(summaryData);
+      } catch (err) {
+        setError('Failed to load reports data.');
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadData();
+  }, []);
+
+  if (loading) return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.bg }}><ActivityIndicator size="large" color={colors.accent} /></View>;
+  if (error) return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.bg }}><Text style={{ color: colors.danger, fontSize: 16 }}>{error}</Text></View>;
 
   // Chart calculations
   const maxAmount = Math.max(...monthlyIncome.map((m) => m.amount));
@@ -184,4 +206,3 @@ export default function OwnerReports() {
     </View>
   );
 }
-

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
   isMobile,
@@ -13,55 +13,54 @@ import {
   safeAreaTop,
 } from '../utils/responsive';
 import { useTheme } from '../utils/ThemeContext';
+import { getIssues, updateComplaintStatus } from '../services/dataService';
 
 export default function IssuesScreen() {
   const { colors } = useTheme();
   const [filter, setFilter] = useState('All');
+  const [issues, setIssues] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [updatingId, setUpdatingId] = useState(null);
+
   const padding = getResponsivePadding();
   const containerMaxWidth = isDesktop ? 1400 : '100%';
 
-  const issues = [
-    {
-      id: 1,
-      title: 'Leaking faucet in bathroom',
-      tenant: 'Ana Reyes',
-      initials: 'AR',
-      room: 'Room 2',
-      date: 'Sep 12, 2026',
-      status: 'pending',
-      color: '#8b5cf6',
-    },
-    {
-      id: 2,
-      title: 'Faulty electrical outlet',
-      tenant: 'Beth Mendoza',
-      initials: 'BM',
-      room: 'Room 9',
-      date: 'Sep 10, 2026',
-      status: 'in-progress',
-      color: '#3b82f6',
-    },
-    {
-      id: 3,
-      title: 'Window latch broken',
-      tenant: 'Joy Cruz',
-      initials: 'JC',
-      room: 'Room 4',
-      date: 'Sep 8, 2026',
-      status: 'resolved',
-      color: '#3b82f6',
-    },
-    {
-      id: 4,
-      title: 'Ceiling fan not working',
-      tenant: 'Lyn Bautista',
-      initials: 'LB',
-      room: 'Room 5',
-      date: 'Sep 14, 2026',
-      status: 'pending',
-      color: '#10b981',
-    },
-  ];
+  const loadIssues = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await getIssues();
+      setIssues(data);
+    } catch (err) {
+      setError('Failed to load complaints. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadIssues();
+  }, []);
+
+  const handleUpdateStatus = async (complaintId, newStatus) => {
+    try {
+      setUpdatingId(complaintId);
+      await updateComplaintStatus(complaintId, newStatus);
+      // Update local state
+      setIssues((prev) =>
+        prev.map((item) =>
+          item.complaint_id === complaintId || item.id === complaintId
+            ? { ...item, status: newStatus }
+            : item
+        )
+      );
+    } catch (err) {
+      alert('Could not update status. Please try again.');
+    } finally {
+      setUpdatingId(null);
+    }
+  };
 
   const pendingCount = issues.filter((i) => i.status === 'pending').length;
   const inProgressCount = issues.filter((i) => i.status === 'in-progress').length;
@@ -121,6 +120,24 @@ export default function IssuesScreen() {
     }
     return { bg: colors.cardBorder, text: colors.textMuted, dot: colors.textMuted, label: status };
   };
+
+  if (loading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.bg }}>
+        <ActivityIndicator size="large" color={colors.accent} />
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.bg, padding: 20 }}>
+        <Text style={{ color: colors.danger, fontSize: fs(16), textAlign: 'center', fontWeight: '600' }}>
+          {error}
+        </Text>
+      </View>
+    );
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -267,6 +284,8 @@ export default function IssuesScreen() {
           {/* Issues List */}
           {filteredIssues.map((issue) => {
             const statusBadge = getStatusBadge(issue.status);
+            const isUpdating = updatingId === issue.complaint_id;
+
             return (
               <View
                 key={issue.id}
@@ -390,6 +409,8 @@ export default function IssuesScreen() {
                   <View style={{ flexDirection: 'row', gap: spacing.sm }}>
                     <TouchableOpacity
                       activeOpacity={0.7}
+                      disabled={isUpdating}
+                      onPress={() => handleUpdateStatus(issue.complaint_id, 'resolved')}
                       style={{
                         flex: 1,
                         backgroundColor: colors.accent,
@@ -400,6 +421,7 @@ export default function IssuesScreen() {
                         flexDirection: 'row',
                         gap: 6,
                         minHeight: 46,
+                        opacity: isUpdating ? 0.6 : 1,
                       }}
                     >
                       <Ionicons name="checkmark-circle-outline" size={18} color="#ffffff" />
@@ -409,6 +431,12 @@ export default function IssuesScreen() {
                     </TouchableOpacity>
                     <TouchableOpacity
                       activeOpacity={0.7}
+                      disabled={isUpdating}
+                      onPress={() => {
+                        if (issue.status === 'pending') {
+                          handleUpdateStatus(issue.complaint_id, 'in-progress');
+                        }
+                      }}
                       style={{
                         flex: 1,
                         backgroundColor: colors.card,
@@ -421,39 +449,38 @@ export default function IssuesScreen() {
                         flexDirection: 'row',
                         gap: 6,
                         minHeight: 46,
+                        opacity: isUpdating ? 0.6 : 1,
                       }}
                     >
                       <Ionicons
-                        name={issue.status === 'pending' ? 'play-outline' : 'eye-outline'}
+                        name={issue.status === 'pending' ? 'play-outline' : 'checkmark-outline'}
                         size={18}
                         color={colors.textSecondary}
                       />
                       <Text style={{ fontSize: fs(13), fontWeight: '700', color: colors.textSecondary }}>
-                        {issue.status === 'pending' ? 'In Progress' : 'View'}
+                        {issue.status === 'pending' ? 'In Progress' : 'In Progress'}
                       </Text>
                     </TouchableOpacity>
                   </View>
                 ) : (
-                  <TouchableOpacity
-                    activeOpacity={0.7}
+                  <View
                     style={{
                       backgroundColor: colors.card,
                       borderWidth: 1,
                       borderColor: colors.cardBorder,
-                      paddingVertical: 14,
+                      paddingVertical: 12,
                       borderRadius: 12,
                       alignItems: 'center',
                       justifyContent: 'center',
                       flexDirection: 'row',
                       gap: 6,
-                      minHeight: 46,
                     }}
                   >
-                    <Ionicons name="eye-outline" size={18} color={colors.textSecondary} />
-                    <Text style={{ fontSize: fs(13), fontWeight: '700', color: colors.textSecondary }}>
-                      View Details
+                    <Ionicons name="checkmark-done" size={18} color={colors.success} />
+                    <Text style={{ fontSize: fs(13), fontWeight: '700', color: colors.success }}>
+                      Resolved
                     </Text>
-                  </TouchableOpacity>
+                  </View>
                 )}
               </View>
             );

@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../utils/ThemeContext';
 import {
@@ -12,11 +12,43 @@ import {
   safeAreaTop,
   accentShadow,
 } from '../utils/responsive';
+import { getCaretakerDashboardData } from '../services/dataService';
 
 export default function CaretakerDashboard({ onNavigate }) {
   const { colors } = useTheme();
   const padding = getResponsivePadding();
   const containerMaxWidth = isDesktop ? 1400 : '100%';
+
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [dashData, setDashData] = useState(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadDashboard = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const data = await getCaretakerDashboardData();
+        if (isMounted) {
+          setDashData(data);
+        }
+      } catch (err) {
+        if (isMounted) {
+          setError('Failed to load dashboard data. Please try again.');
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    loadDashboard();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const go = (target) => onNavigate && onNavigate(target);
 
@@ -34,17 +66,44 @@ export default function CaretakerDashboard({ onNavigate }) {
     year: 'numeric',
   });
 
-  const pendingIssues = [
-    { id: 1, room: 'R2', issue: 'Leaking faucet in bathroom', tenant: 'Ana Reyes', date: 'Sep 12, 2026' },
-    { id: 2, room: 'R5', issue: 'Ceiling fan not working', tenant: 'Lyn Bautista', date: 'Sep 14, 2026' },
-  ];
+  if (loading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.bg }}>
+        <ActivityIndicator size="large" color={colors.accent} />
+      </View>
+    );
+  }
+
+  if (error || !dashData) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.bg, padding: 20 }}>
+        <Text style={{ color: colors.danger, fontSize: fs(16), textAlign: 'center', fontWeight: '600' }}>
+          {error || 'Unable to load dashboard data.'}
+        </Text>
+      </View>
+    );
+  }
+
+  const {
+    totalRooms,
+    singleRooms,
+    doubleRooms,
+    occupied,
+    vacant,
+    rate,
+    unpaidCount,
+    totalUnpaid,
+    pendingIssueCount,
+    pendingIssues = [],
+    latestAnnouncement,
+  } = dashData;
 
   const statsRow1 = [
     {
       id: 'rooms',
       label: 'Total Rooms',
-      value: '17',
-      subtext: '12 single · 5 double',
+      value: `${totalRooms}`,
+      subtext: `${singleRooms} single · ${doubleRooms} double`,
       icon: 'home',
       color: colors.info,
       bgColor: colors.iconBgBlue,
@@ -53,8 +112,8 @@ export default function CaretakerDashboard({ onNavigate }) {
     {
       id: 'balance',
       label: 'Unpaid Balance',
-      value: '₱11.5k',
-      subtext: '6 tenants pending',
+      value: totalUnpaid >= 1000 ? `₱${(totalUnpaid / 1000).toFixed(1)}k` : `₱${totalUnpaid}`,
+      subtext: `${unpaidCount} tenants pending`,
       icon: 'wallet',
       color: colors.danger,
       bgColor: colors.iconBgRed,
@@ -66,8 +125,8 @@ export default function CaretakerDashboard({ onNavigate }) {
     {
       id: 'tenants',
       label: 'Active Tenants',
-      value: '14',
-      subtext: '3 vacant rooms',
+      value: `${occupied}`,
+      subtext: `${vacant} vacant rooms`,
       icon: 'people',
       color: colors.success,
       bgColor: colors.iconBgGreen,
@@ -76,7 +135,7 @@ export default function CaretakerDashboard({ onNavigate }) {
     {
       id: 'issues',
       label: 'Open Issues',
-      value: '2',
+      value: `${pendingIssueCount}`,
       subtext: 'Needs your action',
       icon: 'alert-circle',
       color: colors.warning,
@@ -202,7 +261,7 @@ export default function CaretakerDashboard({ onNavigate }) {
                     Occupancy rate
                   </Text>
                   <Text style={{ fontSize: fs(44), fontWeight: '900', color: colors.heroText }}>
-                    82%
+                    {rate}%
                   </Text>
                 </View>
                 <Ionicons name="business" size={48} color={colors.heroBarBg} />
@@ -220,10 +279,10 @@ export default function CaretakerDashboard({ onNavigate }) {
                 }}
               >
                 <Text style={{ fontSize: fs(15), fontWeight: '700', color: colors.heroText }}>
-                  14 occupied
+                  {occupied} occupied
                 </Text>
                 <Text style={{ fontSize: fs(14), fontWeight: '600', color: colors.heroSubtext }}>
-                  3 vacant rooms
+                  {vacant} vacant rooms
                 </Text>
               </View>
 
@@ -235,7 +294,7 @@ export default function CaretakerDashboard({ onNavigate }) {
                   overflow: 'hidden',
                 }}
               >
-                <View style={{ width: '82%', height: '100%', backgroundColor: colors.heroBarFill, borderRadius: 8 }} />
+                <View style={{ width: `${Math.min(100, Math.max(0, rate))}%`, height: '100%', backgroundColor: colors.heroBarFill, borderRadius: 8 }} />
               </View>
             </View>
 
@@ -264,133 +323,141 @@ export default function CaretakerDashboard({ onNavigate }) {
               </View>
 
               <View style={{ gap: spacing.sm }}>
-                {pendingIssues.map((issue) => (
-                  <TouchableOpacity
-                    key={issue.id}
-                    activeOpacity={0.7}
-                    onPress={() => go('issues')}
-                    style={{
-                      ...cardStyle,
-                      backgroundColor: colors.card,
-                      borderColor: colors.cardBorder,
-                      borderLeftWidth: 4,
-                      borderLeftColor: colors.warning,
-                      padding: isDesktop ? 20 : 16,
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: 12,
-                      minHeight: 76,
-                    }}
-                  >
-                    <View
+                {pendingIssues.length === 0 ? (
+                  <View style={{ ...cardStyle, backgroundColor: colors.card, borderColor: colors.cardBorder, padding: 16, alignItems: 'center' }}>
+                    <Text style={{ fontSize: fs(13), color: colors.textMuted }}>No pending issues</Text>
+                  </View>
+                ) : (
+                  pendingIssues.map((issue) => (
+                    <TouchableOpacity
+                      key={issue.id}
+                      activeOpacity={0.7}
+                      onPress={() => go('issues')}
                       style={{
-                        width: 48,
-                        height: 48,
-                        borderRadius: 12,
-                        backgroundColor: colors.iconBgYellow,
+                        ...cardStyle,
+                        backgroundColor: colors.card,
+                        borderColor: colors.cardBorder,
+                        borderLeftWidth: 4,
+                        borderLeftColor: colors.warning,
+                        padding: isDesktop ? 20 : 16,
+                        flexDirection: 'row',
                         alignItems: 'center',
-                        justifyContent: 'center',
+                        gap: 12,
+                        minHeight: 76,
                       }}
                     >
-                      <Text style={{ fontSize: fs(14), fontWeight: '800', color: colors.warning }}>
-                        {issue.room}
-                      </Text>
-                    </View>
-
-                    <View style={{ flex: 1 }}>
-                      <Text
-                        style={{ fontSize: fs(15), fontWeight: '700', color: colors.text, marginBottom: 4 }}
-                        numberOfLines={2}
+                      <View
+                        style={{
+                          width: 48,
+                          height: 48,
+                          borderRadius: 12,
+                          backgroundColor: colors.iconBgYellow,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
                       >
-                        {issue.issue}
-                      </Text>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
-                        <View
-                          style={{
-                            backgroundColor: colors.warningBg,
-                            paddingHorizontal: 8,
-                            paddingVertical: 3,
-                            borderRadius: 6,
-                          }}
-                        >
-                          <Text style={{ fontSize: fs(12), fontWeight: '700', color: colors.warningText }}>
-                            Pending
-                          </Text>
-                        </View>
-                        <Text style={{ fontSize: fs(13), color: colors.textSecondary }}>
-                          {issue.tenant} · {issue.date}
+                        <Text style={{ fontSize: fs(14), fontWeight: '800', color: colors.warning }}>
+                          {issue.room}
                         </Text>
                       </View>
-                    </View>
 
-                    <Ionicons name="chevron-forward" size={22} color={colors.textMuted} />
-                  </TouchableOpacity>
-                ))}
+                      <View style={{ flex: 1 }}>
+                        <Text
+                          style={{ fontSize: fs(15), fontWeight: '700', color: colors.text, marginBottom: 4 }}
+                          numberOfLines={2}
+                        >
+                          {issue.issue}
+                        </Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+                          <View
+                            style={{
+                              backgroundColor: colors.warningBg,
+                              paddingHorizontal: 8,
+                              paddingVertical: 3,
+                              borderRadius: 6,
+                            }}
+                          >
+                            <Text style={{ fontSize: fs(12), fontWeight: '700', color: colors.warningText }}>
+                              Pending
+                            </Text>
+                          </View>
+                          <Text style={{ fontSize: fs(13), color: colors.textSecondary }}>
+                            {issue.tenant} · {issue.date}
+                          </Text>
+                        </View>
+                      </View>
+
+                      <Ionicons name="chevron-forward" size={22} color={colors.textMuted} />
+                    </TouchableOpacity>
+                  ))
+                )}
               </View>
             </View>
 
             {/* Latest Announcement */}
-            <View>
-              <View
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  marginBottom: spacing.sm,
-                }}
-              >
-                <Text style={sectionTitle}>Latest announcement</Text>
-                {viewAllLink('announce')}
-              </View>
-
-              <TouchableOpacity
-                activeOpacity={0.7}
-                onPress={() => go('announce')}
-                style={{
-                  ...cardStyle,
-                  backgroundColor: colors.card,
-                  borderColor: colors.cardBorder,
-                  borderLeftWidth: 4,
-                  borderLeftColor: colors.success,
-                  padding: isDesktop ? 22 : 18,
-                }}
-              >
+            {latestAnnouncement && (
+              <View>
                 <View
                   style={{
                     flexDirection: 'row',
                     alignItems: 'center',
                     justifyContent: 'space-between',
-                    marginBottom: 10,
+                    marginBottom: spacing.sm,
+                  }}
+                >
+                  <Text style={sectionTitle}>Latest announcement</Text>
+                  {viewAllLink('announce')}
+                </View>
+
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={() => go('announce')}
+                  style={{
+                    ...cardStyle,
+                    backgroundColor: colors.card,
+                    borderColor: colors.cardBorder,
+                    borderLeftWidth: 4,
+                    borderLeftColor: colors.success,
+                    padding: isDesktop ? 22 : 18,
                   }}
                 >
                   <View
                     style={{
-                      backgroundColor: colors.successBg,
-                      paddingHorizontal: 10,
-                      paddingVertical: 4,
-                      borderRadius: 6,
                       flexDirection: 'row',
                       alignItems: 'center',
-                      gap: 5,
+                      justifyContent: 'space-between',
+                      marginBottom: 10,
                     }}
                   >
-                    <Ionicons name="megaphone" size={14} color={colors.successText} />
-                    <Text style={{ fontSize: fs(12), fontWeight: '700', color: colors.successText }}>
-                      Payment
+                    <View
+                      style={{
+                        backgroundColor: colors.successBg,
+                        paddingHorizontal: 10,
+                        paddingVertical: 4,
+                        borderRadius: 6,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 5,
+                      }}
+                    >
+                      <Ionicons name="megaphone" size={14} color={colors.successText} />
+                      <Text style={{ fontSize: fs(12), fontWeight: '700', color: colors.successText }}>
+                        {latestAnnouncement.category}
+                      </Text>
+                    </View>
+                    <Text style={{ fontSize: fs(12), color: colors.textMuted }}>
+                      {latestAnnouncement.created_at || latestAnnouncement.date}
                     </Text>
                   </View>
-                  <Text style={{ fontSize: fs(12), color: colors.textMuted }}>
-                    Sep 15, 2026
+                  <Text style={{ fontSize: fs(16), fontWeight: '700', color: colors.text, marginBottom: 6 }}>
+                    {latestAnnouncement.title}
                   </Text>
-                </View>
-                <Text style={{ fontSize: fs(16), fontWeight: '700', color: colors.text, marginBottom: 6 }}>
-                  October Rent Reminder
-                </Text>
-                <Text style={{ fontSize: fs(14), color: colors.textSecondary, lineHeight: 22 }}>
-                  October rent is due on October 5, 2026. Please settle your balances on time to avoid late fees.
-                </Text>
-              </TouchableOpacity>
-            </View>
+                  <Text style={{ fontSize: fs(14), color: colors.textSecondary, lineHeight: 22 }}>
+                    {latestAnnouncement.description}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
         </View>
       </ScrollView>

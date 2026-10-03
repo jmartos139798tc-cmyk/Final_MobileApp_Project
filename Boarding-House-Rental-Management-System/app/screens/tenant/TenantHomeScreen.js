@@ -1,23 +1,75 @@
-import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Modal } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, Modal, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { isMobile, isDesktop, getResponsivePadding, fs, spacing, cardStyle, cardShadow, safeAreaTop } from '../../utils/responsive';
 import { useTheme } from '../../utils/ThemeContext';
 import { getCurrentTenant, getTenantBillingBreakdown, getAnnouncements } from '../../services/dataService';
 
-export default function TenantHomeScreen({ onNavigateToUpdates }) {
+export default function TenantHomeScreen({ user, onNavigateToUpdates }) {
   const { colors } = useTheme();
   const padding = getResponsivePadding();
   const containerMaxWidth = isDesktop ? 1400 : '100%';
 
-  const tenant = getCurrentTenant('2');
-  const billing = getTenantBillingBreakdown('2');
-  const announcements = getAnnouncements();
-  const latestNotice = announcements[0];
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [tenant, setTenant] = useState(null);
+  const [billing, setBilling] = useState(null);
+  const [latestNotice, setLatestNotice] = useState(null);
 
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [showExtensionModal, setShowExtensionModal] = useState(false);
   const [extensionSubmitted, setExtensionSubmitted] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    const fetchTenantData = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const [tenantData, billingData, announcementsData] = await Promise.all([
+          getCurrentTenant(user?.tenant_id),
+          getTenantBillingBreakdown(user?.tenant_id),
+          getAnnouncements(),
+        ]);
+        if (isMounted) {
+          setTenant(tenantData);
+          setBilling(billingData);
+          setLatestNotice(announcementsData && announcementsData.length > 0 ? announcementsData[0] : null);
+        }
+      } catch (err) {
+        if (isMounted) {
+          setError('Failed to load tenant dashboard. Please try again.');
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    fetchTenantData();
+    return () => {
+      isMounted = false;
+    };
+  }, [user?.tenant_id]);
+
+  if (loading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.bg }}>
+        <ActivityIndicator size="large" color={colors.accent} />
+      </View>
+    );
+  }
+
+  if (error || !tenant || !billing) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.bg, padding: 20 }}>
+        <Text style={{ color: colors.danger, fontSize: fs(16), textAlign: 'center', fontWeight: '600' }}>
+          {error || 'Your profile is not available yet. Please sign in again or contact the property administrator.'}
+        </Text>
+      </View>
+    );
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -54,7 +106,7 @@ export default function TenantHomeScreen({ onNavigateToUpdates }) {
               marginTop: 4,
               fontWeight: '500',
             }}>
-              Room {tenant.roomNumber} · {tenant.roomType}
+              {tenant.roomNumber ? `Room ${tenant.roomNumber} · ${tenant.roomType}` : tenant.roomType}
             </Text>
           </View>
 
@@ -364,7 +416,7 @@ export default function TenantHomeScreen({ onNavigateToUpdates }) {
               </View>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                 <Text style={{ fontSize: fs(13), color: colors.textMuted }}>Tenant</Text>
-                <Text style={{ fontSize: fs(13), fontWeight: '700', color: colors.text }}>Ana Reyes (Room 2)</Text>
+                <Text style={{ fontSize: fs(13), fontWeight: '700', color: colors.text }}>{tenant.name} (Room {tenant.roomNumber})</Text>
               </View>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                 <Text style={{ fontSize: fs(13), color: colors.textMuted }}>Period</Text>
@@ -372,11 +424,11 @@ export default function TenantHomeScreen({ onNavigateToUpdates }) {
               </View>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                 <Text style={{ fontSize: fs(13), color: colors.textMuted }}>Amount Paid</Text>
-                <Text style={{ fontSize: fs(13), fontWeight: '700', color: colors.success }}>₱2,340.00</Text>
+                <Text style={{ fontSize: fs(13), fontWeight: '700', color: colors.success }}>₱{billing.paidAmount.toLocaleString()}</Text>
               </View>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: colors.divider, paddingTop: 8 }}>
                 <Text style={{ fontSize: fs(13), fontWeight: '700', color: colors.textMuted }}>Balance Due</Text>
-                <Text style={{ fontSize: fs(14), fontWeight: '900', color: colors.danger }}>₱500.00</Text>
+                <Text style={{ fontSize: fs(14), fontWeight: '900', color: colors.danger }}>₱{tenant.outstandingBalance.toLocaleString()}</Text>
               </View>
             </View>
 
@@ -460,7 +512,7 @@ export default function TenantHomeScreen({ onNavigateToUpdates }) {
             ) : (
               <>
                 <Text style={{ fontSize: fs(14), color: colors.textSecondary, marginBottom: 16, lineHeight: 21 }}>
-                  Current balance is <Text style={{ fontWeight: '800', color: colors.text }}>₱500</Text> due on <Text style={{ fontWeight: '800', color: colors.text }}>Oct 5, 2026</Text>. Would you like to request an extension of +7 days to Oct 12, 2026?
+                  Current balance is <Text style={{ fontWeight: '800', color: colors.text }}>₱{tenant.outstandingBalance.toLocaleString()}</Text> due on <Text style={{ fontWeight: '800', color: colors.text }}>{tenant.dueDate}</Text>. Would you like to request an extension of +7 days to Oct 12, 2026?
                 </Text>
 
                 <View style={{ flexDirection: 'row', gap: 10 }}>

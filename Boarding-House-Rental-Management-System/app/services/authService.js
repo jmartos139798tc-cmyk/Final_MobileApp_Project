@@ -1,44 +1,34 @@
 // Authentication Service Layer
 // Integrates Firebase Auth with the 3NF USERS and TENANTS collections.
-// Supports live Firebase Auth when configured, with fallback to normalized 3NF demo accounts.
+// Accounts are authenticated with Firebase and profiles are stored in Firestore.
 
 import { auth, db, isFirebaseConfigured } from '../utils/firebase';
 import { COLLECTIONS } from './databaseSchema';
-import { getNormalizedMockDatabase } from './seedDatabase';
 
-// Pre-defined demo accounts mapped to 3NF users
-export const DEMO_ACCOUNTS = [
-  {
-    role: 'tenant',
-    roleLabel: 'Tenant',
-    name: 'Ana Reyes',
-    email: 'ana@bh.com',
-    password: 'tenant123',
-    subtitle: 'Room 2 · Ana Reyes',
-    icon: 'person',
-    accent: '#8b5cf6',
-  },
-  {
-    role: 'caretaker',
-    roleLabel: 'Caretaker',
-    name: 'Property Caretaker',
-    email: 'caretaker@bh.com',
-    password: 'caretaker123',
-    subtitle: 'Rooms, billing & issues',
-    icon: 'construct',
-    accent: '#ff6347',
-  },
-  {
-    role: 'owner',
-    roleLabel: 'Owner',
-    name: 'Boarding House Owner',
-    email: 'owner@bh.com',
-    password: 'owner123',
-    subtitle: 'Revenue & financial reports',
-    icon: 'business',
-    accent: '#7c3aed',
-  },
-];
+function getFriendlyAuthError(error, action) {
+  switch (error?.code) {
+    case 'auth/email-already-in-use':
+      return new Error('An account already exists for this email. Please sign in instead, or use Forgot password if you cannot access it.');
+    case 'auth/invalid-credential':
+    case 'auth/wrong-password':
+      return new Error('Email or password is incorrect. Please try again or use Forgot password.');
+    case 'auth/user-not-found':
+      return new Error('No account exists for this email. Check the address or contact the property administrator.');
+    case 'auth/configuration-not-found':
+      return new Error('Firebase Authentication is not configured for this project. Enable Email/Password in Firebase Console.');
+    case 'auth/weak-password':
+      return new Error('Choose a password with at least 6 characters.');
+    case 'auth/invalid-email':
+      return new Error('Enter a valid email address.');
+    case 'permission-denied':
+    case 'firestore/permission-denied':
+      return new Error('Firestore rejected this request. Publish the project Firestore rules, then try again.');
+    case 'auth/network-request-failed':
+      return new Error('Could not connect to Firebase. Check your internet connection and try again.');
+    default:
+      return new Error(`Could not ${action}. Please check your connection and try again.`);
+  }
+}
 
 /**
  * Authenticates user credentials and retrieves their 3NF profile
@@ -47,6 +37,10 @@ export async function loginWithEmail(email, password) {
   const cleanEmail = email.trim().toLowerCase();
   const cleanPass = password.trim();
 
+  if (!isFirebaseConfigured || !auth || !db) {
+    throw new Error('Online sign-in is unavailable right now. Please try again later.');
+  }
+
   // 1. Live Firebase Authentication (When configured)
   if (isFirebaseConfigured && auth) {
     try {
@@ -54,69 +48,62 @@ export async function loginWithEmail(email, password) {
       const userCredential = await signInWithEmailAndPassword(auth, cleanEmail, cleanPass);
       const fbUser = userCredential.user;
 
-      // Query normalized USERS collection in Firestore
-      let userProfile = null;
-      if (db) {
-        const { doc, getDoc } = await import('firebase/firestore');
-        const userDoc = await getDoc(doc(db, COLLECTIONS.USERS, fbUser.uid));
-        if (userDoc.exists()) {
-          userProfile = userDoc.data();
+      // The Firestore user document stores identity and role. Personal details live
+      // in the role-specific profile collection.
+      const { doc, getDoc, collection, query, where, getDocs } = await import('firebase/firestore');
+      const userDoc = await getDoc(doc(db, COLLECTIONS.USERS, fbUser.uid));
+      const userProfile = userDoc.exists() ? userDoc.data() : null;
+
+      if (!userProfile?.role) {
+        throw new Error('Your account is missing its profile. Please contact the property administrator.');
+      }
+      const role = userProfile.role;
+      let profile = null;
+      let tenantId;
+
+      if (role === 'tenant') {
+        // Support old user docs during migration, then use the normalized FK.
+        if (userProfile.tenant_id) {
+          tenantId = userProfile.tenant_id;
+          const tenantDoc = await getDoc(doc(db, COLLECTIONS.TENANTS, tenantId));
+          if (tenantDoc.exists()) profile = tenantDoc.data();
+        } else {
+          const tenantQuery = query(collection(db, COLLECTIONS.TENANTS), where('user_id', '==', fbUser.uid));
+          const tenantSnapshot = await getDocs(tenantQuery);
+          const tenantDoc = tenantSnapshot.docs[0];
+          if (tenantDoc) {
+            profile = tenantDoc.data();
+            tenantId = tenantDoc.id;
+          }
         }
+      } else if (role === 'owner' || role === 'caretaker') {
+        const staffDoc = await getDoc(doc(db, COLLECTIONS.STAFF_PROFILES, fbUser.uid));
+        if (staffDoc.exists()) profile = staffDoc.data();
       }
 
-      const role = userProfile ? userProfile.role : (cleanEmail.includes('owner') ? 'owner' : cleanEmail.includes('caretaker') ? 'caretaker' : 'tenant');
-      const tenantId = userProfile?.tenant_id || (role === 'tenant' ? 'tenant-2' : undefined);
+      if (!profile && !userProfile.name) {
+        throw new Error('Your account is missing its role profile. Ask the property owner to finish setting it up.');
+      }
+      const name = profile
+        ? `${profile.first_name || ''} ${profile.last_name || ''}`.trim()
+        : userProfile.name;
 
       return {
         uid: fbUser.uid,
         email: fbUser.email,
-        name: userProfile?.name || fbUser.displayName || (role === 'tenant' ? 'Ana Reyes' : role.charAt(0).toUpperCase() + role.slice(1)),
+        name: name || fbUser.displayName || cleanEmail,
         role,
         room: role === 'tenant' ? 2 : undefined,
         tenant_id: tenantId,
       };
     } catch (error) {
-      console.warn('Firebase Auth error, checking normalized demo accounts:', error.message);
+      console.warn('Firebase sign-in failed:', error.message);
+      if (!error?.code) throw error;
+      throw getFriendlyAuthError(error, 'sign in');
     }
   }
 
-  // 2. Normalized 3NF Demo Account Verification
-  const store = getNormalizedMockDatabase();
-  const matchedDemo = DEMO_ACCOUNTS.find(
-    (acc) => acc.email.toLowerCase() === cleanEmail && acc.password === cleanPass
-  );
-
-  if (matchedDemo) {
-    // Lookup user in 3NF USERS table
-    const userRecord = store[COLLECTIONS.USERS].find((u) => u.email.toLowerCase() === cleanEmail);
-    const tenantId = userRecord?.tenant_id || (matchedDemo.role === 'tenant' ? 'tenant-2' : undefined);
-
-    // If tenant, verify tenant record in 3NF TENANTS table
-    let tenantName = matchedDemo.name;
-    if (tenantId) {
-      const tenantDoc = store[COLLECTIONS.TENANTS].find((t) => t.id === tenantId);
-      if (tenantDoc) {
-        tenantName = `${tenantDoc.first_name} ${tenantDoc.last_name}`;
-      }
-    }
-
-    return {
-      uid: userRecord ? userRecord.id : `user-${matchedDemo.role}-1`,
-      email: matchedDemo.email,
-      name: tenantName,
-      role: matchedDemo.role,
-      room: matchedDemo.role === 'tenant' ? 2 : undefined,
-      tenant_id: tenantId,
-    };
-  }
-
-  // Check if email exists with incorrect password
-  const emailExists = DEMO_ACCOUNTS.some((acc) => acc.email.toLowerCase() === cleanEmail);
-  if (emailExists) {
-    throw new Error('Incorrect password. Check the demo credentials below.');
-  }
-
-  throw new Error('Account not found. Please use one of the demo accounts or register in Firebase.');
+  throw new Error('Could not sign in. Please check your email and password.');
 }
 
 /**
@@ -137,12 +124,12 @@ export async function logout() {
 /**
  * Registers a new user and creates corresponding 3NF database records
  */
-export async function registerUser({ email, password, name, room = 2, phone = '' }) {
+export async function registerUser({ email, password, name, phone = '' }) {
   const cleanEmail = email.trim().toLowerCase();
   const cleanPass = password.trim();
   const cleanName = name.trim();
-  // Security Enforcement: Public self-registration is strictly for tenants.
-  // Owner and Caretaker accounts are pre-provisioned / migrated in seedDatabase.js.
+  // Public self-registration is restricted to tenants. Staff roles are provisioned
+  // by trusted administration in Firebase Authentication and Firestore.
   const role = 'tenant';
 
   if (!cleanEmail || !cleanPass || !cleanName) {
@@ -153,37 +140,61 @@ export async function registerUser({ email, password, name, room = 2, phone = ''
     throw new Error('Password must be at least 6 characters');
   }
 
+  if (!isFirebaseConfigured || !auth || !db) {
+    throw new Error('Online registration is unavailable right now. Please try again later.');
+  }
+
   // Live Firebase Auth Registration (when configured)
   if (isFirebaseConfigured && auth && db) {
     try {
-      const { createUserWithEmailAndPassword, updateProfile } = await import('firebase/auth');
-      const { doc, setDoc } = await import('firebase/firestore');
+      const { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } = await import('firebase/auth');
+      const { doc, getDoc, writeBatch } = await import('firebase/firestore');
 
-      const userCred = await createUserWithEmailAndPassword(auth, cleanEmail, cleanPass);
-      const fbUser = userCred.user;
+      let fbUser;
+      try {
+        const userCred = await createUserWithEmailAndPassword(auth, cleanEmail, cleanPass);
+        fbUser = userCred.user;
+      } catch (createError) {
+        // Auth can succeed before a Firestore rule/network error. Allow retry only for
+        // an existing tenant Auth account whose tenant profile is still missing.
+        if (createError.code !== 'auth/email-already-in-use') throw createError;
+        const existingCred = await signInWithEmailAndPassword(auth, cleanEmail, cleanPass);
+        fbUser = existingCred.user;
+        const existingProfile = await getDoc(doc(db, COLLECTIONS.USERS, fbUser.uid));
+        if (existingProfile.exists()) {
+          if (existingProfile.data().role !== 'tenant') {
+            throw new Error('This email already has an account. Please sign in instead.');
+          }
+          const existingTenant = await getDoc(doc(db, COLLECTIONS.TENANTS, `tenant-${fbUser.uid}`));
+          if (existingTenant.exists()) {
+            throw new Error('This email already has an account. Please sign in instead.');
+          }
+        }
+      }
+
       await updateProfile(fbUser, { displayName: cleanName });
 
       const newUserId = fbUser.uid;
-      const newTenantId = role === 'tenant' ? `tenant-${Date.now()}` : undefined;
+      // Stable IDs make retrying a partially completed signup safe and idempotent.
+      const newTenantId = `tenant-${newUserId}`;
 
-      // 1. Write to USERS 3NF collection
-      await setDoc(doc(db, COLLECTIONS.USERS, newUserId), {
+      // Keep the account and its tenant profile in sync in one Firestore commit.
+      const batch = writeBatch(db);
+      batch.set(doc(db, COLLECTIONS.USERS, newUserId), {
         id: newUserId,
         email: cleanEmail,
         role,
-        name: cleanName,
-        tenant_id: newTenantId,
         created_at: new Date().toISOString(),
       });
 
-      // 2. If Tenant, write to TENANTS 3NF collection & create LEASE
+      // Room assignment is handled by property staff.
       if (role === 'tenant' && newTenantId) {
         const nameParts = cleanName.split(' ');
         const firstName = nameParts[0] || cleanName;
         const lastName = nameParts.slice(1).join(' ') || '';
         const initials = (firstName[0] || '') + (lastName[0] || firstName[1] || 'T').toUpperCase();
 
-        await setDoc(doc(db, COLLECTIONS.TENANTS, newTenantId), {
+        batch.set(doc(db, COLLECTIONS.TENANTS, newTenantId), {
           id: newTenantId,
           user_id: newUserId,
           first_name: firstName,
@@ -193,91 +204,21 @@ export async function registerUser({ email, password, name, room = 2, phone = ''
           avatar_color: '#8b5cf6',
         });
 
-        // Create Lease
-        const leaseId = `lease-${Date.now()}`;
-        const roomDocId = `room-${parseInt(room, 10) || 2}`;
-        await setDoc(doc(db, COLLECTIONS.LEASES, leaseId), {
-          id: leaseId,
-          tenant_id: newTenantId,
-          room_id: roomDocId,
-          start_date: new Date().toISOString().split('T')[0],
-          agreed_monthly_rent: 2500,
-          due_day: 5,
-          status: 'active',
-        });
       }
+      await batch.commit();
 
       return {
         uid: newUserId,
         email: cleanEmail,
         name: cleanName,
         role,
-        room: role === 'tenant' ? (parseInt(room, 10) || 2) : undefined,
         tenant_id: newTenantId,
       };
     } catch (err) {
-      console.warn('Firebase registration error, falling back to 3NF store:', err.message);
+      console.warn('Firebase registration failed:', err.message);
+      if (err.message === 'This email already has an account. Please sign in instead.') throw err;
+      throw getFriendlyAuthError(err, 'create your account');
     }
   }
 
-  // 3NF In-Memory Store Registration
-  const store = getNormalizedMockDatabase();
-
-  // Check if user already exists
-  const existing = store[COLLECTIONS.USERS].find((u) => u.email.toLowerCase() === cleanEmail);
-  if (existing) {
-    throw new Error('An account with this email already exists. Please sign in.');
-  }
-
-  const newUserId = `user-${Date.now()}`;
-  const newTenantId = role === 'tenant' ? `tenant-${Date.now()}` : undefined;
-
-  // Insert into USERS
-  store[COLLECTIONS.USERS].push({
-    id: newUserId,
-    email: cleanEmail,
-    role,
-    name: cleanName,
-    tenant_id: newTenantId,
-    created_at: new Date().toISOString().split('T')[0],
-  });
-
-  // If Tenant, insert into TENANTS and LEASES
-  if (role === 'tenant' && newTenantId) {
-    const nameParts = cleanName.split(' ');
-    const firstName = nameParts[0] || cleanName;
-    const lastName = nameParts.slice(1).join(' ') || '';
-    const initials = (firstName[0] || '') + (lastName[0] || firstName[1] || 'T').toUpperCase();
-    const roomNum = parseInt(room, 10) || 2;
-    const roomDocId = `room-${roomNum}`;
-
-    store[COLLECTIONS.TENANTS].push({
-      id: newTenantId,
-      user_id: newUserId,
-      first_name: firstName,
-      last_name: lastName,
-      initials,
-      phone: phone || '0917-000-0000',
-      avatar_color: '#8b5cf6',
-    });
-
-    store[COLLECTIONS.LEASES].push({
-      id: `lease-${Date.now()}`,
-      tenant_id: newTenantId,
-      room_id: roomDocId,
-      start_date: new Date().toISOString().split('T')[0],
-      agreed_monthly_rent: 2500,
-      due_day: 5,
-      status: 'active',
-    });
-  }
-
-  return {
-    uid: newUserId,
-    email: cleanEmail,
-    name: cleanName,
-    role,
-    room: role === 'tenant' ? (parseInt(room, 10) || 2) : undefined,
-    tenant_id: newTenantId,
-  };
 }
