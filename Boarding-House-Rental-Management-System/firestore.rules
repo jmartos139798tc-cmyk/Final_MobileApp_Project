@@ -1,0 +1,152 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function accountRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    function isOwner() {
+      return signedIn() && accountRole() == 'owner';
+    }
+
+    function isStaff() {
+      return signedIn() && accountRole() in ['owner', 'caretaker'];
+    }
+
+    function ownsTenant(tenantId) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/tenants/$(tenantId))
+        && get(/databases/$(database)/documents/tenants/$(tenantId)).data.user_id == request.auth.uid;
+    }
+
+    function ownsLease(leaseId) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/leases/$(leaseId))
+        && ownsTenant(get(/databases/$(database)/documents/leases/$(leaseId)).data.tenant_id);
+    }
+
+    function ownsInvoice(invoiceId) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/invoices/$(invoiceId))
+        && ownsLease(get(/databases/$(database)/documents/invoices/$(invoiceId)).data.lease_id);
+    }
+
+    function validTenantSignup(tenantId) {
+      return signedIn()
+        && tenantId == 'tenant-' + request.auth.uid
+        && request.resource.data.id == tenantId
+        && request.resource.data.user_id == request.auth.uid
+        && request.resource.data.keys().hasOnly([
+          'id', 'user_id', 'first_name', 'last_name', 'initials', 'phone', 'avatar_color'
+        ])
+        && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'tenant';
+    }
+
+    match /users/{userId} {
+      allow get: if isStaff() || (signedIn() && request.auth.uid == userId);
+      allow list: if isStaff();
+      allow create: if isOwner()
+        || (signedIn()
+          && request.auth.uid == userId
+          && request.resource.data.id == userId
+          && request.resource.data.email == request.auth.token.email
+          && request.resource.data.role == 'tenant'
+          && request.resource.data.keys().hasOnly(['id', 'email', 'role', 'created_at']));
+      allow update: if isOwner()
+        || (signedIn()
+          && request.auth.uid == userId
+          && request.resource.data.id == userId
+          && request.resource.data.email == resource.data.email
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'created_at', 'name', 'tenant_id'
+          ]));
+      allow delete: if isOwner();
+    }
+
+    match /staff_profiles/{userId} {
+      allow get: if isStaff() || (signedIn() && request.auth.uid == userId);
+      allow list: if isStaff();
+      allow write: if isOwner();
+    }
+
+    match /tenants/{tenantId} {
+      allow get, list: if isStaff() || (signedIn() && resource.data.user_id == request.auth.uid);
+      allow create: if isStaff() || validTenantSignup(tenantId);
+      allow update: if isStaff()
+        || (ownsTenant(tenantId)
+          && request.resource.data.user_id == resource.data.user_id
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'first_name', 'last_name', 'initials', 'phone', 'avatar_color', 'emergency_contact'
+          ]));
+      allow delete: if isOwner();
+    }
+
+    match /boarding_houses/{houseId} {
+      allow read: if signedIn();
+      allow write: if isStaff();
+    }
+
+    match /room_types/{typeId} {
+      allow read: if signedIn();
+      allow write: if isStaff();
+    }
+
+    match /rooms/{roomId} {
+      allow read: if signedIn();
+      allow write: if isStaff();
+    }
+
+    match /leases/{leaseId} {
+      allow read: if isStaff() || ownsTenant(resource.data.tenant_id);
+      allow write: if isStaff();
+    }
+
+    match /utility_readings/{readingId} {
+      allow read, write: if isStaff();
+    }
+
+    match /invoices/{invoiceId} {
+      allow read: if isStaff() || ownsLease(resource.data.lease_id);
+      allow write: if isStaff();
+    }
+
+    match /payments/{paymentId} {
+      allow read: if isStaff() || ownsInvoice(resource.data.invoice_id);
+      allow write: if isStaff();
+    }
+
+    match /complaints/{complaintId} {
+      allow read: if isStaff() || ownsTenant(resource.data.tenant_id);
+      allow create: if isStaff()
+        || (ownsTenant(request.resource.data.tenant_id)
+          && request.resource.data.id == complaintId
+          && request.resource.data.status == 'pending'
+          && exists(/databases/$(database)/documents/rooms/$(request.resource.data.room_id)));
+      allow update: if isStaff();
+      allow delete: if isOwner();
+    }
+
+    match /room_change_requests/{requestId} {
+      allow read: if isStaff() || ownsTenant(resource.data.tenant_id);
+      allow create: if isStaff()
+        || (ownsTenant(request.resource.data.tenant_id)
+          && request.resource.data.id == requestId
+          && request.resource.data.status == 'pending'
+          && exists(/databases/$(database)/documents/rooms/$(request.resource.data.requested_room_id))
+          && get(/databases/$(database)/documents/rooms/$(request.resource.data.requested_room_id)).data.status == 'vacant');
+      allow update: if isStaff();
+      allow delete: if isOwner();
+    }
+
+    match /announcements/{announcementId} {
+      allow read: if signedIn();
+      allow create, update: if isStaff() && request.resource.data.author_user_id == request.auth.uid;
+      allow delete: if isOwner();
+    }
+  }
+}
