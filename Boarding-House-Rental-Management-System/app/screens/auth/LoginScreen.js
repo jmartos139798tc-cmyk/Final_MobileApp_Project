@@ -24,7 +24,7 @@ export default function LoginScreen({ onLoginSuccess }) {
   const [regPhone, setRegPhone] = useState('');
   const [regPassword, setRegPassword] = useState('');
   const [regConfirmPassword, setRegConfirmPassword] = useState('');
-  const [regRole, setRegRole] = useState('tenant'); // 'tenant' | 'caretaker' | 'owner'
+  const [regRole, setRegRole] = useState('tenant'); //'tenant' |'caretaker' |'owner'
   const [showRegPassword, setShowRegPassword] = useState(false);
 
   const [loading, setLoading] = useState(false);
