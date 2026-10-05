@@ -30,6 +30,58 @@ function getFriendlyAuthError(error, action) {
   }
 }
 
+async function getUserSessionFromFirebaseUser(fbUser) {
+  if (!fbUser || !db) return null;
+
+  const { doc, getDoc, collection, query, where, getDocs } = await import('firebase/firestore');
+  const userDoc = await getDoc(doc(db, COLLECTIONS.USERS, fbUser.uid));
+  const userProfile = userDoc.exists() ? userDoc.data() : null;
+
+  if (!userProfile?.role) {
+    throw new Error('Your account is missing its profile. Please contact the property administrator.');
+  }
+
+  const role = userProfile.role;
+  let profile = null;
+  let tenantId;
+
+  if (role === 'tenant') {
+    if (userProfile.tenant_id) {
+      tenantId = userProfile.tenant_id;
+      const tenantDoc = await getDoc(doc(db, COLLECTIONS.TENANTS, tenantId));
+      if (tenantDoc.exists()) profile = tenantDoc.data();
+    } else {
+      const tenantQuery = query(collection(db, COLLECTIONS.TENANTS), where('user_id', '==', fbUser.uid));
+      const tenantSnapshot = await getDocs(tenantQuery);
+      const tenantDoc = tenantSnapshot.docs[0];
+      if (tenantDoc) {
+        profile = tenantDoc.data();
+        tenantId = tenantDoc.id;
+      }
+    }
+  } else if (role === 'owner' || role === 'caretaker') {
+    const staffDoc = await getDoc(doc(db, COLLECTIONS.STAFF_PROFILES, fbUser.uid));
+    if (staffDoc.exists()) profile = staffDoc.data();
+  }
+
+  if (!profile && !userProfile.name) {
+    throw new Error('Your account is missing its role profile. Ask the property owner to finish setting it up.');
+  }
+
+  const name = profile
+    ? `${profile.first_name || ''} ${profile.last_name || ''}`.trim()
+    : userProfile.name;
+
+  return {
+    uid: fbUser.uid,
+    email: fbUser.email,
+    name: name || fbUser.displayName || fbUser.email,
+    role,
+    room: role === 'tenant' ? 2 : undefined,
+    tenant_id: tenantId,
+  };
+}
+
 /**
  * Authenticates user credentials and retrieves their 3NF profile
  */
@@ -46,56 +98,7 @@ export async function loginWithEmail(email, password) {
     try {
       const { signInWithEmailAndPassword } = await import('firebase/auth');
       const userCredential = await signInWithEmailAndPassword(auth, cleanEmail, cleanPass);
-      const fbUser = userCredential.user;
-
-      // The Firestore user document stores identity and role. Personal details live
-      // in the role-specific profile collection.
-      const { doc, getDoc, collection, query, where, getDocs } = await import('firebase/firestore');
-      const userDoc = await getDoc(doc(db, COLLECTIONS.USERS, fbUser.uid));
-      const userProfile = userDoc.exists() ? userDoc.data() : null;
-
-      if (!userProfile?.role) {
-        throw new Error('Your account is missing its profile. Please contact the property administrator.');
-      }
-      const role = userProfile.role;
-      let profile = null;
-      let tenantId;
-
-      if (role === 'tenant') {
-        // Support old user docs during migration, then use the normalized FK.
-        if (userProfile.tenant_id) {
-          tenantId = userProfile.tenant_id;
-          const tenantDoc = await getDoc(doc(db, COLLECTIONS.TENANTS, tenantId));
-          if (tenantDoc.exists()) profile = tenantDoc.data();
-        } else {
-          const tenantQuery = query(collection(db, COLLECTIONS.TENANTS), where('user_id', '==', fbUser.uid));
-          const tenantSnapshot = await getDocs(tenantQuery);
-          const tenantDoc = tenantSnapshot.docs[0];
-          if (tenantDoc) {
-            profile = tenantDoc.data();
-            tenantId = tenantDoc.id;
-          }
-        }
-      } else if (role === 'owner' || role === 'caretaker') {
-        const staffDoc = await getDoc(doc(db, COLLECTIONS.STAFF_PROFILES, fbUser.uid));
-        if (staffDoc.exists()) profile = staffDoc.data();
-      }
-
-      if (!profile && !userProfile.name) {
-        throw new Error('Your account is missing its role profile. Ask the property owner to finish setting it up.');
-      }
-      const name = profile
-        ? `${profile.first_name || ''} ${profile.last_name || ''}`.trim()
-        : userProfile.name;
-
-      return {
-        uid: fbUser.uid,
-        email: fbUser.email,
-        name: name || fbUser.displayName || cleanEmail,
-        role,
-        room: role === 'tenant' ? 2 : undefined,
-        tenant_id: tenantId,
-      };
+      return getUserSessionFromFirebaseUser(userCredential.user);
     } catch (error) {
       console.warn('Firebase sign-in failed:', error.message);
       if (!error?.code) throw error;
@@ -104,6 +107,38 @@ export async function loginWithEmail(email, password) {
   }
 
   throw new Error('Could not sign in. Please check your email and password.');
+}
+
+/**
+ * Restores the persisted Firebase session after app reload.
+ */
+export async function getCurrentUserSession() {
+  if (!isFirebaseConfigured || !auth || !db || !auth.currentUser) {
+    return null;
+  }
+
+  return getUserSessionFromFirebaseUser(auth.currentUser);
+}
+
+/**
+ * Watches Firebase Auth so refresh/reload keeps the app authenticated.
+ */
+export async function subscribeToCurrentUser(onUser, onError) {
+  if (!isFirebaseConfigured || !auth || !db) {
+    onUser(null);
+    return () => {};
+  }
+
+  const { onAuthStateChanged } = await import('firebase/auth');
+  return onAuthStateChanged(auth, async (fbUser) => {
+    try {
+      onUser(await getUserSessionFromFirebaseUser(fbUser));
+    } catch (error) {
+      console.warn('Could not restore Firebase session:', error.message);
+      if (onError) onError(error);
+      onUser(null);
+    }
+  });
 }
 
 /**

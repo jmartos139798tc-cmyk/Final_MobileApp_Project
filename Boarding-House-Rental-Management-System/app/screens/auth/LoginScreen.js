@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useCallback, useEffect, useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   KeyboardAvoidingView,
   Modal,
   Animated,
+  BackHandler,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -170,7 +171,7 @@ export default function LoginScreen({ onLoginSuccess }) {
   // Small fade/slide when switching between Sign In and Sign Up
   const formAnim = useRef(new Animated.Value(1)).current;
 
-  const switchMode = (mode) => {
+  const switchMode = useCallback((mode) => {
     if (mode === formMode) return;
     setErrorMessage('');
     setSuccessMessage('');
@@ -181,7 +182,22 @@ export default function LoginScreen({ onLoginSuccess }) {
       duration: 220,
       useNativeDriver: Platform.OS !== 'web',
     }).start();
-  };
+  }, [formAnim, formMode]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') return undefined;
+
+    const backSubscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (formMode === 'register') {
+        switchMode('login');
+        return true;
+      }
+
+      return false;
+    });
+
+    return () => backSubscription.remove();
+  }, [formMode, switchMode]);
 
   // ── Sign In handler (logic unchanged) ──────────────────────
   const handleSignIn = async (emailToUse, passToUse) => {
