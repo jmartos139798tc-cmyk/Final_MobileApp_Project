@@ -8,9 +8,11 @@
 //   4. Copy the firebaseConfig object and paste below
 // ──────────────────────────────────────────────────────────────
 
-import { initializeApp, getApps } from 'firebase/app';
+import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
-import { getAuth } from 'firebase/auth';
+import { initializeAuth, getAuth, getReactNativePersistence } from 'firebase/auth';
 
 // For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
@@ -31,15 +33,28 @@ export const isFirebaseConfigured = Boolean(
   firebaseConfig.projectId !== 'YOUR_PROJECT_ID'
 );
 
-// Initialize Firebase only if configured (prevents crashes with placeholder config)
 let app = null;
 let db = null;
 let auth = null;
 
-if (isFirebaseConfigured && getApps().length === 0) {
-  app = initializeApp(firebaseConfig);
+if (isFirebaseConfigured) {
+  // Reuse the existing app after a hot reload instead of leaving everything null
+  app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
   db = getFirestore(app);
-  auth = getAuth(app);
+
+  if (Platform.OS === 'web') {
+    auth = getAuth(app);
+  } else {
+    try {
+      // Saves the login on the device so users stay signed in
+      auth = initializeAuth(app, {
+        persistence: getReactNativePersistence(AsyncStorage),
+      });
+    } catch (e) {
+      // Auth was already initialized (fast refresh), so reuse it
+      auth = getAuth(app);
+    }
+  }
 }
 
 export { app, db, auth };

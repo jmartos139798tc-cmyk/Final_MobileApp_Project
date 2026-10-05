@@ -1,14 +1,149 @@
-import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, ActivityIndicator, Platform, KeyboardAvoidingView, Modal } from 'react-native';
+import React, { useState, useRef } from 'react';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  ScrollView,
+  ActivityIndicator,
+  Platform,
+  KeyboardAvoidingView,
+  Modal,
+  Animated,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { isMobile, isDesktop, getResponsivePadding, fs, spacing, cardStyle, cardShadow, safeAreaTop } from '../../utils/responsive';
+import {
+  isMobile,
+  isDesktop,
+  getResponsivePadding,
+  fs,
+  cardShadow,
+  safeAreaTop,
+} from '../../utils/responsive';
 import { useTheme } from '../../utils/ThemeContext';
 import { loginWithEmail, registerUser } from '../../services/authService';
+
+// ─────────────────────────────────────────────────────────────
+// Reusable UI pieces (defined OUTSIDE the screen so inputs don't
+// lose focus while typing)
+// ─────────────────────────────────────────────────────────────
+
+function Field({ label, required, icon, colors, right, marginBottom = 16, ...inputProps }) {
+  const [focused, setFocused] = useState(false);
+
+  return (
+    <View style={{ marginBottom }}>
+      <Text style={{ fontSize: fs(13), fontWeight: '700', color: colors.textSecondary, marginBottom: 7 }}>
+        {label}
+        {required ? <Text style={{ color: colors.danger }}> *</Text> : null}
+      </Text>
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          backgroundColor: focused ? colors.card : colors.searchBg,
+          borderColor: focused ? colors.accent : colors.searchBorder,
+          borderWidth: focused ? 2 : 1,
+          borderRadius: 14,
+          paddingHorizontal: focused ? 13 : 14,
+          minHeight: 52,
+        }}
+      >
+        <Ionicons
+          name={icon}
+          size={19}
+          color={focused ? colors.accent : colors.textMuted}
+          style={{ marginRight: 10 }}
+        />
+        <TextInput
+          {...inputProps}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          placeholderTextColor={colors.textMuted}
+          style={{
+            flex: 1,
+            paddingVertical: 13,
+            fontSize: fs(15),
+            color: colors.text,
+            ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}),
+          }}
+        />
+        {right}
+      </View>
+    </View>
+  );
+}
+
+function EyeToggle({ visible, onPress, colors }) {
+  return (
+    <TouchableOpacity onPress={onPress} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+      <Ionicons name={visible ? 'eye-off-outline' : 'eye-outline'} size={21} color={colors.textMuted} />
+    </TouchableOpacity>
+  );
+}
+
+function Banner({ type, text, colors }) {
+  const isError = type === 'error';
+  const tone = isError ? colors.danger : colors.success;
+  return (
+    <View
+      style={{
+        backgroundColor: isError ? 'rgba(239, 68, 68, 0.10)' : 'rgba(16, 185, 129, 0.10)',
+        borderColor: tone,
+        borderWidth: 1,
+        borderRadius: 12,
+        paddingHorizontal: 14,
+        paddingVertical: 11,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+        marginBottom: 18,
+      }}
+    >
+      <Ionicons name={isError ? 'alert-circle' : 'checkmark-circle'} size={20} color={tone} />
+      <Text style={{ fontSize: fs(13), color: tone, flex: 1, fontWeight: '600', lineHeight: 18 }}>{text}</Text>
+    </View>
+  );
+}
+
+function PrimaryButton({ label, icon, loading, onPress, colors }) {
+  return (
+    <TouchableOpacity
+      activeOpacity={0.85}
+      disabled={loading}
+      onPress={onPress}
+      style={{
+        backgroundColor: colors.primary,
+        minHeight: 54,
+        borderRadius: 14,
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexDirection: 'row',
+        gap: 10,
+        opacity: loading ? 0.85 : 1,
+        ...cardShadow,
+      }}
+    >
+      {loading ? (
+        <ActivityIndicator size="small" color="#ffffff" />
+      ) : (
+        <>
+          <Text style={{ fontSize: fs(16), fontWeight: '800', color: '#ffffff' }}>{label}</Text>
+          <Ionicons name={icon} size={19} color="#ffffff" />
+        </>
+      )}
+    </TouchableOpacity>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// Screen
+// ─────────────────────────────────────────────────────────────
 
 export default function LoginScreen({ onLoginSuccess }) {
   const { colors, isDark, toggleTheme } = useTheme();
   const padding = getResponsivePadding();
-  const containerMaxWidth = isDesktop ? 500 : '100%';
+  const containerMaxWidth = isDesktop ? 480 : 560;
 
   // Active form mode: 'login' | 'register'
   const [formMode, setFormMode] = useState('login');
@@ -32,7 +167,23 @@ export default function LoginScreen({ onLoginSuccess }) {
   const [successMessage, setSuccessMessage] = useState('');
   const [showForgotModal, setShowForgotModal] = useState(false);
 
-  // Sign In handler
+  // Small fade/slide when switching between Sign In and Sign Up
+  const formAnim = useRef(new Animated.Value(1)).current;
+
+  const switchMode = (mode) => {
+    if (mode === formMode) return;
+    setErrorMessage('');
+    setSuccessMessage('');
+    formAnim.setValue(0);
+    setFormMode(mode);
+    Animated.timing(formAnim, {
+      toValue: 1,
+      duration: 220,
+      useNativeDriver: Platform.OS !== 'web',
+    }).start();
+  };
+
+  // ── Sign In handler (logic unchanged) ──────────────────────
   const handleSignIn = async (emailToUse, passToUse) => {
     const targetEmail = emailToUse !== undefined ? emailToUse : email;
     const targetPass = passToUse !== undefined ? passToUse : password;
@@ -59,7 +210,7 @@ export default function LoginScreen({ onLoginSuccess }) {
     }
   };
 
-  // Register handler
+  // ── Register handler (logic unchanged) ─────────────────────
   const handleRegister = async () => {
     if (!regName.trim() || !regEmail.trim() || !regPassword.trim()) {
       setErrorMessage('Please fill in your name, email, and password');
@@ -98,6 +249,13 @@ export default function LoginScreen({ onLoginSuccess }) {
     }
   };
 
+  const isLogin = formMode === 'login';
+
+  const tabs = [
+    { key: 'login', label: 'Sign In', icon: 'log-in-outline' },
+    { key: 'register', label: 'Tenant Sign Up', icon: 'person-add-outline' },
+  ];
+
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       {/* Theme toggle floating button */}
@@ -108,468 +266,355 @@ export default function LoginScreen({ onLoginSuccess }) {
           position: 'absolute',
           top: isMobile ? safeAreaTop + 8 : 16,
           right: 16,
-          width: 40,
-          height: 40,
-          borderRadius: 20,
-          backgroundColor: colors.card,
+          width: 42,
+          height: 42,
+          borderRadius: 21,
+          backgroundColor: 'rgba(255,255,255,0.18)',
           borderWidth: 1,
-          borderColor: colors.cardBorder,
+          borderColor: 'rgba(255,255,255,0.32)',
           alignItems: 'center',
           justifyContent: 'center',
           zIndex: 100,
-          ...cardShadow,
         }}
       >
-        <Ionicons name={isDark ? 'sunny' : 'moon'} size={18} color={isDark ? '#fbbf24' : colors.accent} />
+        <Ionicons name={isDark ? 'sunny' : 'moon'} size={19} color={isDark ? '#fbbf24' : '#ffffff'} />
       </TouchableOpacity>
 
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={{ flex: 1 }}
-      >
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
         <ScrollView
           style={{ flex: 1 }}
-          contentContainerStyle={{
-            flexGrow: 1,
-            justifyContent: 'center',
-            alignItems: 'center',
-            padding,
-            paddingTop: isMobile ? safeAreaTop + 36 : 50,
-            paddingBottom: 40,
-          }}
+          contentContainerStyle={{ flexGrow: 1, paddingBottom: 40 }}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
         >
-          <View style={{ width: '100%', maxWidth: containerMaxWidth }}>
-            {/* Logo & Branding */}
-            <View style={{ alignItems: 'center', marginBottom: 24 }}>
-              <View style={{
-                width: 64,
-                height: 64,
-                borderRadius: 20,
-                backgroundColor: colors.primary,
+          {/* ── Brand hero ───────────────────────────────── */}
+          <View
+            style={{
+              backgroundColor: colors.heroBg,
+              paddingTop: isMobile ? safeAreaTop + 30 : 60,
+              paddingBottom: 84,
+              alignItems: 'center',
+              borderBottomLeftRadius: 40,
+              borderBottomRightRadius: 40,
+              overflow: 'hidden',
+            }}
+          >
+            {/* Decorative circles */}
+            <View
+              style={{
+                position: 'absolute',
+                top: -70,
+                left: -50,
+                width: 220,
+                height: 220,
+                borderRadius: 110,
+                backgroundColor: 'rgba(255,255,255,0.07)',
+              }}
+            />
+            <View
+              style={{
+                position: 'absolute',
+                bottom: -60,
+                right: -40,
+                width: 190,
+                height: 190,
+                borderRadius: 95,
+                backgroundColor: 'rgba(255,255,255,0.06)',
+              }}
+            />
+
+            {/* Logo with soft ring */}
+            <View
+              style={{
+                width: 96,
+                height: 96,
+                borderRadius: 48,
+                backgroundColor: 'rgba(255,255,255,0.16)',
                 alignItems: 'center',
                 justifyContent: 'center',
-                marginBottom: 14,
-                ...cardShadow,
-              }}>
-                <Ionicons name="home" size={30} color="#ffffff" />
+                marginBottom: 16,
+              }}
+            >
+              <View
+                style={{
+                  width: 72,
+                  height: 72,
+                  borderRadius: 24,
+                  backgroundColor: '#ffffff',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Ionicons name="home" size={34} color={colors.heroBg} />
               </View>
-
-              <Text style={{
-                fontSize: fs(24),
-                fontWeight: '900',
-                color: colors.text,
-                letterSpacing: -0.5,
-              }}>
-                Nads & Gracy BH
-              </Text>
-              <Text style={{
-                fontSize: fs(12),
-                color: colors.textMuted,
-                marginTop: 4,
-                textAlign: 'center',
-              }}>
-                Boarding House Management System
-              </Text>
             </View>
 
-            {/* Error Message Box */}
-            {errorMessage ? (
-              <View style={{
-                backgroundColor: 'rgba(239, 68, 68, 0.12)',
-                borderColor: colors.danger,
+            <Text
+              style={{
+                fontSize: fs(27),
+                fontWeight: '900',
+                color: colors.heroText,
+                letterSpacing: -0.5,
+                textAlign: 'center',
+              }}
+            >
+              Nads & Gracy BH
+            </Text>
+            <Text
+              style={{
+                fontSize: fs(13),
+                color: colors.heroSubtext,
+                marginTop: 4,
+                textAlign: 'center',
+              }}
+            >
+              Boarding House Management System
+            </Text>
+          </View>
+
+          {/* ── Form card (overlaps the hero) ────────────── */}
+          <View style={{ paddingHorizontal: padding, marginTop: -48, alignItems: 'center' }}>
+            <View
+              style={{
+                width: '100%',
+                maxWidth: containerMaxWidth,
+                backgroundColor: colors.card,
+                borderColor: colors.cardBorder,
                 borderWidth: 1,
-                borderRadius: 12,
-                paddingHorizontal: 14,
-                paddingVertical: 10,
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 8,
-                marginBottom: 16,
-              }}>
-                <Ionicons name="alert-circle" size={20} color={colors.danger} />
-                <Text style={{ fontSize: fs(12), color: colors.danger, flex: 1, fontWeight: '600' }}>
-                  {errorMessage}
-                </Text>
-              </View>
-            ) : null}
-
-            {/* Success Message Box */}
-            {successMessage ? (
-              <View style={{
-                backgroundColor: 'rgba(16, 185, 129, 0.12)',
-                borderColor: colors.success,
-                borderWidth: 1,
-                borderRadius: 12,
-                paddingHorizontal: 14,
-                paddingVertical: 10,
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 8,
-                marginBottom: 16,
-              }}>
-                <Ionicons name="checkmark-circle" size={20} color={colors.success} />
-                <Text style={{ fontSize: fs(12), color: colors.success, flex: 1, fontWeight: '600' }}>
-                  {successMessage}
-                </Text>
-              </View>
-            ) : null}
-
-            {/* Auth Form Card */}
-            <View style={{
-              ...cardStyle,
-              backgroundColor: colors.card,
-              borderColor: colors.cardBorder,
-              padding: isMobile ? 20 : 28,
-              marginBottom: 20,
-            }}>
-              {/* Form Mode Selector: Sign In / Create Account */}
-              <View style={{
-                flexDirection: 'row',
-                backgroundColor: colors.bg,
-                borderRadius: 12,
-                padding: 4,
-                marginBottom: 20,
-              }}>
-                <TouchableOpacity
-                  activeOpacity={0.8}
-                  onPress={() => {
-                    setFormMode('login');
-                    setErrorMessage('');
-                    setSuccessMessage('');
-                  }}
-                  style={{
-                    flex: 1,
-                    paddingVertical: 10,
-                    borderRadius: 10,
-                    backgroundColor: formMode === 'login' ? colors.primary : 'transparent',
-                    alignItems: 'center',
-                  }}
-                >
-                  <Text style={{
-                    fontSize: fs(13),
-                    fontWeight: '800',
-                    color: formMode === 'login' ? '#ffffff' : colors.textMuted,
-                  }}>
-                    Sign In
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  activeOpacity={0.8}
-                  onPress={() => {
-                    setFormMode('register');
-                    setErrorMessage('');
-                    setSuccessMessage('');
-                  }}
-                  style={{
-                    flex: 1,
-                    paddingVertical: 10,
-                    borderRadius: 10,
-                    backgroundColor: formMode === 'register' ? colors.primary : 'transparent',
-                    alignItems: 'center',
-                  }}
-                >
-                  <Text style={{
-                    fontSize: fs(13),
-                    fontWeight: '800',
-                    color: formMode === 'register' ? '#ffffff' : colors.textMuted,
-                  }}>
-                    Tenant Sign Up
-                  </Text>
-                </TouchableOpacity>
-              </View>
-
-              {/* ─── Sign In Form ────────────────────────────── */}
-              {formMode === 'login' ? (
-                <View>
-                  {/* Email Input */}
-                  <Text style={{ fontSize: fs(12), fontWeight: '700', color: colors.textSecondary, marginBottom: 6 }}>
-                    Email Address
-                  </Text>
-                  <View style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    backgroundColor: colors.searchBg,
-                    borderColor: colors.searchBorder,
-                    borderWidth: 1,
-                    borderRadius: 12,
-                    paddingHorizontal: 14,
-                    marginBottom: 16,
-                  }}>
-                    <Ionicons name="mail-outline" size={18} color={colors.textMuted} style={{ marginRight: 10 }} />
-                    <TextInput
+                borderRadius: 24,
+                padding: isMobile ? 20 : 28,
+                ...cardShadow,
+              }}
+            >
+              {/* Tabs */}
+              <View
+                style={{
+                  flexDirection: 'row',
+                  backgroundColor: colors.bg,
+                  borderRadius: 14,
+                  padding: 4,
+                  marginBottom: 22,
+                }}
+              >
+                {tabs.map((tab) => {
+                  const active = formMode === tab.key;
+                  return (
+                    <TouchableOpacity
+                      key={tab.key}
+                      activeOpacity={0.8}
+                      onPress={() => switchMode(tab.key)}
                       style={{
                         flex: 1,
-                        paddingVertical: 12,
-                        fontSize: fs(14),
-                        color: colors.text,
+                        paddingVertical: 11,
+                        borderRadius: 11,
+                        backgroundColor: active ? colors.primary : 'transparent',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexDirection: 'row',
+                        gap: 6,
                       }}
+                    >
+                      <Ionicons name={tab.icon} size={16} color={active ? '#ffffff' : colors.textMuted} />
+                      <Text
+                        style={{
+                          fontSize: fs(13),
+                          fontWeight: '800',
+                          color: active ? '#ffffff' : colors.textMuted,
+                        }}
+                      >
+                        {tab.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              {/* Heading */}
+              <Text style={{ fontSize: fs(21), fontWeight: '900', color: colors.text, letterSpacing: -0.3 }}>
+                {isLogin ? 'Welcome back' : 'Create your tenant account'}
+              </Text>
+              <Text style={{ fontSize: fs(13), color: colors.textMuted, marginTop: 4, marginBottom: 20, lineHeight: 19 }}>
+                {isLogin ? 'Sign in to continue to your account.' : 'Fill in your details to start using the app.'}
+              </Text>
+
+              {/* Messages */}
+              {errorMessage ? <Banner type="error" text={errorMessage} colors={colors} /> : null}
+              {successMessage ? <Banner type="success" text={successMessage} colors={colors} /> : null}
+
+              <Animated.View
+                style={{
+                  opacity: formAnim,
+                  transform: [
+                    {
+                      translateY: formAnim.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }),
+                    },
+                  ],
+                }}
+              >
+                {/* ─── Sign In Form ─────────────────────────── */}
+                {isLogin ? (
+                  <View>
+                    <Field
+                      label="Email Address"
+                      icon="mail-outline"
+                      colors={colors}
                       placeholder="Enter your email..."
-                      placeholderTextColor={colors.textMuted}
                       autoCapitalize="none"
                       keyboardType="email-address"
                       value={email}
                       onChangeText={setEmail}
                     />
-                  </View>
 
-                  {/* Password Input */}
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                    <Text style={{ fontSize: fs(12), fontWeight: '700', color: colors.textSecondary }}>
-                      Password
-                    </Text>
-                    <TouchableOpacity onPress={() => setShowForgotModal(true)}>
-                      <Text style={{ fontSize: fs(11), color: colors.accent, fontWeight: '700' }}>
-                        Forgot?
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                  <View style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    backgroundColor: colors.searchBg,
-                    borderColor: colors.searchBorder,
-                    borderWidth: 1,
-                    borderRadius: 12,
-                    paddingHorizontal: 14,
-                    marginBottom: 20,
-                  }}>
-                    <Ionicons name="lock-closed-outline" size={18} color={colors.textMuted} style={{ marginRight: 10 }} />
-                    <TextInput
-                      style={{
-                        flex: 1,
-                        paddingVertical: 12,
-                        fontSize: fs(14),
-                        color: colors.text,
-                      }}
+                    <Field
+                      label="Password"
+                      icon="lock-closed-outline"
+                      colors={colors}
+                      marginBottom={8}
                       placeholder="Enter your password..."
-                      placeholderTextColor={colors.textMuted}
                       secureTextEntry={!showPassword}
                       value={password}
                       onChangeText={setPassword}
+                      right={
+                        <EyeToggle visible={showPassword} onPress={() => setShowPassword(!showPassword)} colors={colors} />
+                      }
                     />
-                    <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
-                      <Ionicons
-                        name={showPassword ? 'eye-off-outline' : 'eye-outline'}
-                        size={20}
-                        color={colors.textMuted}
-                      />
-                    </TouchableOpacity>
-                  </View>
 
-                  {/* Sign In Button */}
-                  <TouchableOpacity
-                    activeOpacity={0.8}
-                    disabled={loading}
-                    onPress={() => handleSignIn()}
-                    style={{
-                      backgroundColor: colors.primary,
-                      paddingVertical: 14,
-                      borderRadius: 12,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      flexDirection: 'row',
-                      gap: 8,
-                    }}
-                  >
-                    {loading ? (
-                      <ActivityIndicator size="small" color="#ffffff" />
-                    ) : (
-                      <>
-                        <Text style={{ fontSize: fs(15), fontWeight: '800', color: '#ffffff' }}>
-                          Sign In
-                        </Text>
-                        <Ionicons name="arrow-forward" size={18} color="#ffffff" />
-                      </>
-                    )}
-                  </TouchableOpacity>
-                </View>
-              ) : (
-                /* ─── Create Account / Registration Form ─────────── */
-                <View>
-                  {/* Full Name */}
-                  <Text style={{ fontSize: fs(12), fontWeight: '700', color: colors.textSecondary, marginBottom: 6 }}>
-                    Full Name *
-                  </Text>
-                  <View style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    backgroundColor: colors.searchBg,
-                    borderColor: colors.searchBorder,
-                    borderWidth: 1,
-                    borderRadius: 12,
-                    paddingHorizontal: 14,
-                    marginBottom: 14,
-                  }}>
-                    <Ionicons name="person-outline" size={18} color={colors.textMuted} style={{ marginRight: 10 }} />
-                    <TextInput
-                      style={{ flex: 1, paddingVertical: 12, fontSize: fs(14), color: colors.text }}
+                    <TouchableOpacity
+                      onPress={() => setShowForgotModal(true)}
+                      style={{ alignSelf: 'flex-end', paddingVertical: 6, marginBottom: 14 }}
+                    >
+                      <Text style={{ fontSize: fs(13), color: colors.accent, fontWeight: '700' }}>Forgot password?</Text>
+                    </TouchableOpacity>
+
+                    <PrimaryButton
+                      label="Sign In"
+                      icon="arrow-forward"
+                      loading={loading}
+                      onPress={() => handleSignIn()}
+                      colors={colors}
+                    />
+                  </View>
+                ) : (
+                  /* ─── Create Account / Registration Form ──── */
+                  <View>
+                    <Field
+                      label="Full Name"
+                      required
+                      icon="person-outline"
+                      colors={colors}
                       placeholder="e.g. Juan Dela Cruz"
-                      placeholderTextColor={colors.textMuted}
                       value={regName}
                       onChangeText={setRegName}
                     />
-                  </View>
 
-                  {/* Email */}
-                  <Text style={{ fontSize: fs(12), fontWeight: '700', color: colors.textSecondary, marginBottom: 6 }}>
-                    Email Address *
-                  </Text>
-                  <View style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    backgroundColor: colors.searchBg,
-                    borderColor: colors.searchBorder,
-                    borderWidth: 1,
-                    borderRadius: 12,
-                    paddingHorizontal: 14,
-                    marginBottom: 14,
-                  }}>
-                    <Ionicons name="mail-outline" size={18} color={colors.textMuted} style={{ marginRight: 10 }} />
-                    <TextInput
-                      style={{ flex: 1, paddingVertical: 12, fontSize: fs(14), color: colors.text }}
+                    <Field
+                      label="Email Address"
+                      required
+                      icon="mail-outline"
+                      colors={colors}
                       placeholder="e.g. juan@gmail.com"
-                      placeholderTextColor={colors.textMuted}
                       autoCapitalize="none"
                       keyboardType="email-address"
                       value={regEmail}
                       onChangeText={setRegEmail}
                     />
-                  </View>
 
-                  {/* Security Notice: Owner/Caretaker are pre-provisioned */}
-                  <View style={{
-                    backgroundColor: colors.accentBg,
-                    borderColor: colors.cardBorder,
-                    borderWidth: 1,
-                    borderRadius: 12,
-                    padding: 12,
-                    marginBottom: 14,
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 10,
-                  }}>
-                    <Ionicons name="shield-checkmark" size={22} color="#8b5cf6" />
-                    <Text style={{ fontSize: fs(11), color: colors.textSecondary, flex: 1, lineHeight: 16 }}>
-                      <Text style={{ fontWeight: '800', color: colors.text }}>Tenant Self-Registration</Text>
-                      {'\n'}For boarders of Nads & Gracy BH. Owner & Caretaker accounts are pre-migrated by administration.
-                    </Text>
-                  </View>
-
-                  {/* Contact Number */}
-                  <Text style={{ fontSize: fs(12), fontWeight: '700', color: colors.textSecondary, marginBottom: 6 }}>
-                    Contact Number
-                  </Text>
-                  <View style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    backgroundColor: colors.searchBg,
-                    borderColor: colors.searchBorder,
-                    borderWidth: 1,
-                    borderRadius: 12,
-                    paddingHorizontal: 14,
-                    marginBottom: 14,
-                  }}>
-                    <Ionicons name="call-outline" size={18} color={colors.textMuted} style={{ marginRight: 10 }} />
-                    <TextInput
-                      style={{ flex: 1, paddingVertical: 12, fontSize: fs(14), color: colors.text }}
-                      placeholder="e.g. 0917-123-4567"
-                      placeholderTextColor={colors.textMuted}
+                    <Field
+                      label="Contact Number"
+                      icon="call-outline"
+                      colors={colors}
+                      placeholder="e.g. 09171234567"
                       keyboardType="phone-pad"
                       maxLength={11}
                       value={regPhone}
                       onChangeText={(text) => setRegPhone(text.replace(/[^0-9]/g, '').slice(0, 11))}
                     />
-                  </View>
 
-                  {/* Password */}
-                  <Text style={{ fontSize: fs(12), fontWeight: '700', color: colors.textSecondary, marginBottom: 6 }}>
-                    Create Password *
-                  </Text>
-                  <View style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    backgroundColor: colors.searchBg,
-                    borderColor: colors.searchBorder,
-                    borderWidth: 1,
-                    borderRadius: 12,
-                    paddingHorizontal: 14,
-                    marginBottom: 14,
-                  }}>
-                    <Ionicons name="lock-closed-outline" size={18} color={colors.textMuted} style={{ marginRight: 10 }} />
-                    <TextInput
-                      style={{ flex: 1, paddingVertical: 12, fontSize: fs(14), color: colors.text }}
+                    <Field
+                      label="Create Password"
+                      required
+                      icon="lock-closed-outline"
+                      colors={colors}
                       placeholder="At least 6 characters..."
-                      placeholderTextColor={colors.textMuted}
                       secureTextEntry={!showRegPassword}
                       value={regPassword}
                       onChangeText={setRegPassword}
+                      right={
+                        <EyeToggle
+                          visible={showRegPassword}
+                          onPress={() => setShowRegPassword(!showRegPassword)}
+                          colors={colors}
+                        />
+                      }
                     />
-                    <TouchableOpacity onPress={() => setShowRegPassword(!showRegPassword)}>
-                      <Ionicons
-                        name={showRegPassword ? 'eye-off-outline' : 'eye-outline'}
-                        size={20}
-                        color={colors.textMuted}
-                      />
-                    </TouchableOpacity>
-                  </View>
 
-                  {/* Confirm Password */}
-                  <Text style={{ fontSize: fs(12), fontWeight: '700', color: colors.textSecondary, marginBottom: 6 }}>
-                    Confirm Password *
-                  </Text>
-                  <View style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    backgroundColor: colors.searchBg,
-                    borderColor: colors.searchBorder,
-                    borderWidth: 1,
-                    borderRadius: 12,
-                    paddingHorizontal: 14,
-                    marginBottom: 20,
-                  }}>
-                    <Ionicons name="shield-checkmark-outline" size={18} color={colors.textMuted} style={{ marginRight: 10 }} />
-                    <TextInput
-                      style={{ flex: 1, paddingVertical: 12, fontSize: fs(14), color: colors.text }}
+                    <Field
+                      label="Confirm Password"
+                      required
+                      icon="shield-checkmark-outline"
+                      colors={colors}
+                      marginBottom={16}
                       placeholder="Re-enter your password..."
-                      placeholderTextColor={colors.textMuted}
                       secureTextEntry={!showRegPassword}
                       value={regConfirmPassword}
                       onChangeText={setRegConfirmPassword}
                     />
-                  </View>
 
-                  {/* Register Button */}
-                  <TouchableOpacity
-                    activeOpacity={0.8}
-                    disabled={loading}
-                    onPress={handleRegister}
-                    style={{
-                      backgroundColor: colors.primary,
-                      paddingVertical: 14,
-                      borderRadius: 12,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      flexDirection: 'row',
-                      gap: 8,
-                    }}
-                  >
-                    {loading ? (
-                      <ActivityIndicator size="small" color="#ffffff" />
-                    ) : (
-                      <>
-                        <Text style={{ fontSize: fs(15), fontWeight: '800', color: '#ffffff' }}>
-                          Register as Tenant
-                        </Text>
-                        <Ionicons name="checkmark-done" size={18} color="#ffffff" />
-                      </>
-                    )}
-                  </TouchableOpacity>
-                </View>
-              )}
+                    {/* Notice: Owner/Caretaker are pre-provisioned */}
+                    <View
+                      style={{
+                        backgroundColor: colors.accentBg,
+                        borderRadius: 14,
+                        padding: 14,
+                        marginBottom: 20,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 12,
+                      }}
+                    >
+                      <View
+                        style={{
+                          width: 36,
+                          height: 36,
+                          borderRadius: 18,
+                          backgroundColor: colors.card,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        <Ionicons name="information-circle" size={22} color={colors.accent} />
+                      </View>
+                      <Text style={{ fontSize: fs(12), color: colors.textSecondary, flex: 1, lineHeight: 18 }}>
+                        <Text style={{ fontWeight: '800', color: colors.text }}>For boarders only. </Text>
+                        Owner and Caretaker accounts are set up by the administrator.
+                      </Text>
+                    </View>
+
+                    <PrimaryButton
+                      label="Register as Tenant"
+                      icon="checkmark-done"
+                      loading={loading}
+                      onPress={handleRegister}
+                      colors={colors}
+                    />
+                  </View>
+                )}
+              </Animated.View>
             </View>
 
+            {/* Footer helper */}
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={() => switchMode(isLogin ? 'register' : 'login')}
+              style={{ marginTop: 22, padding: 6 }}
+            >
+              <Text style={{ fontSize: fs(13), color: colors.textMuted, textAlign: 'center' }}>
+                {isLogin ? 'New boarder? ' : 'Already have an account? '}
+                <Text style={{ color: colors.accent, fontWeight: '800' }}>
+                  {isLogin ? 'Create a tenant account' : 'Sign in'}
+                </Text>
+              </Text>
+            </TouchableOpacity>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -581,46 +626,64 @@ export default function LoginScreen({ onLoginSuccess }) {
         animationType="fade"
         onRequestClose={() => setShowForgotModal(false)}
       >
-        <View style={{
-          flex: 1,
-          backgroundColor: 'rgba(0,0,0,0.7)',
-          justifyContent: 'center',
-          alignItems: 'center',
-          padding: 24,
-        }}>
-          <View style={{
-            width: '100%',
-            maxWidth: 420,
-            backgroundColor: colors.card,
-            borderRadius: 20,
-            borderWidth: 1,
-            borderColor: colors.cardBorder,
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(0,0,0,0.7)',
+            justifyContent: 'center',
+            alignItems: 'center',
             padding: 24,
-            ...cardShadow,
-          }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-              <Text style={{ fontSize: fs(18), fontWeight: '800', color: colors.text }}>
-                Password Recovery
-              </Text>
-              <TouchableOpacity onPress={() => setShowForgotModal(false)}>
-                <Ionicons name="close-circle" size={24} color={colors.textMuted} />
+          }}
+        >
+          <View
+            style={{
+              width: '100%',
+              maxWidth: 420,
+              backgroundColor: colors.card,
+              borderRadius: 24,
+              borderWidth: 1,
+              borderColor: colors.cardBorder,
+              padding: 24,
+              ...cardShadow,
+            }}
+          >
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
+              <View
+                style={{
+                  width: 48,
+                  height: 48,
+                  borderRadius: 16,
+                  backgroundColor: colors.accentBg,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Ionicons name="key-outline" size={24} color={colors.accent} />
+              </View>
+              <TouchableOpacity onPress={() => setShowForgotModal(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Ionicons name="close-circle" size={26} color={colors.textMuted} />
               </TouchableOpacity>
             </View>
 
-            <Text style={{ fontSize: fs(13), color: colors.textSecondary, marginBottom: 16, lineHeight: 20 }}>
+            <Text style={{ fontSize: fs(19), fontWeight: '800', color: colors.text, marginBottom: 8 }}>
+              Password Recovery
+            </Text>
+
+            <Text style={{ fontSize: fs(14), color: colors.textSecondary, marginBottom: 20, lineHeight: 21 }}>
               Enter your email on the sign-in screen, then use Firebase password recovery to regain access.
             </Text>
 
             <TouchableOpacity
               onPress={() => setShowForgotModal(false)}
+              activeOpacity={0.85}
               style={{
                 backgroundColor: colors.primary,
-                paddingVertical: 12,
-                borderRadius: 12,
+                paddingVertical: 14,
+                borderRadius: 14,
                 alignItems: 'center',
               }}
             >
-              <Text style={{ color: '#ffffff', fontWeight: '800' }}>Got it</Text>
+              <Text style={{ color: '#ffffff', fontWeight: '800', fontSize: fs(15) }}>Got it</Text>
             </TouchableOpacity>
           </View>
         </View>
