@@ -159,6 +159,8 @@ export const SEED_DATA = {
     },
   ],
 
+  [COLLECTIONS.DUE_DATE_EXTENSION_REQUESTS]: [],
+
   // 12. ANNOUNCEMENTS
   [COLLECTIONS.ANNOUNCEMENTS]: [
     { id: 'ann-1', house_id: 'bh-1', author_user_id: 'user-caretaker-1', category: 'Payment', title: 'October Rent Reminder', description: 'October rent is due on October 5, 2026. Please settle your balances on time to avoid late fees.', created_at: 'Sep 15, 2026' },

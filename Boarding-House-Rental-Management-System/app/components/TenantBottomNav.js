@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { isDesktop, fs } from '../utils/responsive';
 import { useTheme } from '../utils/ThemeContext';
 
-export default function TenantBottomNav({ activeScreen, onNavigate }) {
+export default function TenantBottomNav({ user, activeScreen, onNavigate }) {
   const { colors } = useTheme();
 
   const navItems = [
@@ -14,8 +14,8 @@ export default function TenantBottomNav({ activeScreen, onNavigate }) {
     { id: 'updates', label: 'Updates', icon: 'notifications', iconOutline: 'notifications-outline' },
   ];
 
-  const activeColor = '#8b5cf6';
-  const activeBg = 'rgba(139, 92, 246, 0.15)';
+  const activeColor = colors.accent;
+  const activeBg = colors.accentBg;
 
   // Desktop sidebar
   if (isDesktop) {
@@ -25,23 +25,23 @@ export default function TenantBottomNav({ activeScreen, onNavigate }) {
         backgroundColor: colors.sidebarBg,
         borderRightWidth: 1,
         borderRightColor: colors.sidebarBorder,
-        paddingTop: 40,
-        paddingHorizontal: 12,
+        paddingTop: 32,
+        paddingHorizontal: 14,
       }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, marginBottom: 32 }}>
           <View style={{
-            width: 36,
-            height: 36,
-            borderRadius: 10,
-            backgroundColor: activeColor,
+            width: 40,
+            height: 40,
+            borderRadius: 13,
+            backgroundColor: activeBg,
             alignItems: 'center',
             justifyContent: 'center',
           }}>
-            <Ionicons name="person" size={18} color="#ffffff" />
+            <Ionicons name="home" size={19} color={activeColor} />
           </View>
           <View>
             <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text }}>Tenant Portal</Text>
-            <Text style={{ fontSize: 11, color: colors.textMuted }}>Room 2 · Ana Reyes</Text>
+            <Text style={{ fontSize: 11, color: colors.textMuted }} numberOfLines={1}>{user?.name || 'Tenant account'}</Text>
           </View>
         </View>
 
@@ -50,16 +50,21 @@ export default function TenantBottomNav({ activeScreen, onNavigate }) {
           return (
             <TouchableOpacity
               key={item.id}
-              activeOpacity={0.7}
+              activeOpacity={0.82}
+              accessibilityRole="button"
+              accessibilityLabel={`Navigate to ${item.label}`}
+              accessibilityState={{ selected: isActive }}
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
                 gap: 12,
-                paddingVertical: 13,
-                paddingHorizontal: 16,
-                borderRadius: 12,
-                marginBottom: 2,
+                paddingVertical: 12,
+                paddingHorizontal: 13,
+                borderRadius: 13,
+                marginBottom: 5,
                 backgroundColor: isActive ? activeBg : 'transparent',
+                borderLeftWidth: 3,
+                borderLeftColor: isActive ? activeColor : 'transparent',
               }}
               onPress={() => onNavigate(item.id)}
             >
@@ -89,23 +94,26 @@ export default function TenantBottomNav({ activeScreen, onNavigate }) {
       borderTopWidth: 1,
       borderTopColor: colors.navBorder,
       flexDirection: 'row',
-      paddingTop: 6,
-      paddingBottom: Platform.OS === 'ios' ? 28 : 10,
-      paddingHorizontal: 16,
+      paddingTop: 8,
+      paddingBottom: Platform.OS === 'ios' ? 26 : 10,
+      paddingHorizontal: 10,
     }}>
       {navItems.map((item) => {
         const isActive = activeScreen === item.id;
         return (
           <TouchableOpacity
             key={item.id}
-            activeOpacity={0.7}
-            style={{ flex: 1, alignItems: 'center', paddingVertical: 4 }}
+            activeOpacity={0.82}
+            accessibilityRole="button"
+            accessibilityLabel={`Navigate to ${item.label}`}
+            accessibilityState={{ selected: isActive }}
+            style={{ flex: 1, alignItems: 'center', paddingVertical: 3, minHeight: 50, justifyContent: 'center' }}
             onPress={() => onNavigate(item.id)}
           >
             <View style={{
               alignItems: 'center',
               justifyContent: 'center',
-              width: 48,
+              width: 52,
               height: 30,
               borderRadius: 15,
               backgroundColor: isActive ? activeBg : 'transparent',
@@ -119,6 +127,8 @@ export default function TenantBottomNav({ activeScreen, onNavigate }) {
             </View>
             <Text style={{
               fontSize: 10,
+              flexShrink: 1,
+              textAlign: 'center',
               fontWeight: isActive ? '700' : '500',
               color: isActive ? activeColor : colors.navInactive,
               marginTop: 1,

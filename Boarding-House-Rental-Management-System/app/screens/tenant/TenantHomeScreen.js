@@ -1,24 +1,30 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Modal, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Modal, ActivityIndicator, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { isMobile, isDesktop, getResponsivePadding, fs, spacing, cardStyle, cardShadow, safeAreaTop } from '../../utils/responsive';
 import { useTheme } from '../../utils/ThemeContext';
-import { getCurrentTenant, getTenantBillingBreakdown, getAnnouncements } from '../../services/dataService';
+import { getCurrentTenant, getTenantBillingBreakdown, getAnnouncements, getTenantExtensionRequests, submitDueDateExtensionRequest } from '../../services/dataService';
 
 export default function TenantHomeScreen({ user, onNavigateToUpdates }) {
   const { colors } = useTheme();
   const padding = getResponsivePadding();
-  const containerMaxWidth = isDesktop ? 1400 : '100%';
+  const containerMaxWidth = isDesktop ? 1180 : '100%';
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [tenant, setTenant] = useState(null);
   const [billing, setBilling] = useState(null);
   const [latestNotice, setLatestNotice] = useState(null);
+  const [extensionRequests, setExtensionRequests] = useState([]);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [showExtensionModal, setShowExtensionModal] = useState(false);
   const [extensionSubmitted, setExtensionSubmitted] = useState(false);
+  const [requestedDueDate, setRequestedDueDate] = useState('');
+  const [extensionReason, setExtensionReason] = useState('');
+  const [extensionError, setExtensionError] = useState('');
+  const [extensionSubmitting, setExtensionSubmitting] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -26,15 +32,17 @@ export default function TenantHomeScreen({ user, onNavigateToUpdates }) {
       try {
         setLoading(true);
         setError(null);
-        const [tenantData, billingData, announcementsData] = await Promise.all([
+        const [tenantData, billingData, announcementsData, extensionData] = await Promise.all([
           getCurrentTenant(user?.tenant_id),
           getTenantBillingBreakdown(user?.tenant_id),
           getAnnouncements(),
+          getTenantExtensionRequests(user?.tenant_id),
         ]);
         if (isMounted) {
           setTenant(tenantData);
           setBilling(billingData);
           setLatestNotice(announcementsData && announcementsData.length > 0 ? announcementsData[0] : null);
+          setExtensionRequests(extensionData);
         }
       } catch (err) {
         if (isMounted) {
@@ -51,7 +59,38 @@ export default function TenantHomeScreen({ user, onNavigateToUpdates }) {
     return () => {
       isMounted = false;
     };
-  }, [user?.tenant_id]);
+  }, [user?.tenant_id, refreshKey]);
+
+  const sendExtensionRequest = async () => {
+    const requestedDate = new Date(requestedDueDate);
+    if (!requestedDueDate.trim() || Number.isNaN(requestedDate.getTime())) {
+      setExtensionError('Enter a valid requested date, such as Oct 12, 2026.');
+      return;
+    }
+    const currentDueDate = new Date(tenant?.dueDate);
+    if (!Number.isNaN(currentDueDate.getTime()) && requestedDate <= currentDueDate) {
+      setExtensionError('The requested date must be after your current due date.');
+      return;
+    }
+
+    try {
+      setExtensionSubmitting(true);
+      setExtensionError('');
+      const request = await submitDueDateExtensionRequest({
+        tenantId: user?.tenant_id,
+        requestedDueDate: requestedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+        reason: extensionReason,
+      });
+      setExtensionRequests((current) => [request, ...current]);
+      setExtensionSubmitted(true);
+    } catch (submitError) {
+      setExtensionError(submitError.message || 'Could not send your request. Please try again.');
+    } finally {
+      setExtensionSubmitting(false);
+    }
+  };
+
+  const hasPendingExtension = extensionRequests.some((request) => request.status === 'pending');
 
   if (loading) {
     return (
@@ -67,6 +106,7 @@ export default function TenantHomeScreen({ user, onNavigateToUpdates }) {
         <Text style={{ color: colors.danger, fontSize: fs(16), textAlign: 'center', fontWeight: '600' }}>
           {error || 'Your profile is not available yet. Please sign in again or contact the property administrator.'}
         </Text>
+        {!!error && <TouchableOpacity onPress={() => setRefreshKey((key) => key + 1)} style={{ marginTop: 18, paddingHorizontal: 20, paddingVertical: 12, backgroundColor: colors.primary, borderRadius: 10 }}><Text style={{ color: colors.onPrimary, fontWeight: '700' }}>Try again</Text></TouchableOpacity>}
       </View>
     );
   }
@@ -83,43 +123,39 @@ export default function TenantHomeScreen({ user, onNavigateToUpdates }) {
       >
         <View style={{ maxWidth: containerMaxWidth, width: '100%' }}>
           {/* Header */}
-          <View style={{ padding, paddingTop: isMobile ? safeAreaTop + 16 : isDesktop ? 40 : 60 }}>
-            <Text style={{
-              fontSize: fs(13),
-              color: colors.textMuted,
-              fontWeight: '600',
-              marginBottom: 4,
-            }}>
-              Welcome Back
-            </Text>
-            <Text style={{
-              fontSize: fs(30),
-              color: colors.text,
-              fontWeight: '800',
-              letterSpacing: -0.5,
-            }}>
-              {tenant.name}
-            </Text>
-            <Text style={{
-              fontSize: fs(14),
-              color: colors.textSecondary,
-              marginTop: 4,
-              fontWeight: '500',
-            }}>
-              {tenant.roomNumber ? `Room ${tenant.roomNumber} · ${tenant.roomType}` : tenant.roomType}
+          <View style={{ padding, paddingTop: isMobile ? safeAreaTop + 62 : isDesktop ? 68 : 64, paddingBottom: 20 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+              <View style={{ width: 54, height: 54, borderRadius: 18, backgroundColor: colors.accentBg, alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ color: colors.accent, fontSize: fs(18), fontWeight: '900' }}>{tenant.initials || tenant.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: fs(12), color: colors.textMuted, fontWeight: '800', letterSpacing: 1.1, textTransform: 'uppercase', marginBottom: 3 }}>TENANT PORTAL</Text>
+                <Text style={{ fontSize: fs(26), color: colors.text, fontWeight: '900', letterSpacing: -0.6 }} numberOfLines={1}>{tenant.name}</Text>
+                <Text style={{ fontSize: fs(13), color: colors.textSecondary, marginTop: 3, fontWeight: '500' }}>
+                  {tenant.roomNumber ? `Room ${tenant.roomNumber} · ${tenant.roomType}` : 'Room assignment pending'}
+                </Text>
+              </View>
+              {!!tenant.roomNumber && (
+                <View style={{ backgroundColor: colors.successBg, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 7, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Ionicons name="checkmark-circle" size={15} color={colors.successText} />
+                  <Text style={{ fontSize: fs(11), color: colors.successText, fontWeight: '800' }}>ACTIVE</Text>
+                </View>
+              )}
+            </View>
+            <Text style={{ fontSize: fs(14), color: colors.textMuted, lineHeight: 21, marginTop: 14 }}>
+              Your home, billing, and property updates in one place.
             </Text>
           </View>
-
-          <View style={{ paddingHorizontal: padding, gap: spacing.lg }}>
+            <View style={{ paddingHorizontal: padding, gap: spacing.xl, paddingBottom: 24 }}>
             {/* ── Outstanding Balance Hero Card ────────────── */}
             <View style={{
-              borderRadius: 22,
+              borderRadius: 26,
               overflow: 'hidden',
               backgroundColor: colors.heroBg,
               ...cardShadow,
             }}>
               <View style={{
-                padding: isMobile ? 22 : 28,
+                padding: isMobile ? 22 : 32,
                 position: 'relative',
               }}>
                 <View style={{
@@ -132,17 +168,18 @@ export default function TenantHomeScreen({ user, onNavigateToUpdates }) {
                   backgroundColor: colors.heroBarBg,
                 }} />
 
-                <Text style={{
-                  fontSize: fs(12),
-                  fontWeight: '700',
-                  color: colors.heroSubtext,
-                  marginBottom: 10,
-                }}>
-                  Outstanding Balance
-                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, gap: 10 }}>
+                  <Text style={{ fontSize: fs(12), fontWeight: '800', color: colors.heroSubtext, letterSpacing: 1, textTransform: 'uppercase' }}>
+                    Outstanding balance
+                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.16)' }}>
+                    <Ionicons name={tenant.outstandingBalance > 0 ? 'time-outline' : 'checkmark-circle-outline'} size={14} color={colors.heroText} />
+                    <Text style={{ fontSize: fs(11), fontWeight: '800', color: colors.heroText }}>{tenant.outstandingBalance > 0 ? 'PAYMENT DUE' : 'ALL CAUGHT UP'}</Text>
+                  </View>
+                </View>
 
                 <Text style={{
-                  fontSize: fs(38),
+                  fontSize: isMobile ? fs(38) : fs(46),
                   fontWeight: '900',
                   color: colors.heroText,
                   marginBottom: 6,
@@ -154,7 +191,7 @@ export default function TenantHomeScreen({ user, onNavigateToUpdates }) {
                 <Text style={{
                   fontSize: fs(13),
                   color: colors.heroSubtext,
-                  marginBottom: 20,
+                  marginBottom: 22,
                   fontWeight: '500',
                 }}>
                   Due: {tenant.dueDate}
@@ -173,13 +210,16 @@ export default function TenantHomeScreen({ user, onNavigateToUpdates }) {
                       flex: isMobile ? 1 : undefined,
                       paddingHorizontal: 20,
                       paddingVertical: 13,
-                      borderRadius: 24,
+                      borderRadius: 14,
                       backgroundColor: colors.heroText,
                       alignItems: 'center',
                       justifyContent: 'center',
-                      minHeight: 44,
+                      minHeight: 48,
+                      flexDirection: 'row',
+                      gap: 8,
                     }}
                   >
+                    <Ionicons name="receipt-outline" size={17} color={colors.heroBg} />
                     <Text style={{
                       fontSize: fs(14),
                       fontWeight: '800',
@@ -192,28 +232,43 @@ export default function TenantHomeScreen({ user, onNavigateToUpdates }) {
                   <TouchableOpacity
                     activeOpacity={0.8}
                     onPress={() => {
+                      if (hasPendingExtension) return;
                       setExtensionSubmitted(false);
+                      setExtensionError('');
+                      setExtensionReason('');
+                      const due = new Date(tenant.dueDate);
+                      if (!Number.isNaN(due.getTime())) {
+                        due.setDate(due.getDate() + 7);
+                        setRequestedDueDate(due.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }));
+                      } else {
+                        setRequestedDueDate('');
+                      }
                       setShowExtensionModal(true);
                     }}
                     style={{
                       flex: isMobile ? 1 : undefined,
                       paddingHorizontal: 20,
                       paddingVertical: 13,
-                      borderRadius: 24,
+                      borderRadius: 14,
                       backgroundColor: colors.heroBarBg,
                       borderWidth: 1,
                       borderColor: 'rgba(255, 255, 255, 0.4)',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      minHeight: 44,
+                      minHeight: 48,
+                      pointerEvents: hasPendingExtension ? 'none' : 'auto',
+                      opacity: hasPendingExtension ? 0.65 : 1,
+                      flexDirection: 'row',
+                      gap: 8,
                     }}
                   >
+                    <Ionicons name="calendar-outline" size={17} color={colors.heroText} />
                     <Text style={{
                       fontSize: fs(14),
                       fontWeight: '700',
                       color: colors.heroText,
                     }}>
-                      Request Extension
+                      {hasPendingExtension ? 'Extension Pending' : 'Request Extension'}
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -221,22 +276,26 @@ export default function TenantHomeScreen({ user, onNavigateToUpdates }) {
             </View>
 
             {/* ── September Billing Breakdown ─────────────── */}
+            <View style={{ flexDirection: isDesktop ? 'row' : 'column', gap: spacing.lg, alignItems: 'stretch' }}>
+            <View style={{ flex: isDesktop ? 1 : undefined, width: isDesktop ? undefined : '100%' }}>
             <View>
-              <Text style={{
-                fontSize: fs(15),
-                fontWeight: '700',
-                color: colors.text,
-                marginBottom: 12,
-              }}>
-                September Billing
-              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 11, marginBottom: 12 }}>
+                <View style={{ width: 40, height: 40, borderRadius: 13, backgroundColor: colors.accentBg, alignItems: 'center', justifyContent: 'center' }}>
+                  <Ionicons name="receipt-outline" size={19} color={colors.accent} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: fs(16), fontWeight: '800', color: colors.text }}>Billing overview</Text>
+                  <Text style={{ fontSize: fs(12), color: colors.textMuted, marginTop: 2 }}>{billing.month || 'Current period'}</Text>
+                </View>
+              </View>
 
               <View style={{
                 ...cardStyle,
                 backgroundColor: colors.card,
                 borderColor: colors.cardBorder,
+                borderRadius: 22,
                 paddingHorizontal: isMobile ? 18 : 22,
-                paddingVertical: 10,
+                paddingVertical: 8,
               }}>
                 <View style={{
                   flexDirection: 'row',
@@ -244,9 +303,10 @@ export default function TenantHomeScreen({ user, onNavigateToUpdates }) {
                   alignItems: 'center',
                   paddingVertical: 14,
                 }}>
-                  <Text style={{ fontSize: fs(15), color: colors.textSecondary, fontWeight: '500' }}>
-                    Monthly Rent
-                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <Ionicons name="home-outline" size={17} color={colors.textMuted} />
+                    <Text style={{ fontSize: fs(14), color: colors.textSecondary, fontWeight: '600' }}>Monthly rent</Text>
+                  </View>
                   <Text style={{ fontSize: fs(16), color: colors.text, fontWeight: '700' }}>
                     ₱{billing.monthlyRent.toLocaleString()}
                   </Text>
@@ -260,9 +320,10 @@ export default function TenantHomeScreen({ user, onNavigateToUpdates }) {
                   borderTopWidth: 1,
                   borderTopColor: colors.divider,
                 }}>
-                  <Text style={{ fontSize: fs(15), color: colors.textSecondary, fontWeight: '500' }}>
-                    Electricity
-                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <Ionicons name="flash-outline" size={17} color={colors.textMuted} />
+                    <Text style={{ fontSize: fs(14), color: colors.textSecondary, fontWeight: '600' }}>Electricity</Text>
+                  </View>
                   <Text style={{ fontSize: fs(16), color: colors.text, fontWeight: '700' }}>
                     ₱{billing.electricity.toLocaleString()}
                   </Text>
@@ -276,9 +337,10 @@ export default function TenantHomeScreen({ user, onNavigateToUpdates }) {
                   borderTopWidth: 1,
                   borderTopColor: colors.divider,
                 }}>
-                  <Text style={{ fontSize: fs(15), color: colors.textSecondary, fontWeight: '500' }}>
-                    Water
-                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <Ionicons name="water-outline" size={17} color={colors.textMuted} />
+                    <Text style={{ fontSize: fs(14), color: colors.textSecondary, fontWeight: '600' }}>Water</Text>
+                  </View>
                   <Text style={{ fontSize: fs(15), color: colors.textSecondary, fontWeight: '600' }}>
                     {billing.water}
                   </Text>
@@ -291,6 +353,10 @@ export default function TenantHomeScreen({ user, onNavigateToUpdates }) {
                   paddingVertical: 16,
                   borderTopWidth: 1,
                   borderTopColor: colors.divider,
+                  backgroundColor: colors.accentBg,
+                  borderRadius: 13,
+                  paddingHorizontal: 12,
+                  marginTop: 5,
                 }}>
                   <Text style={{ fontSize: fs(16), color: colors.text, fontWeight: '800' }}>
                     Total Due
@@ -302,16 +368,37 @@ export default function TenantHomeScreen({ user, onNavigateToUpdates }) {
               </View>
             </View>
 
+            </View>
+            <View style={{ flex: isDesktop ? 1 : undefined, width: isDesktop ? undefined : '100%', gap: spacing.lg }}>
+            {extensionRequests.length > 0 && (
+              <View>
+                <Text style={{ fontSize: fs(15), fontWeight: '700', color: colors.text, marginBottom: 12 }}>Due Date Requests</Text>
+                <View style={{ ...cardStyle, backgroundColor: colors.card, borderColor: colors.cardBorder, borderRadius: 18, padding: 17, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  <View style={{ width: 40, height: 40, borderRadius: 13, backgroundColor: colors.warningBg, alignItems: 'center', justifyContent: 'center' }}>
+                    <Ionicons name="calendar-outline" size={19} color={colors.warningText} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: fs(14), color: colors.text, fontWeight: '700' }}>Latest request</Text>
+                  <Text style={{ fontSize: fs(13), color: colors.textSecondary, marginTop: 5 }}>
+                    {extensionRequests[0].currentDueDate} → {extensionRequests[0].requestedDueDate} · {extensionRequests[0].status}
+                  </Text>
+                  </View>
+                </View>
+              </View>
+            )}
+
             {/* ── Latest Notice Section ──────────────────── */}
             <View>
-              <Text style={{
-                fontSize: fs(15),
-                fontWeight: '700',
-                color: colors.text,
-                marginBottom: 12,
-              }}>
-                Latest Notice
-              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 11, marginBottom: 12 }}>
+                <View style={{ width: 40, height: 40, borderRadius: 13, backgroundColor: colors.successBg, alignItems: 'center', justifyContent: 'center' }}>
+                  <Ionicons name="notifications-outline" size={19} color={colors.successText} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: fs(16), fontWeight: '800', color: colors.text }}>Latest notice</Text>
+                  <Text style={{ fontSize: fs(12), color: colors.textMuted, marginTop: 2 }}>Updates from your property</Text>
+                </View>
+                {!!latestNotice && <Ionicons name="arrow-forward" size={18} color={colors.textMuted} />}
+              </View>
 
               {latestNotice && (
                 <TouchableOpacity
@@ -321,6 +408,7 @@ export default function TenantHomeScreen({ user, onNavigateToUpdates }) {
                     ...cardStyle,
                     backgroundColor: colors.card,
                     borderColor: colors.cardBorder,
+                    borderRadius: 20,
                     padding: isMobile ? 18 : 22,
                   }}
                 >
@@ -362,6 +450,14 @@ export default function TenantHomeScreen({ user, onNavigateToUpdates }) {
                   </Text>
                 </TouchableOpacity>
               )}
+              {!latestNotice && (
+                <View style={{ ...cardStyle, backgroundColor: colors.card, borderColor: colors.cardBorder, borderRadius: 18, padding: 18, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  <Ionicons name="checkmark-done-circle-outline" size={24} color={colors.success} />
+                  <Text style={{ flex: 1, color: colors.textMuted, fontSize: fs(13), lineHeight: 19 }}>You’re all caught up. New property updates will appear here.</Text>
+                </View>
+              )}
+            </View>
+            </View>
             </View>
           </View>
         </View>
@@ -395,7 +491,7 @@ export default function TenantHomeScreen({ user, onNavigateToUpdates }) {
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                 <Ionicons name="receipt" size={22} color={colors.accent} />
                 <Text style={{ fontSize: fs(18), fontWeight: '800', color: colors.text }}>
-                  Official Receipt
+                  Payment Receipt
                 </Text>
               </View>
               <TouchableOpacity onPress={() => setShowReceiptModal(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -403,7 +499,7 @@ export default function TenantHomeScreen({ user, onNavigateToUpdates }) {
               </TouchableOpacity>
             </View>
 
-            <View style={{
+            {billing.receiptNumber ? <View style={{
               backgroundColor: colors.bg,
               borderRadius: 12,
               padding: 16,
@@ -412,7 +508,7 @@ export default function TenantHomeScreen({ user, onNavigateToUpdates }) {
             }}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                 <Text style={{ fontSize: fs(13), color: colors.textMuted }}>Receipt No.</Text>
-                <Text style={{ fontSize: fs(13), fontWeight: '700', color: colors.text }}>OR-2026-0902</Text>
+                <Text style={{ fontSize: fs(13), fontWeight: '700', color: colors.text }}>{billing.receiptNumber}</Text>
               </View>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                 <Text style={{ fontSize: fs(13), color: colors.textMuted }}>Tenant</Text>
@@ -420,17 +516,25 @@ export default function TenantHomeScreen({ user, onNavigateToUpdates }) {
               </View>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                 <Text style={{ fontSize: fs(13), color: colors.textMuted }}>Period</Text>
-                <Text style={{ fontSize: fs(13), fontWeight: '700', color: colors.text }}>September 2026</Text>
+                <Text style={{ fontSize: fs(13), fontWeight: '700', color: colors.text }}>{billing.month || 'Current period'}</Text>
+              </View>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <Text style={{ fontSize: fs(13), color: colors.textMuted }}>Payment Date</Text>
+                <Text style={{ fontSize: fs(13), fontWeight: '700', color: colors.text }}>{billing.paymentDate || '—'}</Text>
+              </View>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <Text style={{ fontSize: fs(13), color: colors.textMuted }}>Payment Method</Text>
+                <Text style={{ fontSize: fs(13), fontWeight: '700', color: colors.text }}>{billing.paymentMethod || '—'}</Text>
               </View>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                 <Text style={{ fontSize: fs(13), color: colors.textMuted }}>Amount Paid</Text>
-                <Text style={{ fontSize: fs(13), fontWeight: '700', color: colors.success }}>₱{billing.paidAmount.toLocaleString()}</Text>
+                <Text style={{ fontSize: fs(13), fontWeight: '700', color: colors.success }}>₱{billing.receiptAmount.toLocaleString()}</Text>
               </View>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: colors.divider, paddingTop: 8 }}>
                 <Text style={{ fontSize: fs(13), fontWeight: '700', color: colors.textMuted }}>Balance Due</Text>
                 <Text style={{ fontSize: fs(14), fontWeight: '900', color: colors.danger }}>₱{tenant.outstandingBalance.toLocaleString()}</Text>
               </View>
-            </View>
+            </View> : <View style={{ backgroundColor: colors.bg, borderRadius: 12, padding: 18, marginBottom: 18 }}><Text style={{ color: colors.textSecondary, fontSize: fs(14), lineHeight: 21 }}>No payment receipt is available for this billing period yet.</Text></View>}
 
             <TouchableOpacity
               activeOpacity={0.8}
@@ -492,7 +596,7 @@ export default function TenantHomeScreen({ user, onNavigateToUpdates }) {
                   Request Sent!
                 </Text>
                 <Text style={{ fontSize: fs(14), color: colors.textMuted, textAlign: 'center', marginTop: 6 }}>
-                  The caretaker and owner have been notified. New requested due date: Oct 12, 2026.
+                  Your request for {requestedDueDate} was saved for caretaker review.
                 </Text>
                 <TouchableOpacity
                   onPress={() => setShowExtensionModal(false)}
@@ -511,9 +615,28 @@ export default function TenantHomeScreen({ user, onNavigateToUpdates }) {
               </View>
             ) : (
               <>
-                <Text style={{ fontSize: fs(14), color: colors.textSecondary, marginBottom: 16, lineHeight: 21 }}>
-                  Current balance is <Text style={{ fontWeight: '800', color: colors.text }}>₱{tenant.outstandingBalance.toLocaleString()}</Text> due on <Text style={{ fontWeight: '800', color: colors.text }}>{tenant.dueDate}</Text>. Would you like to request an extension of +7 days to Oct 12, 2026?
+                <Text style={{ fontSize: fs(14), color: colors.textSecondary, marginBottom: 14, lineHeight: 21 }}>
+                  Current balance is <Text style={{ fontWeight: '800', color: colors.text }}>₱{tenant.outstandingBalance.toLocaleString()}</Text> due on <Text style={{ fontWeight: '800', color: colors.text }}>{tenant.dueDate}</Text>. Choose a requested date and add a reason for the caretaker.
                 </Text>
+
+                <Text style={{ fontSize: fs(13), fontWeight: '700', color: colors.textSecondary, marginBottom: 6 }}>Requested due date *</Text>
+                <TextInput
+                  value={requestedDueDate}
+                  onChangeText={(value) => { setRequestedDueDate(value); setExtensionError(''); }}
+                  placeholder="e.g. Oct 12, 2026"
+                  placeholderTextColor={colors.textMuted}
+                  style={{ backgroundColor: colors.searchBg, borderColor: colors.searchBorder, borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: fs(15), color: colors.text, marginBottom: 12 }}
+                />
+                <Text style={{ fontSize: fs(13), fontWeight: '700', color: colors.textSecondary, marginBottom: 6 }}>Reason (Optional)</Text>
+                <TextInput
+                  value={extensionReason}
+                  onChangeText={(value) => { setExtensionReason(value); setExtensionError(''); }}
+                  placeholder="Add a short explanation for your request"
+                  placeholderTextColor={colors.textMuted}
+                  multiline
+                  style={{ minHeight: 72, textAlignVertical: 'top', backgroundColor: colors.searchBg, borderColor: colors.searchBorder, borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: fs(15), color: colors.text, marginBottom: 12 }}
+                />
+                {!!extensionError && <Text style={{ color: colors.danger, fontSize: fs(13), fontWeight: '600', marginBottom: 12 }}>{extensionError}</Text>}
 
                 <View style={{ flexDirection: 'row', gap: 10 }}>
                   <TouchableOpacity
@@ -533,8 +656,10 @@ export default function TenantHomeScreen({ user, onNavigateToUpdates }) {
                     <Text style={{ fontSize: fs(15), fontWeight: '700', color: colors.textMuted }}>Cancel</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    onPress={() => setExtensionSubmitted(true)}
+                    onPress={extensionSubmitting ? undefined : sendExtensionRequest}
+                    accessibilityState={{ disabled: extensionSubmitting }}
                     style={{
+                      pointerEvents: extensionSubmitting ? 'none' : 'auto',
                       flex: 1,
                       backgroundColor: colors.primary,
                       paddingVertical: 14,
@@ -542,9 +667,10 @@ export default function TenantHomeScreen({ user, onNavigateToUpdates }) {
                       alignItems: 'center',
                       minHeight: 48,
                       justifyContent: 'center',
+                      opacity: extensionSubmitting ? 0.6 : 1,
                     }}
                   >
-                    <Text style={{ fontSize: fs(15), fontWeight: '800', color: colors.onPrimary }}>Send Request</Text>
+                    {extensionSubmitting ? <ActivityIndicator size="small" color={colors.onPrimary} /> : <Text style={{ fontSize: fs(15), fontWeight: '800', color: colors.onPrimary }}>Send Request</Text>}
                   </TouchableOpacity>
                 </View>
               </>

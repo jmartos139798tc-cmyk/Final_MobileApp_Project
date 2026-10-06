@@ -143,6 +143,20 @@ service cloud.firestore {
       allow delete: if isOwner();
     }
 
+    match /due_date_extension_requests/{requestId} {
+      allow read: if isStaff() || ownsTenant(resource.data.tenant_id);
+      allow create: if isStaff()
+        || (ownsTenant(request.resource.data.tenant_id)
+          && request.resource.data.id == requestId
+          && request.resource.data.status == 'pending'
+          && ownsInvoice(request.resource.data.invoice_id)
+          && request.resource.data.keys().hasOnly([
+            'id', 'tenant_id', 'invoice_id', 'current_due_date', 'requested_due_date', 'reason', 'status', 'requested_at'
+          ]));
+      allow update: if isStaff();
+      allow delete: if isOwner();
+    }
+
     match /announcements/{announcementId} {
       allow read: if signedIn();
       allow create, update: if isStaff() && request.resource.data.author_user_id == request.auth.uid;

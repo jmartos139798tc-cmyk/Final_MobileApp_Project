@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, StatusBar, TouchableOpacity, Platform, Alert } from 'react-native';
+import { View, StatusBar, TouchableOpacity, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { isDesktop, isMobile, safeAreaTop, cardShadow } from './utils/responsive';
 import { useTheme } from './utils/ThemeContext';
@@ -69,8 +69,9 @@ export default function OwnerApp({ user, onLogout }) {
         style={{
           position: 'absolute',
           top: isMobile ? safeAreaTop + 8 : 16,
-          right: 112,
-          height: 40,
+          right: 124,
+          height: 44,
+          minWidth: 44,
           paddingHorizontal: 12,
           borderRadius: 20,
           backgroundColor: colors.card,
@@ -89,12 +90,14 @@ export default function OwnerApp({ user, onLogout }) {
       <TouchableOpacity
         onPress={toggleTheme}
         activeOpacity={0.7}
+        accessibilityRole="button"
+        accessibilityLabel={isDark ? 'Switch to light theme' : 'Switch to dark theme'}
         style={{
           position: 'absolute',
           top: isMobile ? safeAreaTop + 8 : 16,
           right: 16,
-          width: 40,
-          height: 40,
+          width: 44,
+          height: 44,
           borderRadius: 20,
           backgroundColor: colors.card,
           borderWidth: 1,
@@ -113,12 +116,14 @@ export default function OwnerApp({ user, onLogout }) {
         <TouchableOpacity
           onPress={onLogout}
           activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="Log out"
           style={{
             position: 'absolute',
             top: isMobile ? safeAreaTop + 8 : 16,
-            right: 64,
-            width: 40,
-            height: 40,
+            right: 68,
+            width: 44,
+            height: 44,
             borderRadius: 20,
             backgroundColor: colors.card,
             borderWidth: 1,
@@ -135,13 +140,13 @@ export default function OwnerApp({ user, onLogout }) {
 
       {isDesktop ? (
         <View style={{ flex: 1, flexDirection: 'row' }}>
-          <OwnerBottomNav activeScreen={activeScreen} onNavigate={setActiveScreen} />
+          <OwnerBottomNav user={user} activeScreen={activeScreen} onNavigate={setActiveScreen} />
           <View style={{ flex: 1 }}>{renderScreen()}</View>
         </View>
       ) : (
         <>
           <View style={{ flex: 1 }}>{renderScreen()}</View>
-          <OwnerBottomNav activeScreen={activeScreen} onNavigate={setActiveScreen} />
+          <OwnerBottomNav user={user} activeScreen={activeScreen} onNavigate={setActiveScreen} />
         </>
       )}
     </View>

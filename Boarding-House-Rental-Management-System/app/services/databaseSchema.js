@@ -20,6 +20,7 @@ export const COLLECTIONS = {
   PAYMENTS: 'payments',
   COMPLAINTS: 'complaints',
   ROOM_CHANGE_REQUESTS: 'room_change_requests',
+  DUE_DATE_EXTENSION_REQUESTS: 'due_date_extension_requests',
   ANNOUNCEMENTS: 'announcements',
 };
 
@@ -89,7 +90,11 @@ export const COLLECTIONS = {
  *     - FK: requested_room_id -> ROOMS.room_id
  *     - Fields: reason, status ('pending'|'approved'|'declined'), requested_at
  * 
- * 13. ANNOUNCEMENTS: Broadcast notices for the property
+ * 13. DUE_DATE_EXTENSION_REQUESTS: Tenant requests to move an invoice due date
+ *     - FK: tenant_id -> TENANTS.tenant_id; invoice_id -> INVOICES.invoice_id
+ *     - Fields: current_due_date, requested_due_date, reason, status, requested_at
+ *
+ * 14. ANNOUNCEMENTS: Broadcast notices for the property
  *     - PK: announcement_id
  *     - FK: house_id -> BOARDING_HOUSES.house_id
  *     - FK: author_user_id -> USERS.user_id

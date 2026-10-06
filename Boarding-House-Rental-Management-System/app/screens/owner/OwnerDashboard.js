@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { isMobile, isDesktop, getResponsivePadding, fs, spacing, cardStyle, cardShadow, safeAreaTop, accentShadow } from '../../utils/responsive';
+import { isMobile, isDesktop, getResponsivePadding, fs, spacing, cardStyle, cardShadow, safeAreaTop } from '../../utils/responsive';
 import { useTheme } from '../../utils/ThemeContext';
 import { getBoardingHouseConfig, getRevenue, getOccupancyStats, getUnpaidStats, getIssueStats, getUnpaidTenants } from '../../services/dataService';
 
 export default function OwnerDashboard() {
   const { colors } = useTheme();
   const padding = getResponsivePadding();
-  const containerMaxWidth = isDesktop ? 1400 : '100%';
+  const containerMaxWidth = isDesktop ? 1180 : '100%';
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -59,26 +59,30 @@ export default function OwnerDashboard() {
       >
         <View style={{ maxWidth: containerMaxWidth, width: '100%' }}>
           {/* Header */}
-          <View style={{ padding, paddingTop: isMobile ? safeAreaTop + 16 : isDesktop ? 40 : 60 }}>
-            <Text style={{ fontSize: fs(13), color: colors.textMuted, fontWeight: '500' }}>
-              {config.name}
-            </Text>
-            <Text style={{ fontSize: fs(28), color: colors.text, fontWeight: '800', marginTop: 4 }}>
-              Overview
-            </Text>
+          <View style={{ padding, paddingTop: isMobile ? safeAreaTop + 62 : isDesktop ? 68 : 64, paddingBottom: 20 }}>
+            <Text style={{ fontSize: fs(12), color: colors.textMuted, fontWeight: '800', letterSpacing: 1, marginBottom: 5 }}>OWNER PORTAL</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: fs(28), color: colors.text, fontWeight: '900', letterSpacing: -0.5 }}>Overview</Text>
+                <Text style={{ fontSize: fs(14), color: colors.textSecondary, marginTop: 5 }}>A snapshot of {config.name || 'your property'}.</Text>
+              </View>
+              <View style={{ width: 48, height: 48, borderRadius: 16, backgroundColor: colors.ownerAccentBg, alignItems: 'center', justifyContent: 'center' }}>
+                <Ionicons name="business-outline" size={22} color={colors.ownerAccent} />
+              </View>
+            </View>
           </View>
 
           <View style={{ paddingHorizontal: padding, gap: spacing.lg }}>
             {/* ── Revenue Hero Card ───────────────────── */}
             <View style={{
-              borderRadius: 20,
+              borderRadius: 24,
               overflow: 'hidden',
               ...cardShadow,
             }}>
               {/* Purple gradient effect via layered views */}
               <View style={{
                 backgroundColor: colors.ownerHero,
-                padding: isMobile ? 20 : 28,
+                padding: isMobile ? 22 : 30,
               }}>
                 {/* Decorative gradient overlay */}
                 <View style={{
@@ -101,7 +105,7 @@ export default function OwnerDashboard() {
                   textTransform: 'uppercase',
                   marginBottom: 12,
                 }}>
-                  September Revenue
+                  September revenue
                 </Text>
 
                 <Text style={{
@@ -153,17 +157,17 @@ export default function OwnerDashboard() {
             <View style={{ gap: spacing.md }}>
               {/* Row 1 */}
               <View style={{ flexDirection: 'row', gap: spacing.md }}>
-                {/* Occupancy */}
+              {/* Occupancy */}
                 <View style={{
                   flex: 1,
                   ...cardStyle,
                   backgroundColor: colors.card,
                   borderColor: colors.cardBorder,
                   padding: isMobile ? 16 : 20,
+                  borderRadius: 18,
                 }}>
-                  <Text style={{ fontSize: fs(11), fontWeight: '600', color: colors.textMuted, marginBottom: 8 }}>
-                    Occupancy
-                  </Text>
+                  <View style={{ width: 34, height: 34, borderRadius: 11, backgroundColor: colors.ownerAccentBg, alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}><Ionicons name="home-outline" size={17} color={colors.ownerAccent} /></View>
+                  <Text style={{ fontSize: fs(12), fontWeight: '700', color: colors.textMuted, marginBottom: 5 }}>Occupancy</Text>
                   <Text style={{ fontSize: fs(26), fontWeight: '900', color: colors.ownerAccent }}>
                     {occupancy.rate}%
                   </Text>
@@ -179,10 +183,10 @@ export default function OwnerDashboard() {
                   backgroundColor: colors.card,
                   borderColor: colors.cardBorder,
                   padding: isMobile ? 16 : 20,
+                  borderRadius: 18,
                 }}>
-                  <Text style={{ fontSize: fs(11), fontWeight: '600', color: colors.textMuted, marginBottom: 8 }}>
-                    Unpaid
-                  </Text>
+                  <View style={{ width: 34, height: 34, borderRadius: 11, backgroundColor: colors.dangerBg, alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}><Ionicons name="wallet-outline" size={17} color={colors.danger} /></View>
+                  <Text style={{ fontSize: fs(12), fontWeight: '700', color: colors.textMuted, marginBottom: 5 }}>Unpaid</Text>
                   <Text style={{ fontSize: fs(26), fontWeight: '900', color: colors.danger }}>
                     ₱{(unpaidStats.total / 1000).toFixed(1)}k
                   </Text>
@@ -201,10 +205,10 @@ export default function OwnerDashboard() {
                   backgroundColor: colors.card,
                   borderColor: colors.cardBorder,
                   padding: isMobile ? 16 : 20,
+                  borderRadius: 18,
                 }}>
-                  <Text style={{ fontSize: fs(11), fontWeight: '600', color: colors.textMuted, marginBottom: 8 }}>
-                    Complaints
-                  </Text>
+                  <View style={{ width: 34, height: 34, borderRadius: 11, backgroundColor: colors.warningBg, alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}><Ionicons name="chatbubble-ellipses-outline" size={17} color={colors.warningText} /></View>
+                  <Text style={{ fontSize: fs(12), fontWeight: '700', color: colors.textMuted, marginBottom: 5 }}>Complaints</Text>
                   <Text style={{ fontSize: fs(26), fontWeight: '900', color: colors.text }}>
                     {issueStats.total}
                   </Text>
@@ -220,10 +224,10 @@ export default function OwnerDashboard() {
                   backgroundColor: colors.card,
                   borderColor: colors.cardBorder,
                   padding: isMobile ? 16 : 20,
+                  borderRadius: 18,
                 }}>
-                  <Text style={{ fontSize: fs(11), fontWeight: '600', color: colors.textMuted, marginBottom: 8 }}>
-                    Vacant
-                  </Text>
+                  <View style={{ width: 34, height: 34, borderRadius: 11, backgroundColor: colors.successBg, alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}><Ionicons name="bed-outline" size={17} color={colors.successText} /></View>
+                  <Text style={{ fontSize: fs(12), fontWeight: '700', color: colors.textMuted, marginBottom: 5 }}>Vacant</Text>
                   <Text style={{ fontSize: fs(26), fontWeight: '900', color: colors.text }}>
                     {occupancy.vacant}
                   </Text>
@@ -244,19 +248,24 @@ export default function OwnerDashboard() {
                   letterSpacing: 1,
                   textTransform: 'uppercase',
                 }}>
-                  Unpaid Balances
+                  Unpaid balances
                 </Text>
               </View>
 
-              {unpaidTenants.map((tenant) => (
-                <TouchableOpacity
+              {unpaidTenants.length === 0 ? (
+                <View style={{ ...cardStyle, backgroundColor: colors.card, borderColor: colors.cardBorder, borderRadius: 18, padding: 20, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  <Ionicons name="checkmark-circle-outline" size={24} color={colors.successText} />
+                  <Text style={{ flex: 1, color: colors.textSecondary, fontSize: fs(14), lineHeight: 20 }}>No unpaid balances to follow up right now.</Text>
+                </View>
+              ) : unpaidTenants.map((tenant) => (
+                <View
                   key={tenant.id}
-                  activeOpacity={0.7}
                   style={{
                     ...cardStyle,
                     backgroundColor: colors.card,
                     borderColor: colors.cardBorder,
                     padding: isMobile ? 14 : 18,
+                    borderRadius: 16,
                     flexDirection: 'row',
                     alignItems: 'center',
                     gap: 12,
@@ -288,7 +297,7 @@ export default function OwnerDashboard() {
                   <Text style={{ fontSize: fs(15), fontWeight: '800', color: colors.danger }}>
                     ₱{tenant.balance.toLocaleString()}
                   </Text>
-                </TouchableOpacity>
+                </View>
               ))}
             </View>
           </View>

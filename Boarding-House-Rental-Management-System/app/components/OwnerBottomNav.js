@@ -1,10 +1,10 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { isDesktop, fs, spacing } from '../utils/responsive';
+import { isDesktop, fs } from '../utils/responsive';
 import { useTheme } from '../utils/ThemeContext';
 
-export default function OwnerBottomNav({ activeScreen, onNavigate }) {
+export default function OwnerBottomNav({ user, activeScreen, onNavigate }) {
   const { colors } = useTheme();
 
   const navItems = [
@@ -21,21 +21,24 @@ export default function OwnerBottomNav({ activeScreen, onNavigate }) {
         backgroundColor: colors.sidebarBg,
         borderRightWidth: 1,
         borderRightColor: colors.sidebarBorder,
-        paddingTop: 40,
-        paddingHorizontal: 12,
+        paddingTop: 32,
+        paddingHorizontal: 14,
       }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16, marginBottom: 32 }}>
           <View style={{
-            width: 36,
-            height: 36,
-            borderRadius: 10,
-            backgroundColor: colors.ownerAccent,
+            width: 40,
+            height: 40,
+            borderRadius: 13,
+            backgroundColor: colors.ownerAccentBg,
             alignItems: 'center',
             justifyContent: 'center',
           }}>
-            <Ionicons name="business" size={18} color="#ffffff" />
+            <Ionicons name="business" size={19} color={colors.ownerAccent} />
           </View>
-          <Text style={{ fontSize: 17, fontWeight: '800', color: colors.text }}>Owner</Text>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text }}>Owner portal</Text>
+            <Text style={{ fontSize: 11, color: colors.textMuted }} numberOfLines={1}>{user?.name || 'Owner account'}</Text>
+          </View>
         </View>
 
         {navItems.map((item) => {
@@ -43,16 +46,21 @@ export default function OwnerBottomNav({ activeScreen, onNavigate }) {
           return (
             <TouchableOpacity
               key={item.id}
-              activeOpacity={0.7}
+              activeOpacity={0.82}
+              accessibilityRole="button"
+              accessibilityLabel={`Navigate to ${item.label}`}
+              accessibilityState={{ selected: isActive }}
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
                 gap: 12,
-                paddingVertical: 13,
-                paddingHorizontal: 16,
-                borderRadius: 12,
-                marginBottom: 2,
+                paddingVertical: 12,
+                paddingHorizontal: 13,
+                borderRadius: 13,
+                marginBottom: 5,
                 backgroundColor: isActive ? colors.ownerAccentBg : 'transparent',
+                borderLeftWidth: 3,
+                borderLeftColor: isActive ? colors.ownerAccent : 'transparent',
               }}
               onPress={() => onNavigate(item.id)}
             >
@@ -82,8 +90,8 @@ export default function OwnerBottomNav({ activeScreen, onNavigate }) {
       borderTopWidth: 1,
       borderTopColor: colors.navBorder,
       flexDirection: 'row',
-      paddingTop: 6,
-      paddingBottom: Platform.OS === 'ios' ? 28 : 10,
+      paddingTop: 8,
+      paddingBottom: Platform.OS === 'ios' ? 26 : 10,
       paddingHorizontal: 4,
     }}>
       {navItems.map((item) => {
@@ -91,14 +99,17 @@ export default function OwnerBottomNav({ activeScreen, onNavigate }) {
         return (
           <TouchableOpacity
             key={item.id}
-            activeOpacity={0.7}
-            style={{ flex: 1, alignItems: 'center', paddingVertical: 4 }}
+            activeOpacity={0.82}
+            accessibilityRole="button"
+            accessibilityLabel={`Navigate to ${item.label}`}
+            accessibilityState={{ selected: isActive }}
+            style={{ flex: 1, alignItems: 'center', paddingVertical: 3, minHeight: 50, justifyContent: 'center' }}
             onPress={() => onNavigate(item.id)}
           >
             <View style={{
               alignItems: 'center',
               justifyContent: 'center',
-              width: 48,
+              width: 52,
               height: 30,
               borderRadius: 15,
               backgroundColor: isActive ? colors.ownerAccentBg : 'transparent',
@@ -112,6 +123,8 @@ export default function OwnerBottomNav({ activeScreen, onNavigate }) {
             </View>
             <Text style={{
               fontSize: 10,
+              flexShrink: 1,
+              textAlign: 'center',
               fontWeight: isActive ? '700' : '500',
               color: isActive ? colors.ownerAccent : colors.navInactive,
               marginTop: 1,

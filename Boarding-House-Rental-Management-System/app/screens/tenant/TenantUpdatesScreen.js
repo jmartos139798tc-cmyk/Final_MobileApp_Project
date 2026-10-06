@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { isMobile, isDesktop, getResponsivePadding, fs, spacing, cardStyle, safeAreaTop } from '../../utils/responsive';
 import { useTheme } from '../../utils/ThemeContext';
 import { getAnnouncements } from '../../services/dataService';
@@ -7,38 +8,30 @@ import { getAnnouncements } from '../../services/dataService';
 export default function TenantUpdatesScreen() {
   const { colors } = useTheme();
   const padding = getResponsivePadding();
-  const containerMaxWidth = isDesktop ? 1400 : '100%';
+  const containerMaxWidth = isDesktop ? 1180 : '100%';
 
   const [announcements, setAnnouncements] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     let isMounted = true;
-    const fetchAnnouncements = async () => {
+    const load = async () => {
       try {
         setLoading(true);
         setError(null);
         const data = await getAnnouncements();
-        if (isMounted) {
-          setAnnouncements(data);
-        }
+        if (isMounted) setAnnouncements(data);
       } catch (err) {
-        if (isMounted) {
-          setError('Failed to load announcements.');
-        }
+        if (isMounted) setError('Failed to load announcements. Check your connection and try again.');
       } finally {
-        if (isMounted) {
-          setLoading(false);
-        }
+        if (isMounted) setLoading(false);
       }
     };
-
-    fetchAnnouncements();
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+    load();
+    return () => { isMounted = false; };
+  }, [refreshKey]);
 
   if (loading) {
     return (
@@ -51,9 +44,13 @@ export default function TenantUpdatesScreen() {
   if (error) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.bg, padding: 20 }}>
+        <Ionicons name="cloud-offline-outline" size={40} color={colors.textMuted} />
         <Text style={{ color: colors.danger, fontSize: fs(16), textAlign: 'center', fontWeight: '600' }}>
           {error}
         </Text>
+        <TouchableOpacity onPress={() => setRefreshKey((key) => key + 1)} activeOpacity={0.8} style={{ marginTop: 18, paddingHorizontal: 20, paddingVertical: 12, backgroundColor: colors.primary, borderRadius: 12, minHeight: 46, justifyContent: 'center' }}>
+          <Text style={{ color: colors.onPrimary, fontWeight: '700' }}>Try again</Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -70,30 +67,26 @@ export default function TenantUpdatesScreen() {
       >
         <View style={{ maxWidth: containerMaxWidth, width: '100%' }}>
           {/* Header */}
-          <View style={{ padding, paddingTop: isMobile ? safeAreaTop + 16 : isDesktop ? 40 : 60 }}>
-            <Text style={{
-              fontSize: fs(28),
-              color: colors.text,
-              fontWeight: '800',
-              letterSpacing: -0.5,
-            }}>
-              Announcements
-            </Text>
-            <View style={{
-              width: 36,
-              height: 3,
-              backgroundColor: colors.success,
-              borderRadius: 2,
-              marginTop: 8,
-              marginBottom: spacing.md,
-            }} />
+          <View style={{ padding, paddingTop: isMobile ? safeAreaTop + 62 : isDesktop ? 68 : 64, paddingBottom: 20 }}>
+            <Text style={{ fontSize: fs(12), color: colors.textMuted, fontWeight: '800', letterSpacing: 1, marginBottom: 5 }}>TENANT PORTAL</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: fs(28), color: colors.text, fontWeight: '900', letterSpacing: -0.5 }}>Announcements</Text>
+                <Text style={{ fontSize: fs(14), color: colors.textSecondary, lineHeight: 21, marginTop: 6 }}>Notices and updates from your property.</Text>
+              </View>
+              <View style={{ width: 48, height: 48, borderRadius: 16, backgroundColor: colors.successBg, alignItems: 'center', justifyContent: 'center' }}>
+                <Ionicons name="notifications-outline" size={22} color={colors.successText} />
+              </View>
+            </View>
           </View>
 
           {/* Announcements Cards */}
           <View style={{ paddingHorizontal: padding, gap: spacing.md }}>
             {announcements.length === 0 ? (
-              <View style={{ ...cardStyle, backgroundColor: colors.card, borderColor: colors.cardBorder, padding: 24, alignItems: 'center' }}>
-                <Text style={{ fontSize: fs(14), color: colors.textMuted }}>No announcements at this time.</Text>
+              <View style={{ ...cardStyle, backgroundColor: colors.card, borderColor: colors.cardBorder, padding: 28, alignItems: 'center' }}>
+                <Ionicons name="checkmark-done-circle-outline" size={38} color={colors.success} />
+                <Text style={{ fontSize: fs(16), fontWeight: '700', color: colors.text, marginTop: 10 }}>You’re all caught up</Text>
+                <Text style={{ fontSize: fs(14), color: colors.textMuted, textAlign: 'center', marginTop: 4 }}>New property announcements will appear here.</Text>
               </View>
             ) : (
               announcements.map((item) => (
@@ -104,15 +97,19 @@ export default function TenantUpdatesScreen() {
                     backgroundColor: colors.card,
                     borderColor: colors.cardBorder,
                     padding: isMobile ? 18 : 22,
+                    borderRadius: 20,
                   }}
                 >
                   <View style={{
                     flexDirection: 'row',
                     justifyContent: 'space-between',
-                    alignItems: 'center',
+                    alignItems: 'flex-start',
                     marginBottom: 12,
                   }}>
                     <View style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 6,
                       backgroundColor: colors.successBg,
                       paddingHorizontal: 12,
                       paddingVertical: 4,
@@ -123,7 +120,7 @@ export default function TenantUpdatesScreen() {
                         fontWeight: '800',
                         color: colors.successText,
                       }}>
-                        {item.category}
+                        {item.category || 'Property update'}
                       </Text>
                     </View>
 
@@ -132,7 +129,7 @@ export default function TenantUpdatesScreen() {
                       fontWeight: '500',
                       color: colors.textMuted,
                     }}>
-                      {item.date || item.created_at}
+                      {item.date || item.created_at || 'Recently posted'}
                     </Text>
                   </View>
 

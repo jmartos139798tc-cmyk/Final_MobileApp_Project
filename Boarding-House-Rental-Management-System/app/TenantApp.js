@@ -83,13 +83,13 @@ export default function TenantApp({ user, onLogout }) {
 
       {isDesktop ? (
         <View style={{ flex: 1, flexDirection: 'row' }}>
-          <TenantBottomNav activeScreen={activeScreen} onNavigate={setActiveScreen} />
+          <TenantBottomNav user={user} activeScreen={activeScreen} onNavigate={setActiveScreen} />
           <View style={{ flex: 1 }}>{renderScreen()}</View>
         </View>
       ) : (
         <>
           <View style={{ flex: 1 }}>{renderScreen()}</View>
-          <TenantBottomNav activeScreen={activeScreen} onNavigate={setActiveScreen} />
+          <TenantBottomNav user={user} activeScreen={activeScreen} onNavigate={setActiveScreen} />
         </>
       )}
     </View>

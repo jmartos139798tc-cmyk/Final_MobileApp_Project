@@ -22,7 +22,7 @@ import {
   safeAreaTop,
 } from '../../utils/responsive';
 import { useTheme } from '../../utils/ThemeContext';
-import { loginWithEmail, registerUser } from '../../services/authService';
+import { loginWithEmail, registerUser, sendPasswordReset } from '../../services/authService';
 
 // ─────────────────────────────────────────────────────────────
 // Reusable UI pieces (defined OUTSIDE the screen so inputs don't
@@ -111,9 +111,10 @@ function PrimaryButton({ label, icon, loading, onPress, colors }) {
   return (
     <TouchableOpacity
       activeOpacity={0.85}
-      disabled={loading}
-      onPress={onPress}
+      onPress={loading ? undefined : onPress}
+      accessibilityState={{ disabled: loading }}
       style={{
+        pointerEvents: loading ? 'none' : 'auto',
         backgroundColor: colors.primary,
         minHeight: 54,
         borderRadius: 14,
@@ -167,6 +168,10 @@ export default function LoginScreen({ onLoginSuccess }) {
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [showForgotModal, setShowForgotModal] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotError, setForgotError] = useState('');
+  const [forgotSent, setForgotSent] = useState(false);
 
   // Small fade/slide when switching between Sign In and Sign Up
   const formAnim = useRef(new Animated.Value(1)).current;
@@ -262,6 +267,19 @@ export default function LoginScreen({ onLoginSuccess }) {
     } catch (err) {
       setLoading(false);
       setErrorMessage(err.message || 'Registration failed');
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    setForgotError('');
+    setForgotLoading(true);
+    try {
+      await sendPasswordReset(forgotEmail);
+      setForgotSent(true);
+    } catch (err) {
+      setForgotError(err.message || 'Could not send the reset email. Please try again.');
+    } finally {
+      setForgotLoading(false);
     }
   };
 
@@ -496,7 +514,12 @@ export default function LoginScreen({ onLoginSuccess }) {
                     />
 
                     <TouchableOpacity
-                      onPress={() => setShowForgotModal(true)}
+                      onPress={() => {
+                        setForgotEmail(email);
+                        setForgotError('');
+                        setForgotSent(false);
+                        setShowForgotModal(true);
+                      }}
                       style={{ alignSelf: 'flex-end', paddingVertical: 6, marginBottom: 14 }}
                     >
                       <Text style={{ fontSize: fs(13), color: colors.accent, fontWeight: '700' }}>Forgot password?</Text>
@@ -685,21 +708,50 @@ export default function LoginScreen({ onLoginSuccess }) {
               Password Recovery
             </Text>
 
-            <Text style={{ fontSize: fs(14), color: colors.textSecondary, marginBottom: 20, lineHeight: 21 }}>
-              Enter your email on the sign-in screen, then use Firebase password recovery to regain access.
+            <Text style={{ fontSize: fs(14), color: colors.textSecondary, marginBottom: 16, lineHeight: 21 }}>
+              Enter your account email and we’ll send a secure password reset link if an account is registered with that address.
             </Text>
+
+            {!forgotSent && (
+              <Field
+                label="Email Address"
+                required
+                icon="mail-outline"
+                colors={colors}
+                placeholder="Enter your account email"
+                autoCapitalize="none"
+                keyboardType="email-address"
+                autoComplete="email"
+                value={forgotEmail}
+                onChangeText={(value) => { setForgotEmail(value); setForgotError(''); }}
+              />
+            )}
+
+            {forgotError ? <Banner type="error" text={forgotError} colors={colors} /> : null}
+            {forgotSent ? <Banner type="success" text="If an account uses that email, a reset link is on the way. Check your inbox and spam folder." colors={colors} /> : null}
+
+            {!forgotSent && (
+              <PrimaryButton
+                label="Send Reset Link"
+                icon="mail-outline"
+                loading={forgotLoading}
+                onPress={handleForgotPassword}
+                colors={colors}
+              />
+            )}
 
             <TouchableOpacity
               onPress={() => setShowForgotModal(false)}
               activeOpacity={0.85}
               style={{
+                marginTop: forgotSent ? 0 : 12,
                 backgroundColor: colors.primary,
                 paddingVertical: 14,
                 borderRadius: 14,
                 alignItems: 'center',
               }}
             >
-              <Text style={{ color: '#ffffff', fontWeight: '800', fontSize: fs(15) }}>Got it</Text>
+              <Text style={{ color: '#ffffff', fontWeight: '800', fontSize: fs(15) }}>{forgotSent ? 'Back to Sign In' : 'Cancel'}</Text>
             </TouchableOpacity>
           </View>
         </View>

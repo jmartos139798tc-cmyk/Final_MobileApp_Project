@@ -109,6 +109,33 @@ export async function loginWithEmail(email, password) {
   throw new Error('Could not sign in. Please check your email and password.');
 }
 
+/** Sends a secure password-reset link through Firebase Authentication. */
+export async function sendPasswordReset(email) {
+  const cleanEmail = email.trim().toLowerCase();
+  if (!cleanEmail) throw new Error('Enter the email address for your account.');
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+    throw new Error('Enter a valid email address.');
+  }
+  if (!isFirebaseConfigured || !auth) {
+    throw new Error('Password recovery is unavailable right now. Please try again later.');
+  }
+
+  try {
+    const { sendPasswordResetEmail } = await import('firebase/auth');
+    await sendPasswordResetEmail(auth, cleanEmail);
+  } catch (error) {
+    // Keep the response the same for unknown accounts to avoid exposing which
+    // email addresses are registered in the app.
+    if (error?.code === 'auth/user-not-found') return;
+    if (error?.code === 'auth/invalid-email') throw new Error('Enter a valid email address.');
+    if (error?.code === 'auth/too-many-requests') throw new Error('Too many reset attempts. Wait a little and try again.');
+    if (error?.code === 'auth/network-request-failed') throw new Error('Could not connect to Firebase. Check your internet connection and try again.');
+    if (error?.code === 'auth/operation-not-allowed') throw new Error('Password reset is disabled for this Firebase project. Enable Email/Password sign-in in Firebase Console.');
+    console.warn('Firebase password reset failed:', error.message || error);
+    throw new Error('Could not send the reset email. Check your connection and try again.');
+  }
+}
+
 /**
  * Restores the persisted Firebase session after app reload.
  */

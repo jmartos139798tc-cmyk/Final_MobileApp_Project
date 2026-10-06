@@ -8,7 +8,7 @@ import { getMonthlyIncome, getSeptemberSummary } from '../../services/dataServic
 export default function OwnerReports() {
   const { colors } = useTheme();
   const padding = getResponsivePadding();
-  const containerMaxWidth = isDesktop ? 1400 : '100%';
+  const containerMaxWidth = isDesktop ? 1180 : '100%';
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -36,7 +36,7 @@ export default function OwnerReports() {
   if (error) return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.bg }}><Text style={{ color: colors.danger, fontSize: 16 }}>{error}</Text></View>;
 
   // Chart calculations
-  const maxAmount = Math.max(...monthlyIncome.map((m) => m.amount));
+  const maxAmount = Math.max(1, ...monthlyIncome.map((m) => m.amount));
   const maxBarHeight = isMobile ? 120 : 160;
   const currentMonthIndex = monthlyIncome.length - 1; // Last month is current
 
@@ -62,13 +62,17 @@ export default function OwnerReports() {
       >
         <View style={{ maxWidth: containerMaxWidth, width: '100%' }}>
           {/* Header */}
-          <View style={{ padding, paddingTop: isMobile ? safeAreaTop + 16 : isDesktop ? 40 : 60 }}>
-            <Text style={{ fontSize: fs(13), color: colors.textMuted, fontWeight: '500' }}>
-              Financial Overview
-            </Text>
-            <Text style={{ fontSize: fs(28), color: colors.text, fontWeight: '800', marginTop: 4 }}>
-              Reports
-            </Text>
+          <View style={{ padding, paddingTop: isMobile ? safeAreaTop + 62 : isDesktop ? 68 : 64, paddingBottom: 20 }}>
+            <Text style={{ fontSize: fs(12), color: colors.textMuted, fontWeight: '800', letterSpacing: 1, marginBottom: 5 }}>OWNER PORTAL</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: fs(28), color: colors.text, fontWeight: '900', letterSpacing: -0.5 }}>Reports</Text>
+                <Text style={{ fontSize: fs(14), color: colors.textSecondary, lineHeight: 21, marginTop: 5 }}>Income and property performance at a glance.</Text>
+              </View>
+              <View style={{ width: 48, height: 48, borderRadius: 16, backgroundColor: colors.ownerAccentBg, alignItems: 'center', justifyContent: 'center' }}>
+                <Ionicons name="bar-chart-outline" size={22} color={colors.ownerAccent} />
+              </View>
+            </View>
           </View>
 
           <View style={{ paddingHorizontal: padding, gap: spacing.lg }}>
@@ -159,7 +163,7 @@ export default function OwnerReports() {
                 textTransform: 'uppercase',
                 marginBottom: 12,
               }}>
-                September Summary
+              September summary
               </Text>
 
               <View style={{

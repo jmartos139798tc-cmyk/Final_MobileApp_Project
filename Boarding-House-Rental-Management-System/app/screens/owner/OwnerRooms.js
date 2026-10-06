@@ -4,13 +4,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../utils/ThemeContext';
 import {
   isMobile,
-  isTablet,
   isDesktop,
   getResponsivePadding,
   fs,
   spacing,
   cardStyle,
-  cardShadow,
   safeAreaTop,
   getGridColumns,
 } from '../../utils/responsive';
@@ -20,7 +18,7 @@ export default function RoomsScreen() {
   const { colors } = useTheme();
   const [filter, setFilter] = useState('all');
   const padding = getResponsivePadding();
-  const containerMaxWidth = isDesktop ? 1400 : '100%';
+  const containerMaxWidth = isDesktop ? 1180 : '100%';
 
   const columns = getGridColumns();
   const gap = spacing.sm;
@@ -93,16 +91,29 @@ export default function RoomsScreen() {
       {/* Header */}
       <View style={{ 
         padding, 
-        paddingTop: isMobile ? safeAreaTop + 16 : isDesktop ? 40 : 60,
+        paddingTop: isMobile ? safeAreaTop + 62 : isDesktop ? 68 : 64,
         alignItems: isDesktop ? 'center' : 'stretch'
       }}>
         <View style={{ maxWidth: containerMaxWidth, width: '100%' }}>
-          <Text style={{ fontSize: fs(13), color: colors.textMuted, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase' }}>
-            {totalCount} Total Rooms
-          </Text>
-          <Text style={{ fontSize: fs(32), color: colors.text, fontWeight: '800', marginTop: 4 }}>
-            Rooms
-          </Text>
+          <Text style={{ fontSize: fs(12), color: colors.textMuted, fontWeight: '800', letterSpacing: 1, marginBottom: 5 }}>OWNER PORTAL</Text>
+          <Text style={{ fontSize: fs(30), color: colors.text, fontWeight: '900', letterSpacing: -0.5 }}>Rooms</Text>
+          <Text style={{ fontSize: fs(14), color: colors.textSecondary, marginTop: 5, lineHeight: 20 }}>Room availability and tenant payment status.</Text>
+
+          <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.lg }}>
+            {[
+              { label: 'Total', value: totalCount, icon: 'grid-outline', color: colors.ownerAccent },
+              { label: 'Occupied', value: occupiedCount, icon: 'people-outline', color: colors.infoText },
+              { label: 'Vacant', value: vacantCount, icon: 'bed-outline', color: colors.successText },
+            ].map((item) => (
+              <View key={item.label} style={{ flex: 1, minWidth: 0, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 15, padding: isMobile ? 11 : 14 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Ionicons name={item.icon} size={15} color={item.color} />
+                  <Text style={{ fontSize: fs(11), color: colors.textMuted, fontWeight: '700' }}>{item.label}</Text>
+                </View>
+                <Text style={{ fontSize: fs(22), color: colors.text, fontWeight: '900', marginTop: 4 }}>{item.value}</Text>
+              </View>
+            ))}
+          </View>
 
           {/* Filter Tabs Section Label */}
           <View style={{ 
@@ -142,18 +153,19 @@ export default function RoomsScreen() {
                     paddingHorizontal: isDesktop ? 22 : 16, 
                     paddingVertical: isDesktop ? 10 : 8, 
                     borderRadius: 20, 
-                    backgroundColor: isActive ? colors.accent : colors.filterBg,
+                    backgroundColor: isActive ? colors.ownerAccentBg : colors.filterBg,
                     borderWidth: 1,
-                    borderColor: isActive ? colors.accent : colors.filterBorder,
+                    borderColor: isActive ? colors.ownerAccent : colors.filterBorder,
                     justifyContent: 'center',
                     alignItems: 'center',
-                    ...cardShadow,
                   }}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: isActive }}
                 >
                   <Text style={{ 
                     fontSize: fs(13), 
                     fontWeight: '700', 
-                    color: isActive ? '#ffffff' : colors.textSecondary 
+                    color: isActive ? colors.ownerAccent : colors.textSecondary
                   }}>
                     {tab.label}
                   </Text>
@@ -185,16 +197,15 @@ export default function RoomsScreen() {
             const isVacant = room.status === 'vacant';
 
             return (
-              <TouchableOpacity 
+              <View
                 key={room.id}
-                activeOpacity={0.7}
                 style={[
                   cardStyle,
                   { 
                     backgroundColor: colors.card,
                     borderColor: colors.cardBorder,
                     width: cardWidth,
-                    aspectRatio: 1,
+                    aspectRatio: isMobile ? 0.94 : 1.08,
                     padding: isDesktop ? 18 : 14,
                     justifyContent: 'space-between',
                     borderTopWidth: 3,
@@ -203,7 +214,7 @@ export default function RoomsScreen() {
                   getCardStyle(room.status),
                 ]}
               >
-                {/* Card Top: Room Number & Status Circle */}
+                {/* Card Top: Room number and payment status */}
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                   <Text style={{ 
                     fontSize: fs(22), 
@@ -212,14 +223,11 @@ export default function RoomsScreen() {
                   }}>
                     {room.number}
                   </Text>
-                  <View 
-                    style={{ 
-                      width: 10, 
-                      height: 10, 
-                      borderRadius: 5, 
-                      backgroundColor: statusColor 
-                    }} 
-                  />
+                  <View style={{ backgroundColor: !room.tenant ? colors.infoBg : room.status === 'balance' ? colors.warningBg : colors.successBg, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 4 }}>
+                    <Text style={{ color: !room.tenant ? colors.infoText : room.status === 'balance' ? colors.warningText : colors.successText, fontSize: fs(9), fontWeight: '800' }}>
+                      {!room.tenant ? 'VACANT' : room.status === 'balance' ? 'BALANCE' : 'PAID'}
+                    </Text>
+                  </View>
                 </View>
 
                 {/* Card Bottom: Type, Tenant & Balance/Status */}
@@ -290,7 +298,7 @@ export default function RoomsScreen() {
                     </Text>
                   )}
                 </View>
-              </TouchableOpacity>
+              </View>
             );
           })}
         </View>
