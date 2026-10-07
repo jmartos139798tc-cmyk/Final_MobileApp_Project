@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   Platform,
   KeyboardAvoidingView,
   Modal,
+  Animated,
   BackHandler,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,6 +23,7 @@ import {
 } from '../../utils/responsive';
 import { useTheme } from '../../utils/ThemeContext';
 import { loginWithEmail, registerUser, sendPasswordReset } from '../../services/authService';
+import BrandMark from '../../../assets/nads-gracy-mark.svg';
 
 // ─────────────────────────────────────────────────────────────
 // Reusable UI pieces (defined OUTSIDE the screen so inputs don't
@@ -171,13 +173,20 @@ export default function LoginScreen({ onLoginSuccess }) {
   const [forgotLoading, setForgotLoading] = useState(false);
   const [forgotError, setForgotError] = useState('');
   const [forgotSent, setForgotSent] = useState(false);
+  const formAnim = useRef(new Animated.Value(1)).current;
 
   const switchMode = useCallback((mode) => {
     if (mode === formMode) return;
     setErrorMessage('');
     setSuccessMessage('');
+    formAnim.setValue(0);
     setFormMode(mode);
-  }, [formMode]);
+    Animated.timing(formAnim, {
+      toValue: 1,
+      duration: 220,
+      useNativeDriver: Platform.OS !== 'web',
+    }).start();
+  }, [formAnim, formMode]);
 
   useEffect(() => {
     if (Platform.OS !== 'android') return undefined;
@@ -314,9 +323,9 @@ export default function LoginScreen({ onLoginSuccess }) {
           {/* ── Brand hero ───────────────────────────────── */}
           <View
             style={{
-              backgroundColor: colors.heroBg,
+              backgroundColor: 'rgb(82, 134, 158)',
               paddingTop: isMobile ? safeAreaTop + 30 : 60,
-              paddingBottom: 84,
+              paddingBottom: 44,
               alignItems: 'center',
               borderBottomLeftRadius: 40,
               borderBottomRightRadius: 40,
@@ -347,52 +356,30 @@ export default function LoginScreen({ onLoginSuccess }) {
               }}
             />
 
-            {/* Logo with soft ring */}
-            <View
-              style={{
-                width: 96,
-                height: 96,
-                borderRadius: 48,
-                backgroundColor: 'rgba(255,255,255,0.16)',
-                alignItems: 'center',
-                justifyContent: 'center',
-                marginBottom: 16,
-              }}
-            >
-              <View
-                style={{
-                  width: 72,
-                  height: 72,
-                  borderRadius: 24,
-                  backgroundColor: '#ffffff',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Ionicons name="home" size={34} color={colors.heroBg} />
-              </View>
-            </View>
-
+            <BrandMark width={160} height={140} />
             <Text
               style={{
-                fontSize: fs(27),
+                marginTop: 2,
+                color: '#ffffff',
+                fontSize: fs(25),
                 fontWeight: '900',
-                color: colors.heroText,
-                letterSpacing: -0.5,
+                letterSpacing: 1.1,
                 textAlign: 'center',
               }}
             >
-              Nads & Gracy BH
+              NADS &amp; GRACY
             </Text>
             <Text
               style={{
-                fontSize: fs(13),
-                color: colors.heroSubtext,
-                marginTop: 4,
+                marginTop: 3,
+                color: '#c8f1e2',
+                fontSize: fs(10),
+                fontWeight: '700',
+                letterSpacing: 2,
                 textAlign: 'center',
               }}
             >
-              Boarding House Management System
+              BOARDING HOUSE MANAGEMENT SYSTEM
             </Text>
           </View>
 
@@ -401,6 +388,7 @@ export default function LoginScreen({ onLoginSuccess }) {
             <View
               style={{
                 width: '100%',
+                top: '5%',
                 maxWidth: containerMaxWidth,
                 backgroundColor: colors.card,
                 borderColor: colors.cardBorder,
@@ -465,7 +453,12 @@ export default function LoginScreen({ onLoginSuccess }) {
               {errorMessage ? <Banner type="error" text={errorMessage} colors={colors} /> : null}
               {successMessage ? <Banner type="success" text={successMessage} colors={colors} /> : null}
 
-              <View>
+              <Animated.View
+                style={{
+                  opacity: formAnim,
+                  transform: [{ translateY: formAnim.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }],
+                }}
+              >
                 {/* ─── Sign In Form ─────────────────────────── */}
                 {isLogin ? (
                   <View>
@@ -619,7 +612,7 @@ export default function LoginScreen({ onLoginSuccess }) {
                     />
                   </View>
                 )}
-              </View>
+              </Animated.View>
             </View>
 
             {/* Footer helper */}
