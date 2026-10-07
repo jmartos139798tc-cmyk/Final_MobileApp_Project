@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState, useRef } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -9,7 +9,6 @@ import {
   Platform,
   KeyboardAvoidingView,
   Modal,
-  Animated,
   BackHandler,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -173,21 +172,12 @@ export default function LoginScreen({ onLoginSuccess }) {
   const [forgotError, setForgotError] = useState('');
   const [forgotSent, setForgotSent] = useState(false);
 
-  // Small fade/slide when switching between Sign In and Sign Up
-  const formAnim = useRef(new Animated.Value(1)).current;
-
   const switchMode = useCallback((mode) => {
     if (mode === formMode) return;
     setErrorMessage('');
     setSuccessMessage('');
-    formAnim.setValue(0);
     setFormMode(mode);
-    Animated.timing(formAnim, {
-      toValue: 1,
-      duration: 220,
-      useNativeDriver: Platform.OS !== 'web',
-    }).start();
-  }, [formAnim, formMode]);
+  }, [formMode]);
 
   useEffect(() => {
     if (Platform.OS !== 'android') return undefined;
@@ -475,16 +465,7 @@ export default function LoginScreen({ onLoginSuccess }) {
               {errorMessage ? <Banner type="error" text={errorMessage} colors={colors} /> : null}
               {successMessage ? <Banner type="success" text={successMessage} colors={colors} /> : null}
 
-              <Animated.View
-                style={{
-                  opacity: formAnim,
-                  transform: [
-                    {
-                      translateY: formAnim.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }),
-                    },
-                  ],
-                }}
-              >
+              <View>
                 {/* ─── Sign In Form ─────────────────────────── */}
                 {isLogin ? (
                   <View>
@@ -638,7 +619,7 @@ export default function LoginScreen({ onLoginSuccess }) {
                     />
                   </View>
                 )}
-              </Animated.View>
+              </View>
             </View>
 
             {/* Footer helper */}
