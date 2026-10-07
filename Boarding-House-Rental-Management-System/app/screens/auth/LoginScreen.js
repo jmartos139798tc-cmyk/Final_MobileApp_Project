@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,8 @@ import {
   Platform,
   KeyboardAvoidingView,
   Modal,
+  Animated,
+  Easing,
   BackHandler,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -172,12 +174,21 @@ export default function LoginScreen({ onLoginSuccess }) {
   const [forgotError, setForgotError] = useState('');
   const [forgotSent, setForgotSent] = useState(false);
 
+  const formOpacity = useRef(new Animated.Value(1)).current;
+
   const switchMode = useCallback((mode) => {
     if (mode === formMode) return;
     setErrorMessage('');
     setSuccessMessage('');
+    formOpacity.setValue(0);
     setFormMode(mode);
-  }, [formMode]);
+    Animated.timing(formOpacity, {
+      toValue: 1,
+      duration: 200,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: Platform.OS !== 'web',
+    }).start();
+  }, [formMode, formOpacity]);
 
   useEffect(() => {
     if (Platform.OS !== 'android') return undefined;
@@ -465,7 +476,7 @@ export default function LoginScreen({ onLoginSuccess }) {
               {errorMessage ? <Banner type="error" text={errorMessage} colors={colors} /> : null}
               {successMessage ? <Banner type="success" text={successMessage} colors={colors} /> : null}
 
-              <View>
+              <Animated.View style={{ opacity: formOpacity }}>
                 {/* ─── Sign In Form ─────────────────────────── */}
                 {isLogin ? (
                   <View>
@@ -619,7 +630,7 @@ export default function LoginScreen({ onLoginSuccess }) {
                     />
                   </View>
                 )}
-              </View>
+              </Animated.View>
             </View>
 
             {/* Footer helper */}
