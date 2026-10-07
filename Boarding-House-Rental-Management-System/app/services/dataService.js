@@ -215,6 +215,52 @@ export async function getRooms() {
   }
 }
 
+/** Room types available to the owner when adding a room. */
+export async function getRoomTypes() {
+  const store = await getStore();
+  return (store[COLLECTIONS.ROOM_TYPES] || []).map((type) => ({
+    id: type.id,
+    name: type.name,
+    baseRent: type.base_rent,
+  }));
+}
+
+/** Add a vacant room. Room creation is restricted to owner accounts in Firestore rules. */
+export async function addRoom({ roomNumber, typeId }) {
+  const normalizedNumber = String(roomNumber || '').trim().replace(/^0+/, '');
+  if (!/^\d{1,4}$/.test(normalizedNumber)) {
+    throw new Error('Enter a room number using 1 to 4 digits.');
+  }
+
+  const store = await getStore();
+  const rooms = store[COLLECTIONS.ROOMS] || [];
+  const roomTypes = store[COLLECTIONS.ROOM_TYPES] || [];
+  const roomType = roomTypes.find((type) => type.id === typeId);
+  if (!roomType) throw new Error('Choose a valid room type.');
+
+  const formattedNumber = normalizedNumber.padStart(2, '0');
+  if (rooms.some((room) => String(parseInt(room.room_number, 10)) === normalizedNumber)) {
+    throw new Error('A room with that number already exists.');
+  }
+
+  const roomId = `room-${Date.now()}`;
+  const newRoom = {
+    id: roomId,
+    house_id: (store[COLLECTIONS.BOARDING_HOUSES] || [])[0]?.id || 'bh-1',
+    room_number: formattedNumber,
+    type_id: roomType.id,
+    status: 'vacant',
+  };
+
+  if (isFirebaseConfigured && db) {
+    await writeDocument(COLLECTIONS.ROOMS, roomId, newRoom);
+  } else {
+    rooms.push(newRoom);
+  }
+
+  return newRoom;
+}
+
 /**
  * 3. Tenants List
  */

@@ -120,7 +120,7 @@ export default function TenantRoomChangeScreen({ user }) {
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontSize: fs(17), color: colors.text, fontWeight: '800' }}>Request a room transfer</Text>
-                  <Text style={{ fontSize: fs(13), color: colors.textMuted, marginTop: 3, lineHeight: 19 }}>Choose a vacant room. A caretaker will review your request.</Text>
+                  <Text style={{ fontSize: fs(13), color: colors.textMuted, marginTop: 3, lineHeight: 19 }}>Choose a vacant room. The owner will review your request.</Text>
                 </View>
               </View>
 
@@ -153,7 +153,7 @@ export default function TenantRoomChangeScreen({ user }) {
               <TextInput
                 value={reason}
                 onChangeText={(value) => { setReason(value); setError(''); }}
-                placeholder="Tell the caretaker why you need to move..."
+                placeholder="Tell the owner why you need to move..."
                 placeholderTextColor={colors.textMuted}
                 multiline
                 textAlignVertical="top"

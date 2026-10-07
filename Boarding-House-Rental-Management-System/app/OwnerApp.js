@@ -6,6 +6,7 @@ import { useTheme } from './utils/ThemeContext';
 
 import OwnerDashboard from './screens/owner/OwnerDashboard';
 import OwnerRooms from './screens/owner/OwnerRooms';
+import RoomChangeRequestsScreen from './screens/RoomChangeRequestsScreen';
 import OwnerReports from './screens/owner/OwnerReports';
 import OwnerBottomNav from './components/OwnerBottomNav';
 import { db, isFirebaseConfigured } from './utils/firebase';
@@ -51,6 +52,8 @@ export default function OwnerApp({ user, onLogout }) {
         return <OwnerReports />;
       case 'rooms':
         return <OwnerRooms />;
+      case 'room-changes':
+        return <RoomChangeRequestsScreen />;
       default:
         return <OwnerDashboard />;
     }

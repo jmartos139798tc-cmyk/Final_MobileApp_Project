@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Modal, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../utils/ThemeContext';
 import {
@@ -12,7 +12,7 @@ import {
   safeAreaTop,
   getGridColumns,
 } from '../../utils/responsive';
-import { getRooms } from '../../services/dataService';
+import { addRoom, getRooms, getRoomTypes } from '../../services/dataService';
 
 export default function RoomsScreen() {
   const { colors } = useTheme();
@@ -33,14 +33,22 @@ export default function RoomsScreen() {
   const cardWidth = getCardWidth();
 
   const [rooms, setRooms] = useState([]);
+  const [roomTypes, setRoomTypes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [createModalVisible, setCreateModalVisible] = useState(false);
+  const [roomNumber, setRoomNumber] = useState('');
+  const [selectedTypeId, setSelectedTypeId] = useState('');
+  const [formError, setFormError] = useState('');
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     const loadData = async () => {
       try {
-        const roomsData = await getRooms();
+        const [roomsData, typesData] = await Promise.all([getRooms(), getRoomTypes()]);
         setRooms(roomsData);
+        setRoomTypes(typesData);
+        setSelectedTypeId(typesData[0]?.id || '');
       } catch (err) {
         setError('Failed to load rooms data.');
       } finally {
@@ -49,6 +57,21 @@ export default function RoomsScreen() {
     };
     loadData();
   }, []);
+
+  const saveRoom = async () => {
+    setFormError('');
+    setSaving(true);
+    try {
+      await addRoom({ roomNumber, typeId: selectedTypeId });
+      setRooms(await getRooms());
+      setRoomNumber('');
+      setCreateModalVisible(false);
+    } catch (err) {
+      setFormError(err.message || 'Could not create this room.');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const totalCount = rooms.length;
   const occupiedCount = rooms.filter((r) => r.tenant !== null).length;
@@ -96,8 +119,21 @@ export default function RoomsScreen() {
       }}>
         <View style={{ maxWidth: containerMaxWidth, width: '100%' }}>
           <Text style={{ fontSize: fs(12), color: colors.textMuted, fontWeight: '800', letterSpacing: 1, marginBottom: 5 }}>OWNER PORTAL</Text>
-          <Text style={{ fontSize: fs(30), color: colors.text, fontWeight: '900', letterSpacing: -0.5 }}>Rooms</Text>
-          <Text style={{ fontSize: fs(14), color: colors.textSecondary, marginTop: 5, lineHeight: 20 }}>Room availability and tenant payment status.</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: fs(30), color: colors.text, fontWeight: '900', letterSpacing: -0.5 }}>Rooms</Text>
+              <Text style={{ fontSize: fs(14), color: colors.textSecondary, marginTop: 5, lineHeight: 20 }}>Room availability and tenant payment status.</Text>
+            </View>
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Create room"
+              onPress={() => { setFormError(''); setCreateModalVisible(true); }}
+              style={{ minHeight: 44, paddingHorizontal: 14, borderRadius: 13, backgroundColor: colors.ownerAccent, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 }}
+            >
+              <Ionicons name="add" size={19} color={colors.onPrimary || '#ffffff'} />
+              <Text style={{ color: colors.onPrimary || '#ffffff', fontWeight: '800', fontSize: fs(13) }}>Add room</Text>
+            </TouchableOpacity>
+          </View>
 
           <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.lg }}>
             {[
@@ -336,6 +372,48 @@ export default function RoomsScreen() {
           </View>
         </View>
       </View>
+
+      <Modal visible={createModalVisible} transparent animationType="fade" onRequestClose={() => setCreateModalVisible(false)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+          <View style={{ width: '100%', maxWidth: 440, backgroundColor: colors.card, borderColor: colors.cardBorder, borderWidth: 1, borderRadius: 22, padding: 22 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <View>
+                <Text style={{ fontSize: fs(21), color: colors.text, fontWeight: '900' }}>Add a room</Text>
+                <Text style={{ fontSize: fs(13), color: colors.textSecondary, marginTop: 4 }}>New rooms start as vacant.</Text>
+              </View>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close" onPress={() => setCreateModalVisible(false)} style={{ padding: 8 }}>
+                <Ionicons name="close" size={22} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={{ marginTop: 20, marginBottom: 7, color: colors.textSecondary, fontSize: fs(13), fontWeight: '700' }}>Room number</Text>
+            <TextInput
+              value={roomNumber}
+              onChangeText={(value) => { setRoomNumber(value); setFormError(''); }}
+              placeholder="e.g. 18"
+              placeholderTextColor={colors.textMuted}
+              keyboardType="number-pad"
+              maxLength={4}
+              style={{ minHeight: 48, paddingHorizontal: 13, borderRadius: 12, borderWidth: 1, borderColor: colors.cardBorder, color: colors.text, backgroundColor: colors.bg, fontSize: fs(15) }}
+            />
+
+            <Text style={{ marginTop: 17, marginBottom: 8, color: colors.textSecondary, fontSize: fs(13), fontWeight: '700' }}>Room type</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {roomTypes.map((type) => {
+                const active = selectedTypeId === type.id;
+                return <TouchableOpacity key={type.id} onPress={() => setSelectedTypeId(type.id)} accessibilityRole="button" accessibilityState={{ selected: active }} style={{ paddingHorizontal: 13, paddingVertical: 10, borderRadius: 12, borderWidth: 1, borderColor: active ? colors.ownerAccent : colors.cardBorder, backgroundColor: active ? colors.ownerAccentBg : colors.bg }}>
+                  <Text style={{ fontSize: fs(13), fontWeight: '700', color: active ? colors.ownerAccent : colors.textSecondary }}>{type.name}</Text>
+                </TouchableOpacity>;
+              })}
+            </View>
+
+            {!!formError && <Text accessibilityRole="alert" style={{ color: colors.danger, marginTop: 13, fontSize: fs(13), fontWeight: '600' }}>{formError}</Text>}
+            <TouchableOpacity disabled={saving || roomTypes.length === 0} onPress={saveRoom} style={{ minHeight: 48, marginTop: 20, borderRadius: 13, backgroundColor: colors.ownerAccent, alignItems: 'center', justifyContent: 'center', opacity: saving || roomTypes.length === 0 ? 0.6 : 1 }}>
+              {saving ? <ActivityIndicator color={colors.onPrimary || '#ffffff'} /> : <Text style={{ color: colors.onPrimary || '#ffffff', fontSize: fs(14), fontWeight: '800' }}>Create room</Text>}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }

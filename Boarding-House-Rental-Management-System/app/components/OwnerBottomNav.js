@@ -10,6 +10,7 @@ export default function OwnerBottomNav({ user, activeScreen, onNavigate }) {
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: 'home', iconOutline: 'home-outline' },
     { id: 'rooms', label: 'Rooms', icon: 'bed', iconOutline: 'bed-outline' },
+    { id: 'room-changes', label: 'Changes', icon: 'swap-horizontal', iconOutline: 'swap-horizontal-outline' },
     { id: 'reports', label: 'Reports', icon: 'bar-chart', iconOutline: 'bar-chart-outline' },
   ];
 
