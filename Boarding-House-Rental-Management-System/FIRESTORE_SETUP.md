@@ -34,7 +34,7 @@ foreign keys; Firestore does not enforce those links, so writes must preserve th
 | `tenants` | Tenant profile; optional `user_id` for tenants without app accounts |
 | `boarding_houses` | Property name, address, electricity rate |
 | `room_types` | Room category, base rent, capacity |
-| `rooms` | House and room type foreign keys, room number, operational status |
+| `rooms` | House and room type foreign keys, room number, operational status, optional `reserved_for_name` for a prospective occupant while the room stays vacant |
 | `leases` | Tenant and room foreign keys, dates, agreed rent |
 | `utility_readings` | Room, billing period, meter readings, rate |
 | `invoices` | Lease and billing period, charge amounts and due date; tenant is reached through the lease |

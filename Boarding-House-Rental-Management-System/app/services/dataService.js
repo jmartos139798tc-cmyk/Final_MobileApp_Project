@@ -150,6 +150,56 @@ function getLatestInvoiceForLease(invoices, leaseId) {
     .sort((a, b) => String(b.billing_period || b.due_date || '').localeCompare(String(a.billing_period || a.due_date || '')))[0] || null;
 }
 
+function formatRoomType(roomType) {
+  if (!roomType) return 'Room';
+  return roomType.name.includes('Single') ? 'Single' : 'Double';
+}
+
+function toRoomListItem(room, roomTypes, leases = [], tenants = [], invoices = [], payments = []) {
+  const roomType = roomTypes.find((type) => type.id === room.type_id);
+  const activeLease = leases.find((lease) => lease.room_id === room.id && lease.status === 'active');
+  const tenant = activeLease ? tenants.find((item) => item.id === activeLease.tenant_id) : null;
+
+  let balance = 0;
+  let status = room.status === 'occupied' ? 'occupied' : 'vacant';
+
+  if (activeLease && tenant) {
+    const currentInvoice = invoices.find((invoice) => invoice.lease_id === activeLease.id);
+    if (currentInvoice) {
+      const totalPaid = payments
+        .filter((payment) => payment.invoice_id === currentInvoice.id)
+        .reduce((sum, payment) => sum + (payment.amount_paid || 0), 0);
+      balance = Math.max(0, currentInvoice.total_amount - totalPaid);
+    }
+    status = balance > 0 ? 'balance' : 'paid';
+  }
+
+  return {
+    id: String(room.id).replace('room-', ''),
+    number: room.room_number,
+    type: formatRoomType(roomType),
+    tenant: tenant ? tenant.first_name : null,
+    status,
+    balance,
+    ...(room.reserved_for_name ? { reservedFor: room.reserved_for_name } : {}),
+  };
+}
+
+async function getRoomsStore() {
+  if (!isFirebaseConfigured || !db) return getStore();
+
+  const [rooms, roomTypes, leases, tenants, invoices, payments] = await Promise.all([
+    readCollection(COLLECTIONS.ROOMS),
+    readCollection(COLLECTIONS.ROOM_TYPES),
+    readCollection(COLLECTIONS.LEASES),
+    readCollection(COLLECTIONS.TENANTS),
+    readCollection(COLLECTIONS.INVOICES),
+    readCollection(COLLECTIONS.PAYMENTS),
+  ]);
+
+  return { rooms, roomTypes, leases, tenants, invoices, payments };
+}
+
 // ─── 3NF Query Functions ─────────────────────────────────────
 
 /**
@@ -176,65 +226,62 @@ export async function getBoardingHouseConfig() {
  * 2. Rooms List
  */
 export async function getRooms() {
-  try {
-    const store = await getStore();
-    const rooms = store[COLLECTIONS.ROOMS] || [];
-    const room_types = store[COLLECTIONS.ROOM_TYPES] || [];
-    const leases = store[COLLECTIONS.LEASES] || [];
-    const tenants = store[COLLECTIONS.TENANTS] || [];
-    const invoices = store[COLLECTIONS.INVOICES] || [];
+  const data = await getRoomsStore();
+  const isLiveStore = isFirebaseConfigured && db;
+  const rooms = isLiveStore ? data.rooms : (data[COLLECTIONS.ROOMS] || []);
+  const roomTypes = isLiveStore ? data.roomTypes : (data[COLLECTIONS.ROOM_TYPES] || []);
+  const leases = isLiveStore ? data.leases : (data[COLLECTIONS.LEASES] || []);
+  const tenants = isLiveStore ? data.tenants : (data[COLLECTIONS.TENANTS] || []);
+  const invoices = isLiveStore ? data.invoices : (data[COLLECTIONS.INVOICES] || []);
+  const payments = isLiveStore ? data.payments : (data[COLLECTIONS.PAYMENTS] || []);
 
-    return rooms.map((room) => {
-      const roomType = room_types.find((t) => t.id === room.type_id);
-      const activeLease = leases.find((l) => l.room_id === room.id && l.status === 'active');
-      const tenant = activeLease ? tenants.find((t) => t.id === activeLease.tenant_id) : null;
-
-      let balance = 0;
-      let status = 'vacant';
-
-      if (activeLease && tenant) {
-        const currentInvoice = invoices.find((inv) => inv.lease_id === activeLease.id);
-        if (currentInvoice) {
-          balance = getInvoiceBalance(currentInvoice.id, store);
-        }
-        status = balance > 0 ? 'balance' : 'paid';
-      }
-
-      return {
-        id: String(room.id).replace('room-', ''),
-        number: room.room_number,
-        type: roomType ? (roomType.name.includes('Single') ? 'Single' : 'Double') : 'Single',
-        tenant: tenant ? tenant.first_name : null,
-        status,
-        balance,
-      };
-    });
-  } catch (error) {
-    console.error('Error fetching rooms:', error);
-    return [];
-  }
+  return rooms.map((room) => toRoomListItem(room, roomTypes, leases, tenants, invoices, payments));
 }
 
 /** Room types available to the owner when adding a room. */
 export async function getRoomTypes() {
-  const store = await getStore();
-  return (store[COLLECTIONS.ROOM_TYPES] || []).map((type) => ({
+  const store = isFirebaseConfigured && db ? null : await getStore();
+  const roomTypes = isFirebaseConfigured && db
+    ? await readCollection(COLLECTIONS.ROOM_TYPES)
+    : (store[COLLECTIONS.ROOM_TYPES] || []);
+  return roomTypes.map((type) => ({
     id: type.id,
     name: type.name,
     baseRent: type.base_rent,
-  }));
+    maxCapacity: type.max_capacity,
+  })).sort((first, second) => (
+    first.baseRent - second.baseRent || first.name.localeCompare(second.name)
+  ));
 }
 
 /** Add a vacant room. Room creation is restricted to owner accounts in Firestore rules. */
-export async function addRoom({ roomNumber, typeId }) {
+export async function addRoom({ roomNumber, typeId, reservedForName = '' }) {
   const normalizedNumber = String(roomNumber || '').trim().replace(/^0+/, '');
   if (!/^\d{1,4}$/.test(normalizedNumber)) {
     throw new Error('Enter a room number using 1 to 4 digits.');
   }
 
-  const store = await getStore();
-  const rooms = store[COLLECTIONS.ROOMS] || [];
-  const roomTypes = store[COLLECTIONS.ROOM_TYPES] || [];
+  const cleanReservedName = String(reservedForName || '').replace(/\s+/g, ' ').trim();
+  if (cleanReservedName.length > 60) {
+    throw new Error('Occupant name must be 60 characters or fewer.');
+  }
+  if (cleanReservedName && !/\p{L}/u.test(cleanReservedName)) {
+    throw new Error('Occupant name must include at least one letter.');
+  }
+
+  const liveStore = isFirebaseConfigured && db;
+  const store = liveStore ? null : await getStore();
+  const [rooms, roomTypes, boardingHouses] = liveStore
+    ? await Promise.all([
+      readCollection(COLLECTIONS.ROOMS),
+      readCollection(COLLECTIONS.ROOM_TYPES),
+      readCollection(COLLECTIONS.BOARDING_HOUSES),
+    ])
+    : [
+      store[COLLECTIONS.ROOMS] || [],
+      store[COLLECTIONS.ROOM_TYPES] || [],
+      store[COLLECTIONS.BOARDING_HOUSES] || [],
+    ];
   const roomType = roomTypes.find((type) => type.id === typeId);
   if (!roomType) throw new Error('Choose a valid room type.');
 
@@ -246,13 +293,14 @@ export async function addRoom({ roomNumber, typeId }) {
   const roomId = `room-${Date.now()}`;
   const newRoom = {
     id: roomId,
-    house_id: (store[COLLECTIONS.BOARDING_HOUSES] || [])[0]?.id || 'bh-1',
+    house_id: boardingHouses[0]?.id || 'bh-1',
     room_number: formattedNumber,
     type_id: roomType.id,
-    status: 'vacant',
+    status: cleanReservedName ? 'occupied' : 'vacant',
+    ...(cleanReservedName ? { reserved_for_name: cleanReservedName } : {}),
   };
 
-  if (isFirebaseConfigured && db) {
+  if (liveStore) {
     await writeDocument(COLLECTIONS.ROOMS, roomId, newRoom);
   } else {
     rooms.push(newRoom);
@@ -444,7 +492,9 @@ export async function getOccupancyStats() {
     const rooms = store[COLLECTIONS.ROOMS] || [];
     const leases = store[COLLECTIONS.LEASES] || [];
     const totalRooms = rooms.length;
-    const occupied = leases.filter((l) => l.status === 'active').length;
+    const occupiedRoomIds = new Set(leases.filter((l) => l.status === 'active').map((l) => l.room_id));
+    rooms.forEach((r) => { if (r.status === 'occupied') occupiedRoomIds.add(r.id); });
+    const occupied = occupiedRoomIds.size;
     const vacant = Math.max(0, totalRooms - occupied);
     const rate = totalRooms > 0 ? Math.round((occupied / totalRooms) * 100) : 0;
 
