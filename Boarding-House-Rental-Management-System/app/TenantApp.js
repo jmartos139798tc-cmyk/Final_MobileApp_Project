@@ -1,9 +1,12 @@
-import React, { useState } from 'react';
-import { View, StatusBar, TouchableOpacity } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { isDesktop, isMobile, safeAreaTop, cardShadow } from './utils/responsive';
+﻿import React, { useState } from 'react';
+import { View, StatusBar, Platform } from 'react-native';
+import { isDesktop } from './utils/responsive';
 import { useTheme } from './utils/ThemeContext';
 
+// Import header component
+import TenantHeader from './components/TenantHeader';
+
+// Import screens
 import TenantHomeScreen from './screens/tenant/TenantHomeScreen';
 import TenantComplaintsScreen from './screens/tenant/TenantComplaintsScreen';
 import TenantUpdatesScreen from './screens/tenant/TenantUpdatesScreen';
@@ -13,6 +16,34 @@ import TenantBottomNav from './components/TenantBottomNav';
 export default function TenantApp({ user, onLogout }) {
   const [activeScreen, setActiveScreen] = useState('home');
   const { isDark, toggleTheme, colors } = useTheme();
+
+  const getScreenTitle = () => {
+    switch (activeScreen) {
+      case 'home':
+        return 'Home';
+      case 'complaints':
+        return 'Complaints';
+      case 'updates':
+        return 'Updates';
+      case 'room-change':
+        return 'Room Change';
+      default:
+        return 'Home';
+    }
+  };
+
+  const getScreenSubtitle = () => {
+    // Show date subtitle for Home screen
+    if (activeScreen === 'home') {
+      return new Date().toLocaleDateString('en-US', {
+        weekday: 'long',
+        month: 'long',
+        day: 'numeric',
+        year: 'numeric',
+      });
+    }
+    return null;
+  };
 
   const renderScreen = () => {
     switch (activeScreen) {
@@ -31,55 +62,16 @@ export default function TenantApp({ user, onLogout }) {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <StatusBar barStyle={colors.statusBarStyle} backgroundColor={colors.bg} />
+      <StatusBar barStyle={colors.statusBarStyle} backgroundColor={colors.card} />
 
-      {/* Floating theme toggle */}
-      <TouchableOpacity
-        onPress={toggleTheme}
-        activeOpacity={0.7}
-        style={{
-          position: 'absolute',
-          top: isMobile ? safeAreaTop + 8 : 16,
-          right: 16,
-          width: 40,
-          height: 40,
-          borderRadius: 20,
-          backgroundColor: colors.card,
-          borderWidth: 1,
-          borderColor: colors.cardBorder,
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 100,
-          ...cardShadow,
-        }}
-      >
-        <Ionicons name={isDark ? 'sunny' : 'moon'} size={18} color={isDark ? '#fbbf24' : '#6366f1'} />
-      </TouchableOpacity>
-
-      {/* Log out button */}
-      {onLogout && (
-        <TouchableOpacity
-          onPress={onLogout}
-          activeOpacity={0.7}
-          style={{
-            position: 'absolute',
-            top: isMobile ? safeAreaTop + 8 : 16,
-            right: 64,
-            width: 40,
-            height: 40,
-            borderRadius: 20,
-            backgroundColor: colors.card,
-            borderWidth: 1,
-            borderColor: colors.cardBorder,
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 100,
-            ...cardShadow,
-          }}
-        >
-          <Ionicons name="log-out-outline" size={19} color={colors.danger} />
-        </TouchableOpacity>
-      )}
+      {/* Unified Header */}
+      <TenantHeader
+        title={getScreenTitle()}
+        subtitle={getScreenSubtitle()}
+        onLogout={onLogout}
+        isDark={isDark}
+        onThemeToggle={toggleTheme}
+      />
 
       {isDesktop ? (
         <View style={{ flex: 1, flexDirection: 'row' }}>

@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import { View, Text, TouchableOpacity, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { isDesktop, fs } from '../utils/responsive';
@@ -9,8 +9,8 @@ export default function OwnerBottomNav({ user, activeScreen, onNavigate }) {
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: 'home', iconOutline: 'home-outline' },
+    { id: 'tenants', label: 'Tenants', icon: 'people', iconOutline: 'people-outline' },
     { id: 'rooms', label: 'Rooms', icon: 'bed', iconOutline: 'bed-outline' },
-    { id: 'room-changes', label: 'Changes', icon: 'swap-horizontal', iconOutline: 'swap-horizontal-outline' },
     { id: 'reports', label: 'Reports', icon: 'bar-chart', iconOutline: 'bar-chart-outline' },
   ];
 
@@ -138,4 +138,3 @@ export default function OwnerBottomNav({ user, activeScreen, onNavigate }) {
     </View>
   );
 }
-

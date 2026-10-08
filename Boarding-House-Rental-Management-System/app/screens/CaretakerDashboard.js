@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../utils/ThemeContext';
@@ -9,7 +9,6 @@ import {
   fs,
   spacing,
   cardStyle,
-  safeAreaTop,
   accentShadow,
 } from '../utils/responsive';
 import { getCaretakerDashboardData } from '../services/dataService';
@@ -51,20 +50,6 @@ export default function CaretakerDashboard({ onNavigate }) {
   }, []);
 
   const go = (target) => onNavigate && onNavigate(target);
-
-  const getGreeting = () => {
-    const hour = new Date().getHours();
-    if (hour < 12) return 'Good morning';
-    if (hour < 18) return 'Good afternoon';
-    return 'Good evening';
-  };
-
-  const todayLabel = new Date().toLocaleDateString('en-US', {
-    weekday: 'long',
-    month: 'long',
-    day: 'numeric',
-    year: 'numeric',
-  });
 
   if (loading) {
     return (
@@ -214,30 +199,12 @@ export default function CaretakerDashboard({ onNavigate }) {
         style={{ flex: 1 }}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{
+          paddingTop: spacing.lg,
           paddingBottom: 24,
           alignItems: isDesktop ? 'center' : 'stretch',
         }}
       >
         <View style={{ maxWidth: containerMaxWidth, width: '100%' }}>
-          {/* Header */}
-          <View
-            style={{
-              paddingHorizontal: padding,
-              paddingTop: isMobile ? safeAreaTop + 16 : isDesktop ? 40 : 60,
-              paddingBottom: spacing.md,
-            }}
-          >
-            <Text style={{ fontSize: fs(13), color: colors.textMuted, fontWeight: '500', marginBottom: 4 }}>
-              {todayLabel}
-            </Text>
-            <Text style={{ fontSize: fs(15), color: colors.textSecondary, fontWeight: '600' }}>
-              {getGreeting()}
-            </Text>
-            <Text style={{ fontSize: fs(30), color: colors.text, fontWeight: '800', marginTop: 2 }}>
-              Dashboard
-            </Text>
-          </View>
-
           <View style={{ paddingHorizontal: padding, gap: spacing.lg }}>
             {/* Occupancy Card */}
             <View

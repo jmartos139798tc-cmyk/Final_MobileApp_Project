@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TextInput, TouchableOpacity, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, TextInput, TouchableOpacity, Platform, ActivityIndicator, Modal, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../utils/ThemeContext';
 import {
@@ -21,6 +21,7 @@ export default function TenantsScreen() {
   const [tenants, setTenants] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [selectedTenant, setSelectedTenant] = useState(null);
 
   const padding = getResponsivePadding();
   const containerMaxWidth = isDesktop ? 1400 : '100%';
@@ -164,7 +165,7 @@ export default function TenantsScreen() {
                 {paidCount} Paid
               </Text>
             </View>
-            <Text style={{ fontSize: fs(13), color: colors.textMuted, marginHorizontal: 8 }}>Â·</Text>
+            <Text style={{ fontSize: fs(13), color: colors.textMuted, marginHorizontal: 8 }}>·</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <View
                 style={{
@@ -232,6 +233,7 @@ export default function TenantsScreen() {
               <TouchableOpacity
                 key={tenant.id}
                 activeOpacity={0.7}
+                onPress={() => setSelectedTenant(tenant)}
                 style={{
                   ...cardStyle,
                   backgroundColor: colors.card,
@@ -272,7 +274,7 @@ export default function TenantsScreen() {
                     style={{ fontSize: fs(12), fontWeight: '500', color: colors.textMuted, marginTop: 3 }}
                     numberOfLines={1}
                   >
-                    Room {tenant.room} Â· {tenant.type} Â· Due {tenant.dueDate}
+                    Room {tenant.room} · {tenant.type} · Due {tenant.dueDate}
                   </Text>
                 </View>
 
@@ -288,7 +290,7 @@ export default function TenantsScreen() {
                   ) : (
                     <View style={{ alignItems: 'flex-end' }}>
                       <Text style={{ fontSize: fs(15), fontWeight: '800', color: colors.warning }}>
-                        â‚±{tenant.balance.toLocaleString()}
+                        ?{tenant.balance.toLocaleString()}
                       </Text>
                       <Text style={{ fontSize: fs(11), fontWeight: '600', color: colors.warning, marginTop: 2 }}>
                         unpaid
@@ -304,6 +306,166 @@ export default function TenantsScreen() {
           )}
         </View>
       </ScrollView>
+
+      {/* Tenant Detail Modal */}
+      {selectedTenant && (
+        <Modal
+          visible={!!selectedTenant}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setSelectedTenant(null)}
+        >
+          <Pressable
+            style={{
+              flex: 1,
+              backgroundColor: 'rgba(0,0,0,0.5)',
+              justifyContent: 'center',
+              alignItems: 'center',
+              padding: 20,
+            }}
+            onPress={() => setSelectedTenant(null)}
+          >
+            <Pressable
+              style={{
+                width: '100%',
+                maxWidth: 500,
+                backgroundColor: colors.card,
+                borderRadius: 20,
+                borderWidth: 1,
+                borderColor: colors.cardBorder,
+                maxHeight: '90%',
+              }}
+              onPress={(e) => e.stopPropagation()}
+            >
+              <ScrollView showsVerticalScrollIndicator={false}>
+                {/* Header */}
+                <View style={{ padding: 24, borderBottomWidth: 1, borderBottomColor: colors.divider }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                    <View
+                      style={{
+                        width: 60,
+                        height: 60,
+                        borderRadius: 30,
+                        backgroundColor: selectedTenant.color,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Text style={{ fontSize: fs(20), fontWeight: '800', color: '#ffffff' }}>
+                        {selectedTenant.initials}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => setSelectedTenant(null)}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      style={{ padding: 4 }}
+                    >
+                      <Ionicons name="close" size={24} color={colors.textSecondary} />
+                    </TouchableOpacity>
+                  </View>
+                  <Text style={{ fontSize: fs(22), fontWeight: '800', color: colors.text }}>
+                    {selectedTenant.name}
+                  </Text>
+                  <Text style={{ fontSize: fs(14), color: colors.textSecondary, marginTop: 4 }}>
+                    Tenant Details
+                  </Text>
+                </View>
+
+                {/* Details */}
+                <View style={{ padding: 24 }}>
+                  {/* Room */}
+                  <View style={{ marginBottom: 20 }}>
+                    <Text style={{ fontSize: fs(12), fontWeight: '700', color: colors.textMuted, textTransform: 'uppercase', marginBottom: 6 }}>
+                      Room Assignment
+                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <View style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: colors.accentBg, alignItems: 'center', justifyContent: 'center' }}>
+                        <Ionicons name="bed-outline" size={20} color={colors.accent} />
+                      </View>
+                      <View>
+                        <Text style={{ fontSize: fs(16), fontWeight: '700', color: colors.text }}>
+                          Room {selectedTenant.room}
+                        </Text>
+                        <Text style={{ fontSize: fs(13), color: colors.textSecondary }}>
+                          {selectedTenant.type}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  {/* Monthly Rent */}
+                  <View style={{ marginBottom: 20 }}>
+                    <Text style={{ fontSize: fs(12), fontWeight: '700', color: colors.textMuted, textTransform: 'uppercase', marginBottom: 6 }}>
+                      Monthly Rent
+                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <View style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: colors.successBg, alignItems: 'center', justifyContent: 'center' }}>
+                        <Ionicons name="cash-outline" size={20} color={colors.successText} />
+                      </View>
+                      <Text style={{ fontSize: fs(18), fontWeight: '800', color: colors.text }}>
+                        ?{(selectedTenant.amount || 0).toLocaleString()}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Due Date */}
+                  <View style={{ marginBottom: 20 }}>
+                    <Text style={{ fontSize: fs(12), fontWeight: '700', color: colors.textMuted, textTransform: 'uppercase', marginBottom: 6 }}>
+                      Payment Due Date
+                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <View style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: colors.infoBg, alignItems: 'center', justifyContent: 'center' }}>
+                        <Ionicons name="calendar-outline" size={20} color={colors.infoText} />
+                      </View>
+                      <Text style={{ fontSize: fs(16), fontWeight: '700', color: colors.text }}>
+                        {selectedTenant.dueDate}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Payment Status */}
+                  <View style={{ marginBottom: 20 }}>
+                    <Text style={{ fontSize: fs(12), fontWeight: '700', color: colors.textMuted, textTransform: 'uppercase', marginBottom: 6 }}>
+                      Payment Status
+                    </Text>
+                    {selectedTenant.status === 'paid' ? (
+                      <View style={{ 
+                        flexDirection: 'row', 
+                        alignItems: 'center', 
+                        gap: 10,
+                        backgroundColor: colors.successBg,
+                        padding: 14,
+                        borderRadius: 12,
+                      }}>
+                        <Ionicons name="checkmark-circle" size={24} color={colors.successText} />
+                        <Text style={{ fontSize: fs(15), fontWeight: '700', color: colors.successText }}>
+                          Paid in Full
+                        </Text>
+                      </View>
+                    ) : (
+                      <View style={{ 
+                        backgroundColor: colors.warningBg,
+                        padding: 14,
+                        borderRadius: 12,
+                      }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+                          <Ionicons name="alert-circle" size={24} color={colors.warningText} />
+                          <Text style={{ fontSize: fs(15), fontWeight: '700', color: colors.warningText }}>
+                            Unpaid Balance
+                          </Text>
+                        </View>
+                        <Text style={{ fontSize: fs(20), fontWeight: '800', color: colors.warningText }}>
+                          ?{selectedTenant.balance.toLocaleString()}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
+              </ScrollView>
+            </Pressable>
+          </Pressable>
+        </Modal>
+      )}
     </View>
   );
 }

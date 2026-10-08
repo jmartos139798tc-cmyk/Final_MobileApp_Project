@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from './utils/ThemeContext';
 import { isMobile, safeAreaTop, cardStyle, cardShadow, fs, spacing } from './utils/responsive';
-import BrandMark from '../assets/nads-gracy-mark.svg';
+import Logo from './components/Logo';
 
 export default function RoleSelector({ onSelect }) {
   const { colors, isDark, toggleTheme } = useTheme();
@@ -62,13 +62,11 @@ export default function RoleSelector({ onSelect }) {
 
       {/* Header */}
       <View style={{ alignItems: 'center', marginBottom: 32 }}>
-        <BrandMark width={170} height={145} />
-        <Text style={{ marginTop: 2, fontSize: fs(24), fontWeight: '900', letterSpacing: 0.8, color: colors.text, textAlign: 'center' }}>
-          NADS &amp; GRACY
-        </Text>
-        <Text style={{ marginTop: 3, marginBottom: 12, fontSize: fs(10), fontWeight: '700', letterSpacing: 1.7, color: colors.textMuted, textAlign: 'center' }}>
-          BOARDING HOUSE MANAGEMENT SYSTEM
-        </Text>
+        <Logo
+          variant="full"
+          width={250}
+          style={{ borderRadius: 18, overflow: 'hidden', marginBottom: 12 }}
+        />
         <Text style={{ fontSize: fs(14), color: colors.textMuted, textAlign: 'center' }}>
           Select your role to continue
         </Text>

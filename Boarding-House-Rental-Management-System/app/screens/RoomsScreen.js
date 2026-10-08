@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Modal, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../utils/ThemeContext';
 import {
@@ -22,6 +22,7 @@ export default function RoomsScreen() {
   const [rooms, setRooms] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [selectedRoom, setSelectedRoom] = useState(null);
 
   const padding = getResponsivePadding();
   const containerMaxWidth = isDesktop ? 1400 : '100%';
@@ -216,6 +217,7 @@ export default function RoomsScreen() {
               <TouchableOpacity 
                 key={room.id}
                 activeOpacity={0.7}
+                onPress={() => setSelectedRoom(room)}
                 style={[
                   cardStyle,
                   { 
@@ -323,6 +325,189 @@ export default function RoomsScreen() {
           })}
         </View>
       </ScrollView>
+
+      {/* Room Detail Modal */}
+      {selectedRoom && (
+        <Modal
+          visible={!!selectedRoom}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setSelectedRoom(null)}
+        >
+          <Pressable
+            style={{
+              flex: 1,
+              backgroundColor: 'rgba(0,0,0,0.5)',
+              justifyContent: 'center',
+              alignItems: 'center',
+              padding: 20,
+            }}
+            onPress={() => setSelectedRoom(null)}
+          >
+            <Pressable
+              style={{
+                width: '100%',
+                maxWidth: 500,
+                backgroundColor: colors.card,
+                borderRadius: 20,
+                borderWidth: 1,
+                borderColor: colors.cardBorder,
+                maxHeight: '90%',
+              }}
+              onPress={(e) => e.stopPropagation()}
+            >
+              <ScrollView showsVerticalScrollIndicator={false}>
+                {/* Header */}
+                <View style={{ padding: 24, borderBottomWidth: 1, borderBottomColor: colors.divider }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                    <View
+                      style={{
+                        width: 60,
+                        height: 60,
+                        borderRadius: 30,
+                        backgroundColor: selectedRoom.status === 'paid' ? colors.successBg : selectedRoom.status === 'balance' ? colors.warningBg : colors.infoBg,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Ionicons 
+                        name="bed" 
+                        size={28} 
+                        color={selectedRoom.status === 'paid' ? colors.successText : selectedRoom.status === 'balance' ? colors.warningText : colors.infoText} 
+                      />
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => setSelectedRoom(null)}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      style={{ padding: 4 }}
+                    >
+                      <Ionicons name="close" size={24} color={colors.textSecondary} />
+                    </TouchableOpacity>
+                  </View>
+                  <Text style={{ fontSize: fs(22), fontWeight: '800', color: colors.text }}>
+                    Room {selectedRoom.number}
+                  </Text>
+                  <Text style={{ fontSize: fs(14), color: colors.textSecondary, marginTop: 4 }}>
+                    {selectedRoom.type}
+                  </Text>
+                </View>
+
+                {/* Details */}
+                <View style={{ padding: 24 }}>
+                  {/* Status */}
+                  <View style={{ marginBottom: 20 }}>
+                    <Text style={{ fontSize: fs(12), fontWeight: '700', color: colors.textMuted, textTransform: 'uppercase', marginBottom: 6 }}>
+                      Room Status
+                    </Text>
+                    {selectedRoom.status === 'vacant' ? (
+                      <View style={{ 
+                        flexDirection: 'row', 
+                        alignItems: 'center', 
+                        gap: 10,
+                        backgroundColor: colors.infoBg,
+                        padding: 14,
+                        borderRadius: 12,
+                      }}>
+                        <Ionicons name="checkmark-circle" size={24} color={colors.infoText} />
+                        <Text style={{ fontSize: fs(15), fontWeight: '700', color: colors.infoText }}>
+                          Vacant - Available for Lease
+                        </Text>
+                      </View>
+                    ) : (
+                      <View style={{ 
+                        flexDirection: 'row', 
+                        alignItems: 'center', 
+                        gap: 10,
+                        backgroundColor: colors.successBg,
+                        padding: 14,
+                        borderRadius: 12,
+                      }}>
+                        <Ionicons name="people" size={24} color={colors.successText} />
+                        <Text style={{ fontSize: fs(15), fontWeight: '700', color: colors.successText }}>
+                          Occupied
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+
+                  {selectedRoom.tenant && (
+                    <>
+                      {/* Tenant Name */}
+                      <View style={{ marginBottom: 20 }}>
+                        <Text style={{ fontSize: fs(12), fontWeight: '700', color: colors.textMuted, textTransform: 'uppercase', marginBottom: 6 }}>
+                          Current Tenant
+                        </Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                          <View style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: colors.accentBg, alignItems: 'center', justifyContent: 'center' }}>
+                            <Ionicons name="person-outline" size={20} color={colors.accent} />
+                          </View>
+                          <Text style={{ fontSize: fs(16), fontWeight: '700', color: colors.text }}>
+                            {selectedRoom.tenant}
+                          </Text>
+                        </View>
+                      </View>
+
+                      {/* Payment Status */}
+                      <View style={{ marginBottom: 20 }}>
+                        <Text style={{ fontSize: fs(12), fontWeight: '700', color: colors.textMuted, textTransform: 'uppercase', marginBottom: 6 }}>
+                          Payment Status
+                        </Text>
+                        {selectedRoom.balance > 0 ? (
+                          <View style={{ 
+                            backgroundColor: colors.warningBg,
+                            padding: 14,
+                            borderRadius: 12,
+                          }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+                              <Ionicons name="alert-circle" size={24} color={colors.warningText} />
+                              <Text style={{ fontSize: fs(15), fontWeight: '700', color: colors.warningText }}>
+                                Outstanding Balance
+                              </Text>
+                            </View>
+                            <Text style={{ fontSize: fs(20), fontWeight: '800', color: colors.warningText }}>
+                              ?{selectedRoom.balance.toLocaleString()}
+                            </Text>
+                          </View>
+                        ) : (
+                          <View style={{ 
+                            flexDirection: 'row', 
+                            alignItems: 'center', 
+                            gap: 10,
+                            backgroundColor: colors.successBg,
+                            padding: 14,
+                            borderRadius: 12,
+                          }}>
+                            <Ionicons name="checkmark-circle" size={24} color={colors.successText} />
+                            <Text style={{ fontSize: fs(15), fontWeight: '700', color: colors.successText }}>
+                              Paid in Full
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                    </>
+                  )}
+
+                  {/* Room Type */}
+                  <View style={{ marginBottom: 20 }}>
+                    <Text style={{ fontSize: fs(12), fontWeight: '700', color: colors.textMuted, textTransform: 'uppercase', marginBottom: 6 }}>
+                      Room Type
+                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <View style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: colors.infoBg, alignItems: 'center', justifyContent: 'center' }}>
+                        <Ionicons name="home-outline" size={20} color={colors.infoText} />
+                      </View>
+                      <Text style={{ fontSize: fs(16), fontWeight: '700', color: colors.text }}>
+                        {selectedRoom.type}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+              </ScrollView>
+            </Pressable>
+          </Pressable>
+        </Modal>
+      )}
+
 
       {/* Legend */}
       <View style={{ 

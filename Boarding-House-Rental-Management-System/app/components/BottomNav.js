@@ -12,8 +12,6 @@ export default function BottomNav({ activeScreen, onNavigate }) {
     { id: 'rooms', label: 'Rooms', icon: 'grid', iconOutline: 'grid-outline' },
     { id: 'tenants', label: 'Tenants', icon: 'people', iconOutline: 'people-outline' },
     { id: 'billing', label: 'Billing', icon: 'card', iconOutline: 'card-outline' },
-    { id: 'issues', label: 'Issues', icon: 'chatbubble-ellipses', iconOutline: 'chatbubble-ellipses-outline' },
-    { id: 'announce', label: 'Announce', icon: 'megaphone', iconOutline: 'megaphone-outline' },
   ];
 
   // Desktop: sidebar navigation
@@ -96,7 +94,7 @@ export default function BottomNav({ activeScreen, onNavigate }) {
     );
   }
 
-  // Mobile: bottom tab bar (no absolute positioning â€” it's a flex child)
+  // Mobile: bottom tab bar (no absolute positioning — it's a flex child)
   return (
     <View style={{
       backgroundColor: colors.navBg,

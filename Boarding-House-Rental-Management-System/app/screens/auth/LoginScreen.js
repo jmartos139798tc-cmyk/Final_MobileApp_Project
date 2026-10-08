@@ -1,735 +1,857 @@
-import React, { useCallback, useEffect, useState, useRef } from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  ScrollView,
-  ActivityIndicator,
-  Platform,
-  KeyboardAvoidingView,
-  Modal,
-  Animated,
-  BackHandler,
-} from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import {
-  isMobile,
-  isDesktop,
-  getResponsivePadding,
-  fs,
-  cardShadow,
-  safeAreaTop,
-} from '../../utils/responsive';
+  Keyboard,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+  useWindowDimensions,
+} from 'react-native';
+import { safeAreaTop } from '../../utils/responsive';
 import { useTheme } from '../../utils/ThemeContext';
 import { loginWithEmail, registerUser, sendPasswordReset } from '../../services/authService';
-import BrandMark from '../../../assets/nads-gracy-mark.svg';
+import Logo from '../../components/Logo';
+import AuthFormField from '../../components/auth/AuthFormField';
+import AuthNotice from '../../components/auth/AuthNotice';
+import AuthPrimaryButton from '../../components/auth/AuthPrimaryButton';
+import AuthModeSelector from '../../components/auth/AuthModeSelector';
 
-// ─────────────────────────────────────────────────────────────
-// Reusable UI pieces (defined OUTSIDE the screen so inputs don't
-// lose focus while typing)
-// ─────────────────────────────────────────────────────────────
+const REMEMBERED_ACCOUNT_KEY = '@nads-gracy/remembered-login';
 
-function Field({ label, required, icon, colors, right, marginBottom = 16, ...inputProps }) {
-  const [focused, setFocused] = useState(false);
+/* ─── Brand palette for the hero section & form ──────────────────────── */
 
+function getLoginPalette(isDark) {
+  if (isDark) {
+    return {
+      // Page
+      pageBg: '#0A1220',
+      // Hero / top section
+      heroStart: '#0B1A2E',
+      heroEnd: '#122A3E',
+      heroArc: 'rgba(255,255,255,0.04)',
+      heroText: '#F8FAFC',
+      heroSubtext: '#94B8D0',
+      iconBubble: 'rgba(255,255,255,0.10)',
+      iconColor: '#CBD5E1',
+      heroStart: '#0D1B2A',
+      heroEnd: '#152838',
+      heroArc: 'rgba(56,189,248,0.08)',
+      heroText: '#F1F5F9',
+      heroSubtext: '#7EADC6',
+      iconBubble: 'rgba(255,255,255,0.14)',
+      iconColor: '#E2E8F0',
+      // Form / bottom card
+      surface: '#111B2B',
+      input: '#0D1726',
+      text: '#F8FAFC',
+      textSecondary: '#CBD5E1',
+      muted: '#94A3B8',
+      border: '#334155',
+      segmentTrack: '#0D1726',
+      surface: '#111927',
+      input: '#0C1422',
+      text: '#F1F5F9',
+      textSecondary: '#A8BFCF',
+      muted: '#64809A',
+      border: '#1E3044',
+      segmentTrack: '#0C1422',
+      accent: '#38BDF8',
+      accentSoft: '#102B3B',
+      accentSoft: '#0E2A3E',
+      danger: '#F87171',
+      dangerBg: '#351D27',
+      dangerBg: '#2D151E',
+      success: '#4ADE80',
+      successBg: '#132F2B',
+      successBg: '#0F2A22',
+    };
+  }
+
+  return {
+    pageBg: '#E9EDF0',
+    heroStart: '#1B3D5C',
+    heroEnd: '#2A5A78',
+    heroArc: 'rgba(255,255,255,0.06)',
+    heroText: '#FFFFFF',
+    heroSubtext: 'rgba(255,255,255,0.72)',
+    iconBubble: 'rgba(255,255,255,0.13)',
+    iconColor: '#E2E8F0',
+    surface: '#FFFFFF',
+    input: '#FFFFFF',
+    text: '#0F172A',
+    textSecondary: '#475569',
+    muted: '#94A3B8',
+    border: '#E2E8F0',
+    segmentTrack: '#F8FAFC',
+    accent: '#0EA5E9',
+    accentSoft: '#E0F2FE',
+    danger: '#DC2626',
+    dangerBg: '#FEF2F2',
+    success: '#15803D',
+    successBg: '#F0FDF4',
+  };
+}
+
+/* ─── Tiny helper components ──────────────────────────────────────────── */
+
+function Message({ message, palette }) {
+  if (!message) return null;
+  return <AuthNotice type={message.type} palette={palette}>{message.text}</AuthNotice>;
+}
+
+function PasswordVisibilityButton({ visible, onPress, palette }) {
   return (
-    <View style={{ marginBottom }}>
-      <Text style={{ fontSize: fs(13), fontWeight: '700', color: colors.textSecondary, marginBottom: 7 }}>
-        {label}
-        {required ? <Text style={{ color: colors.danger }}> *</Text> : null}
-      </Text>
-      <View
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          backgroundColor: focused ? colors.card : colors.searchBg,
-          borderColor: focused ? colors.accent : colors.searchBorder,
-          borderWidth: focused ? 2 : 1,
-          borderRadius: 14,
-          paddingHorizontal: focused ? 13 : 14,
-          minHeight: 52,
-        }}
-      >
-        <Ionicons
-          name={icon}
-          size={19}
-          color={focused ? colors.accent : colors.textMuted}
-          style={{ marginRight: 10 }}
-        />
-        <TextInput
-          {...inputProps}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          placeholderTextColor={colors.textMuted}
-          style={{
-            flex: 1,
-            paddingVertical: 13,
-            fontSize: fs(15),
-            color: colors.text,
-            ...(Platform.OS === 'web' ? { outlineStyle: 'none' } : {}),
-          }}
-        />
-        {right}
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={visible ? 'Hide password' : 'Show password'}
+      hitSlop={10}
+      onPress={onPress}
+      style={styles.eyeButton}
+    >
+      <Ionicons name={visible ? 'eye-off-outline' : 'eye-outline'} size={20} color={palette.muted} />
+    </Pressable>
+  );
+}
+
+function RememberAccount({ value, onChange, palette }) {
+  return (
+    <Pressable
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked: value }}
+      onPress={() => onChange(!value)}
+      style={styles.rememberRow}
+    >
+      <View style={[styles.checkbox, { borderColor: value ? palette.accent : palette.border, backgroundColor: value ? palette.accent : 'transparent' }]}>
+        {value ? <Ionicons name="checkmark" size={13} color="#FFFFFF" /> : null}
       </View>
+      <Text style={[styles.rememberText, { color: palette.textSecondary }]}>Remember my account</Text>
+    </Pressable>
+  );
+}
+
+function RecoveryModal({
+  visible,
+  onClose,
+  onSend,
+  email,
+  onEmailChange,
+  loading,
+  sent,
+  message,
+  palette,
+}) {
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}
+        style={styles.modalBackdrop}
+      >
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close recovery dialog" />
+        <View style={[styles.modalCard, { backgroundColor: palette.surface, borderColor: palette.border }]}>
+          <View style={styles.modalTopRow}>
+            <View style={[styles.modalIcon, { backgroundColor: palette.accentSoft }]}>
+              <Ionicons name="key-outline" size={22} color={palette.accent} />
+            </View>
+            <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel="Close">
+              <Ionicons name="close" size={24} color={palette.muted} />
+            </Pressable>
+          </View>
+
+          <Text style={[styles.modalTitle, { color: palette.text }]}>Account help</Text>
+          <Text style={[styles.modalDescription, { color: palette.textSecondary }]}>
+              Enter the email address for your account and we'll send a secure reset link if it is registered.
+          </Text>
+
+          {!sent ? (
+            <>
+              <AuthFormField
+                label="Account email"
+                icon="mail-outline"
+                palette={palette}
+                placeholder="you@example.com"
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="email-address"
+                autoComplete="email"
+                value={email}
+                onChangeText={onEmailChange}
+                returnKeyType="send"
+                onSubmitEditing={onSend}
+              />
+              <Message message={message} palette={palette} />
+              <AuthPrimaryButton label="Send reset link" loading={loading} onPress={onSend} palette={palette} />
+            </>
+          ) : (
+            <AuthNotice type="success" palette={palette}>
+              If that email belongs to an account, a password reset link is on its way.
+            </AuthNotice>
+          )}
+
+          <Pressable onPress={onClose} style={styles.modalCloseButton}>
+            <Text style={[styles.modalCloseText, { color: palette.textSecondary }]}>{sent ? 'Back to sign in' : 'Cancel'}</Text>
+          </Pressable>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+/* ─── Decorative arcs for the hero ────────────────────────────────────── */
+
+function HeroArcs({ palette, screenWidth }) {
+  const arcSize = Math.max(screenWidth * 0.9, 320);
+  return (
+    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+      {/* Large arc – upper-right */}
+      <View
+        style={[
+          styles.arc,
+          {
+            width: arcSize,
+            height: arcSize,
+            borderRadius: arcSize / 2,
+            borderColor: palette.heroArc,
+            top: -arcSize * 0.35,
+            right: -arcSize * 0.3,
+          },
+        ]}
+      />
+      {/* Medium arc – lower-left */}
+      <View
+        style={[
+          styles.arc,
+          {
+            width: arcSize * 0.7,
+            height: arcSize * 0.7,
+            borderRadius: (arcSize * 0.7) / 2,
+            borderColor: palette.heroArc,
+            bottom: -arcSize * 0.1,
+            left: -arcSize * 0.25,
+          },
+        ]}
+      />
+      {/* Small accent arc – center-right */}
+      <View
+        style={[
+          styles.arc,
+          {
+            width: arcSize * 0.45,
+            height: arcSize * 0.45,
+            borderRadius: (arcSize * 0.45) / 2,
+            borderColor: palette.heroArc,
+            top: '40%',
+            right: -arcSize * 0.15,
+          },
+        ]}
+      />
     </View>
   );
 }
 
-function EyeToggle({ visible, onPress, colors }) {
-  return (
-    <TouchableOpacity onPress={onPress} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-      <Ionicons name={visible ? 'eye-off-outline' : 'eye-outline'} size={21} color={colors.textMuted} />
-    </TouchableOpacity>
-  );
-}
-
-function Banner({ type, text, colors }) {
-  const isError = type === 'error';
-  const tone = isError ? colors.danger : colors.success;
-  return (
-    <View
-      style={{
-        backgroundColor: isError ? 'rgba(239, 68, 68, 0.10)' : 'rgba(16, 185, 129, 0.10)',
-        borderColor: tone,
-        borderWidth: 1,
-        borderRadius: 12,
-        paddingHorizontal: 14,
-        paddingVertical: 11,
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 10,
-        marginBottom: 18,
-      }}
-    >
-      <Ionicons name={isError ? 'alert-circle' : 'checkmark-circle'} size={20} color={tone} />
-      <Text style={{ fontSize: fs(13), color: tone, flex: 1, fontWeight: '600', lineHeight: 18 }}>{text}</Text>
-    </View>
-  );
-}
-
-function PrimaryButton({ label, icon, loading, onPress, colors }) {
-  return (
-    <TouchableOpacity
-      activeOpacity={0.85}
-      onPress={loading ? undefined : onPress}
-      accessibilityState={{ disabled: loading }}
-      style={{
-        pointerEvents: loading ? 'none' : 'auto',
-        backgroundColor: colors.primary,
-        minHeight: 54,
-        borderRadius: 14,
-        alignItems: 'center',
-        justifyContent: 'center',
-        flexDirection: 'row',
-        gap: 10,
-        opacity: loading ? 0.85 : 1,
-        ...cardShadow,
-      }}
-    >
-      {loading ? (
-        <ActivityIndicator size="small" color="#ffffff" />
-      ) : (
-        <>
-          <Text style={{ fontSize: fs(16), fontWeight: '800', color: '#ffffff' }}>{label}</Text>
-          <Ionicons name={icon} size={19} color="#ffffff" />
-        </>
-      )}
-    </TouchableOpacity>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────
-// Screen
-// ─────────────────────────────────────────────────────────────
+/* ─── Main component ──────────────────────────────────────────────────── */
 
 export default function LoginScreen({ onLoginSuccess }) {
-  const { colors, isDark, toggleTheme } = useTheme();
-  const padding = getResponsivePadding();
-  const containerMaxWidth = isDesktop ? 480 : 560;
+  const { isDark, toggleTheme } = useTheme();
+  const palette = getLoginPalette(isDark);
+  const { width, height: screenHeight } = useWindowDimensions();
+  const compact = width < 380;
+  const fontScale = Math.min(1.12, Math.max(0.94, width / 390));
+  const horizontalPadding = width >= 768 ? 32 : compact ? 18 : 22;
 
-  // Active form mode: 'login' | 'register'
   const [formMode, setFormMode] = useState('login');
-
-  // Login form state
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-
-  // Register form state
-  const [regName, setRegName] = useState('');
-  const [regEmail, setRegEmail] = useState('');
-  const [regPhone, setRegPhone] = useState('');
-  const [regPassword, setRegPassword] = useState('');
-  const [regConfirmPassword, setRegConfirmPassword] = useState('');
-  const [regRole, setRegRole] = useState('tenant'); //'tenant' |'caretaker' |'owner'
-  const [showRegPassword, setShowRegPassword] = useState(false);
-
+  const [rememberAccount, setRememberAccount] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [errorMessage, setErrorMessage] = useState('');
-  const [successMessage, setSuccessMessage] = useState('');
-  const [showForgotModal, setShowForgotModal] = useState(false);
-  const [forgotEmail, setForgotEmail] = useState('');
-  const [forgotLoading, setForgotLoading] = useState(false);
-  const [forgotError, setForgotError] = useState('');
-  const [forgotSent, setForgotSent] = useState(false);
-  const formAnim = useRef(new Animated.Value(1)).current;
+  const [message, setMessage] = useState(null);
 
-  const switchMode = useCallback((mode) => {
-    if (mode === formMode) return;
-    setErrorMessage('');
-    setSuccessMessage('');
-    formAnim.setValue(0);
-    setFormMode(mode);
-    Animated.timing(formAnim, {
-      toValue: 1,
-      duration: 220,
-      useNativeDriver: Platform.OS !== 'web',
-    }).start();
-  }, [formAnim, formMode]);
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
 
+  const [recoveryVisible, setRecoveryVisible] = useState(false);
+  const [recoveryEmail, setRecoveryEmail] = useState('');
+  const [recoveryLoading, setRecoveryLoading] = useState(false);
+  const [recoverySent, setRecoverySent] = useState(false);
+  const [recoveryMessage, setRecoveryMessage] = useState(null);
+
+  const passwordRef = useRef(null);
+  const confirmPasswordRef = useRef(null);
+
+  /* ── Remembered account ───────────────────────────── */
   useEffect(() => {
-    if (Platform.OS !== 'android') return undefined;
+    let active = true;
+    AsyncStorage.getItem(REMEMBERED_ACCOUNT_KEY)
+      .then((stored) => {
+        if (!active || !stored) return;
+        const account = JSON.parse(stored);
+        if (account.type === 'admin') {
+          setRememberAccount(false);
+          AsyncStorage.removeItem(REMEMBERED_ACCOUNT_KEY).catch(() => {});
+          return;
+        }
+        if (typeof account.email === 'string') setEmail(account.email);
+        setRememberAccount(true);
+      })
+      .catch(() => {});
 
-    const backSubscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (formMode === 'register') {
-        switchMode('login');
-        return true;
-      }
+    return () => { active = false; };
+  }, []);
 
-      return false;
-    });
-
-    return () => backSubscription.remove();
-  }, [formMode, switchMode]);
-
-  // ── Sign In handler (logic unchanged) ──────────────────────
-  const handleSignIn = async (emailToUse, passToUse) => {
-    const targetEmail = emailToUse !== undefined ? emailToUse : email;
-    const targetPass = passToUse !== undefined ? passToUse : password;
-
-    if (!targetEmail.trim() || !targetPass.trim()) {
-      setErrorMessage('Please enter both email and password');
-      setSuccessMessage('');
-      return;
-    }
-
-    setErrorMessage('');
-    setSuccessMessage('');
-    setLoading(true);
-
+  const rememberCurrentAccount = async (nextEmail) => {
     try {
-      const user = await loginWithEmail(targetEmail, targetPass);
-      setLoading(false);
-      if (onLoginSuccess) {
-        onLoginSuccess(user);
+      if (rememberAccount) {
+        await AsyncStorage.setItem(REMEMBERED_ACCOUNT_KEY, JSON.stringify({ email: nextEmail }));
+      } else {
+        await AsyncStorage.removeItem(REMEMBERED_ACCOUNT_KEY);
       }
-    } catch (err) {
-      setLoading(false);
-      setErrorMessage(err.message || 'Authentication failed');
+    } catch (error) {
+      // A storage error should not prevent a valid sign-in.
+      console.warn('Could not save the remembered account preference:', error?.message);
     }
   };
 
-  // ── Register handler (logic unchanged) ─────────────────────
+  const changeRememberAccount = (value) => {
+    setRememberAccount(value);
+    if (!value) {
+      AsyncStorage.removeItem(REMEMBERED_ACCOUNT_KEY).catch(() => {});
+    }
+  };
+
+  /* ── Auth handlers ────────────────────────────────── */
+  const handleSignIn = async () => {
+    const cleanEmail = email.trim();
+    if (!cleanEmail || !password) {
+      setMessage({ type: 'error', text: 'Enter your email and password to continue.' });
+      return;
+    }
+
+    Keyboard.dismiss();
+    setMessage(null);
+    setLoading(true);
+    try {
+      const user = await loginWithEmail(cleanEmail, password);
+      await rememberCurrentAccount(cleanEmail);
+      setLoading(false);
+      onLoginSuccess?.(user);
+    } catch (error) {
+      setLoading(false);
+      setMessage({ type: 'error', text: error?.message || 'We could not sign you in. Please try again.' });
+    }
+  };
+
+  const handlePhoneChange = (text) => {
+    const digitsOnly = text.replace(/[^0-9]/g, '').slice(0, 11);
+    setPhone(digitsOnly);
+  };
+
   const handleRegister = async () => {
-    if (!regName.trim() || !regEmail.trim() || !regPassword.trim()) {
-      setErrorMessage('Please fill in your name, email, and password');
+    if (!name.trim() || !email.trim() || !password || !confirmPassword) {
+      setMessage({ type: 'error', text: 'Complete your name, email, and password fields.' });
+      return;
+    }
+    const cleanPhone = phone.trim();
+    if (cleanPhone && cleanPhone.length !== 11) {
+      setMessage({ type: 'error', text: 'Mobile number must be 11 digits (e.g. 09123456789).' });
+      return;
+    }
+    if (password !== confirmPassword) {
+      setMessage({ type: 'error', text: 'Your passwords do not match.' });
+      return;
+    }
+    if (password.length < 6) {
+      setMessage({ type: 'error', text: 'Use a password with at least 6 characters.' });
       return;
     }
 
-    if (regPassword !== regConfirmPassword) {
-      setErrorMessage('Passwords do not match');
-      return;
-    }
-
-    if (regPassword.length < 6) {
-      setErrorMessage('Password must be at least 6 characters');
-      return;
-    }
-
-    setErrorMessage('');
+    Keyboard.dismiss();
+    setMessage(null);
     setLoading(true);
-
     try {
-      const newUser = await registerUser({
-        name: regName.trim(),
-        email: regEmail.trim(),
-        password: regPassword.trim(),
-        phone: regPhone.trim(),
+      const user = await registerUser({
+        name: name.trim(),
+        email: email.trim(),
+        password,
+        phone: cleanPhone,
       });
-
+      await rememberCurrentAccount(email.trim());
       setLoading(false);
-      setSuccessMessage('Tenant account created successfully! Signing you in...');
-      setTimeout(() => {
-        if (onLoginSuccess) onLoginSuccess(newUser);
-      }, 700);
-    } catch (err) {
+      onLoginSuccess?.(user);
+    } catch (error) {
       setLoading(false);
-      setErrorMessage(err.message || 'Registration failed');
+      setMessage({ type: 'error', text: error?.message || 'We could not create your account. Please try again.' });
     }
   };
 
-  const handleForgotPassword = async () => {
-    setForgotError('');
-    setForgotLoading(true);
+  const openRecovery = () => {
+    setRecoveryEmail(email.trim());
+    setRecoveryMessage(null);
+    setRecoverySent(false);
+    setRecoveryVisible(true);
+  };
+
+  const handleRecovery = async () => {
+    if (!recoveryEmail.trim()) {
+      setRecoveryMessage({ type: 'error', text: 'Enter the email address for your account.' });
+      return;
+    }
+    setRecoveryLoading(true);
+    setRecoveryMessage(null);
     try {
-      await sendPasswordReset(forgotEmail);
-      setForgotSent(true);
-    } catch (err) {
-      setForgotError(err.message || 'Could not send the reset email. Please try again.');
+      await sendPasswordReset(recoveryEmail);
+      setRecoverySent(true);
+    } catch (error) {
+      setRecoveryMessage({ type: 'error', text: error?.message || 'We could not send the reset link.' });
     } finally {
-      setForgotLoading(false);
+      setRecoveryLoading(false);
     }
   };
 
-  const isLogin = formMode === 'login';
-
-  const tabs = [
-    { key: 'login', label: 'Sign In', icon: 'log-in-outline' },
-    { key: 'register', label: 'Tenant Sign Up', icon: 'person-add-outline' },
-  ];
+  const isRegistering = formMode === 'register';
+  const heroMinHeight = isRegistering ? 200 : 280;
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      {/* Theme toggle floating button */}
-      <TouchableOpacity
-        onPress={toggleTheme}
-        activeOpacity={0.7}
-        style={{
-          position: 'absolute',
-          top: isMobile ? safeAreaTop + 8 : 16,
-          right: 16,
-          width: 42,
-          height: 42,
-          borderRadius: 21,
-          backgroundColor: 'rgba(255,255,255,0.18)',
-          borderWidth: 1,
-          borderColor: 'rgba(255,255,255,0.32)',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 100,
-        }}
-      >
-        <Ionicons name={isDark ? 'sunny' : 'moon'} size={19} color={isDark ? '#fbbf24' : '#ffffff'} />
-      </TouchableOpacity>
+    <View style={[styles.page, { backgroundColor: palette.pageBg }]}>
+      {/* ─── HERO (top teal section) ─────────────────────────── */}
+      <View style={[styles.hero, { backgroundColor: palette.heroStart, minHeight: heroMinHeight }]}>
+        {/* Gradient overlay for depth */}
+        <View
+          style={[
+            styles.heroGradientOverlay,
+            { backgroundColor: palette.heroEnd, opacity: 0.5 },
+          ]}
+        />
 
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-        <ScrollView
-          style={{ flex: 1 }}
-          contentContainerStyle={{ flexGrow: 1, paddingBottom: 40 }}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-        >
-          {/* ── Brand hero ───────────────────────────────── */}
-          <View
-            style={{
-              backgroundColor: 'rgb(82, 134, 158)',
-              paddingTop: isMobile ? safeAreaTop + 30 : 60,
-              paddingBottom: 44,
-              alignItems: 'center',
-              borderBottomLeftRadius: 40,
-              borderBottomRightRadius: 40,
-              overflow: 'hidden',
-            }}
+        {/* Decorative arcs */}
+        <HeroArcs palette={palette} screenWidth={width} />
+
+        {/* Top-right icon buttons */}
+        <View style={[styles.topIconRow, { top: Math.max(safeAreaTop, 12) + 8, right: horizontalPadding }]}>
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel={isDark ? 'Switch to light theme' : 'Switch to dark theme'}
+            onPress={toggleTheme}
+            activeOpacity={0.75}
+            style={[styles.iconBubble, { backgroundColor: palette.iconBubble }]}
           >
-            {/* Decorative circles */}
-            <View
-              style={{
-                position: 'absolute',
-                top: -70,
-                left: -50,
-                width: 220,
-                height: 220,
-                borderRadius: 110,
-                backgroundColor: 'rgba(255,255,255,0.07)',
-              }}
-            />
-            <View
-              style={{
-                position: 'absolute',
-                bottom: -60,
-                right: -40,
-                width: 190,
-                height: 190,
-                borderRadius: 95,
-                backgroundColor: 'rgba(255,255,255,0.06)',
-              }}
-            />
+            <Ionicons name={isDark ? 'sunny-outline' : 'moon-outline'} size={20} color={palette.iconColor} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Settings"
+            activeOpacity={0.75}
+            style={[styles.iconBubble, { backgroundColor: palette.iconBubble }]}
+          >
+            <Ionicons name="settings-outline" size={20} color={palette.iconColor} />
+          </TouchableOpacity>
+        </View>
 
-            <BrandMark width={160} height={140} />
-            <Text
-              style={{
-                marginTop: 2,
-                color: '#ffffff',
-                fontSize: fs(25),
-                fontWeight: '900',
-                letterSpacing: 1.1,
-                textAlign: 'center',
-              }}
-            >
-              NADS &amp; GRACY
-            </Text>
-            <Text
-              style={{
-                marginTop: 3,
-                color: '#c8f1e2',
-                fontSize: fs(10),
-                fontWeight: '700',
-                letterSpacing: 2,
-                textAlign: 'center',
-              }}
-            >
-              BOARDING HOUSE MANAGEMENT SYSTEM
-            </Text>
+        {/* Centered brand content */}
+        <View style={styles.heroBrand}>
+          <View style={styles.heroLogoWrapper}>
+            <Logo variant="mark" width={compact ? 100 : 130} accessibilityLabel="Nads and Gracy house logo" />
           </View>
+          <Text style={[styles.heroTitle, { color: palette.heroText, fontSize: Math.round((compact ? 22 : 26) * fontScale) }]}>
+            NADS & GRACY
+          </Text>
+          <Text style={[styles.heroSubtitle, { color: palette.heroSubtext, fontSize: Math.round(12 * fontScale) }]}>
+            BOARDING HOUSE MANAGEMENT SYSTEM
+          </Text>
+        </View>
+      </View>
 
-          {/* ── Form card (overlaps the hero) ────────────── */}
-          <View style={{ paddingHorizontal: padding, marginTop: -48, alignItems: 'center' }}>
-            <View
-              style={{
-                width: '100%',
-                top: '5%',
-                maxWidth: containerMaxWidth,
-                backgroundColor: colors.card,
-                borderColor: colors.cardBorder,
-                borderWidth: 1,
-                borderRadius: 24,
-                padding: isMobile ? 20 : 28,
-                ...cardShadow,
-              }}
-            >
-              {/* Tabs */}
-              <View
-                style={{
-                  flexDirection: 'row',
-                  backgroundColor: colors.bg,
-                  borderRadius: 14,
-                  padding: 4,
-                  marginBottom: 22,
-                }}
-              >
-                {tabs.map((tab) => {
-                  const active = formMode === tab.key;
-                  return (
-                    <TouchableOpacity
-                      key={tab.key}
-                      activeOpacity={0.8}
-                      onPress={() => switchMode(tab.key)}
-                      style={{
-                        flex: 1,
-                        paddingVertical: 11,
-                        borderRadius: 11,
-                        backgroundColor: active ? colors.primary : 'transparent',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        flexDirection: 'row',
-                        gap: 6,
-                      }}
-                    >
-                      <Ionicons name={tab.icon} size={16} color={active ? '#ffffff' : colors.textMuted} />
-                      <Text
-                        style={{
-                          fontSize: fs(13),
-                          fontWeight: '800',
-                          color: active ? '#ffffff' : colors.textMuted,
-                        }}
-                      >
-                        {tab.label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
+      {/* ─── FORM CARD (overlaps hero with rounded top) ──────── */}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}
+        style={styles.formArea}
+      >
+        <ScrollView
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingHorizontal: horizontalPadding },
+          ]}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={[styles.formCard, { backgroundColor: palette.surface, maxWidth: 480 }]}>
+            <AuthModeSelector
+              value={formMode}
+              onChange={(mode) => { setFormMode(mode); setMessage(null); }}
+              palette={palette}
+            />
 
-              {/* Heading */}
-              <Text style={{ fontSize: fs(21), fontWeight: '900', color: colors.text, letterSpacing: -0.3 }}>
-                {isLogin ? 'Welcome back' : 'Create your tenant account'}
+            <Text style={[styles.formTitle, { color: palette.text, fontSize: Math.round(21 * fontScale) }]}>
+              {isRegistering ? 'Create your boarder account' : 'Sign in to your account'}
+            </Text>
+            <Text style={[styles.formSubtitle, { color: palette.textSecondary }]}>
+              {isRegistering
+                ? 'Set up your account to stay on top of your home.'
+                : 'View your room, payments, and requests.'}
+            </Text>
+
+            <Message message={message} palette={palette} />
+
+            {isRegistering ? (
+              <>
+                <AuthFormField
+                  label="Full name"
+                  icon="person-outline"
+                  palette={palette}
+                  placeholder="Your name"
+                  autoCapitalize="words"
+                  autoComplete="name"
+                  value={name}
+                  onChangeText={setName}
+                  returnKeyType="next"
+                />
+                <AuthFormField
+                  label="Email address"
+                  icon="mail-outline"
+                  palette={palette}
+                  placeholder="you@example.com"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="email-address"
+                  autoComplete="email"
+                  value={email}
+                  onChangeText={setEmail}
+                  returnKeyType="next"
+                />
+                <AuthFormField
+                  label="Mobile number (optional)"
+                  icon="call-outline"
+                  palette={palette}
+                  placeholder="09XXXXXXXXX (11 digits)"
+                  keyboardType="phone-pad"
+                  autoComplete="tel"
+                  maxLength={11}
+                  value={phone}
+                  onChangeText={handlePhoneChange}
+                  returnKeyType="next"
+                />
+                <AuthFormField
+                  label="Password"
+                  icon="lock-closed-outline"
+                  palette={palette}
+                  placeholder="At least 6 characters"
+                  secureTextEntry={!showPassword}
+                  autoComplete="new-password"
+                  value={password}
+                  onChangeText={setPassword}
+                  returnKeyType="next"
+                  onSubmitEditing={() => confirmPasswordRef.current?.focus()}
+                  right={<PasswordVisibilityButton visible={showPassword} onPress={() => setShowPassword((value) => !value)} palette={palette} />}
+                />
+                <AuthFormField
+                  inputRef={confirmPasswordRef}
+                  label="Confirm password"
+                  icon="shield-checkmark-outline"
+                  palette={palette}
+                  placeholder="Enter your password again"
+                  secureTextEntry={!showPassword}
+                  autoComplete="new-password"
+                  value={confirmPassword}
+                  onChangeText={setConfirmPassword}
+                  returnKeyType="go"
+                  onSubmitEditing={handleRegister}
+                />
+
+                <AuthNotice type="info" palette={palette} style={styles.registerNotice}>
+                  Tenant sign-up is for residents. If you need an invitation, ask your property manager.
+                </AuthNotice>
+
+                <AuthPrimaryButton
+                  label="Create account"
+                  loading={loading}
+                  onPress={handleRegister}
+                  palette={palette}
+                />
+              </>
+            ) : (
+              <>
+                <AuthFormField
+                  inputRef={passwordRef}
+                  label="Email address"
+                  icon="mail-outline"
+                  palette={palette}
+                  placeholder="you@example.com"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="email-address"
+                  autoComplete="email"
+                  textContentType="emailAddress"
+                  value={email}
+                  onChangeText={setEmail}
+                  returnKeyType="next"
+                  onSubmitEditing={() => passwordRef.current?.focus()}
+                />
+
+                <AuthFormField
+                  label="Password"
+                  icon="lock-closed-outline"
+                  palette={palette}
+                  placeholder="Enter your password"
+                  secureTextEntry={!showPassword}
+                  autoComplete="current-password"
+                  textContentType="password"
+                  value={password}
+                  onChangeText={setPassword}
+                  returnKeyType="go"
+                  onSubmitEditing={handleSignIn}
+                  containerStyle={styles.passwordField}
+                  right={<PasswordVisibilityButton visible={showPassword} onPress={() => setShowPassword((value) => !value)} palette={palette} />}
+                />
+
+                <View style={styles.utilityRow}>
+                  <RememberAccount value={rememberAccount} onChange={changeRememberAccount} palette={palette} />
+                  <Pressable onPress={openRecovery} hitSlop={6} style={styles.forgotButton}>
+                    <Text style={[styles.forgotText, { color: palette.accent }]}>Forgot password?</Text>
+                  </Pressable>
+                </View>
+
+                <AuthPrimaryButton label="Sign in" loading={loading} onPress={handleSignIn} palette={palette} />
+              </>
+            )}
+
+            <View style={styles.footer}>
+              <Text style={[styles.footerText, { color: palette.textSecondary }]}>
+                {isRegistering ? 'Already have an account? Use Sign In above.' : 'Tenant access for Nads & Gracy residents.'}
               </Text>
-              <Text style={{ fontSize: fs(13), color: colors.textMuted, marginTop: 4, marginBottom: 20, lineHeight: 19 }}>
-                {isLogin ? 'Sign in to continue to your account.' : 'Fill in your details to start using the app.'}
-              </Text>
-
-              {/* Messages */}
-              {errorMessage ? <Banner type="error" text={errorMessage} colors={colors} /> : null}
-              {successMessage ? <Banner type="success" text={successMessage} colors={colors} /> : null}
-
-              <Animated.View
-                style={{
-                  opacity: formAnim,
-                  transform: [{ translateY: formAnim.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }],
-                }}
-              >
-                {/* ─── Sign In Form ─────────────────────────── */}
-                {isLogin ? (
-                  <View>
-                    <Field
-                      label="Email Address"
-                      icon="mail-outline"
-                      colors={colors}
-                      placeholder="Enter your email..."
-                      autoCapitalize="none"
-                      keyboardType="email-address"
-                      value={email}
-                      onChangeText={setEmail}
-                    />
-
-                    <Field
-                      label="Password"
-                      icon="lock-closed-outline"
-                      colors={colors}
-                      marginBottom={8}
-                      placeholder="Enter your password..."
-                      secureTextEntry={!showPassword}
-                      value={password}
-                      onChangeText={setPassword}
-                      right={
-                        <EyeToggle visible={showPassword} onPress={() => setShowPassword(!showPassword)} colors={colors} />
-                      }
-                    />
-
-                    <TouchableOpacity
-                      onPress={() => {
-                        setForgotEmail(email);
-                        setForgotError('');
-                        setForgotSent(false);
-                        setShowForgotModal(true);
-                      }}
-                      style={{ alignSelf: 'flex-end', paddingVertical: 6, marginBottom: 14 }}
-                    >
-                      <Text style={{ fontSize: fs(13), color: colors.accent, fontWeight: '700' }}>Forgot password?</Text>
-                    </TouchableOpacity>
-
-                    <PrimaryButton
-                      label="Sign In"
-                      icon="arrow-forward"
-                      loading={loading}
-                      onPress={() => handleSignIn()}
-                      colors={colors}
-                    />
-                  </View>
-                ) : (
-                  /* ─── Create Account / Registration Form ──── */
-                  <View>
-                    <Field
-                      label="Full Name"
-                      required
-                      icon="person-outline"
-                      colors={colors}
-                      placeholder="e.g. Juan Dela Cruz"
-                      value={regName}
-                      onChangeText={setRegName}
-                    />
-
-                    <Field
-                      label="Email Address"
-                      required
-                      icon="mail-outline"
-                      colors={colors}
-                      placeholder="e.g. juan@gmail.com"
-                      autoCapitalize="none"
-                      keyboardType="email-address"
-                      value={regEmail}
-                      onChangeText={setRegEmail}
-                    />
-
-                    <Field
-                      label="Contact Number"
-                      icon="call-outline"
-                      colors={colors}
-                      placeholder="e.g. 09171234567"
-                      keyboardType="phone-pad"
-                      maxLength={11}
-                      value={regPhone}
-                      onChangeText={(text) => setRegPhone(text.replace(/[^0-9]/g, '').slice(0, 11))}
-                    />
-
-                    <Field
-                      label="Create Password"
-                      required
-                      icon="lock-closed-outline"
-                      colors={colors}
-                      placeholder="At least 6 characters..."
-                      secureTextEntry={!showRegPassword}
-                      value={regPassword}
-                      onChangeText={setRegPassword}
-                      right={
-                        <EyeToggle
-                          visible={showRegPassword}
-                          onPress={() => setShowRegPassword(!showRegPassword)}
-                          colors={colors}
-                        />
-                      }
-                    />
-
-                    <Field
-                      label="Confirm Password"
-                      required
-                      icon="shield-checkmark-outline"
-                      colors={colors}
-                      marginBottom={16}
-                      placeholder="Re-enter your password..."
-                      secureTextEntry={!showRegPassword}
-                      value={regConfirmPassword}
-                      onChangeText={setRegConfirmPassword}
-                    />
-
-                    {/* Notice: Owner/Caretaker are pre-provisioned */}
-                    <View
-                      style={{
-                        backgroundColor: colors.accentBg,
-                        borderRadius: 14,
-                        padding: 14,
-                        marginBottom: 20,
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: 12,
-                      }}
-                    >
-                      <View
-                        style={{
-                          width: 36,
-                          height: 36,
-                          borderRadius: 18,
-                          backgroundColor: colors.card,
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                        }}
-                      >
-                        <Ionicons name="information-circle" size={22} color={colors.accent} />
-                      </View>
-                      <Text style={{ fontSize: fs(12), color: colors.textSecondary, flex: 1, lineHeight: 18 }}>
-                        <Text style={{ fontWeight: '800', color: colors.text }}>For boarders only. </Text>
-                        Owner and Caretaker accounts are set up by the administrator.
-                      </Text>
-                    </View>
-
-                    <PrimaryButton
-                      label="Register as Tenant"
-                      icon="checkmark-done"
-                      loading={loading}
-                      onPress={handleRegister}
-                      colors={colors}
-                    />
-                  </View>
-                )}
-              </Animated.View>
             </View>
 
-            {/* Footer helper */}
-            <TouchableOpacity
-              activeOpacity={0.7}
-              onPress={() => switchMode(isLogin ? 'register' : 'login')}
-              style={{ marginTop: 22, padding: 6 }}
-            >
-              <Text style={{ fontSize: fs(13), color: colors.textMuted, textAlign: 'center' }}>
-                {isLogin ? 'New boarder? ' : 'Already have an account? '}
-                <Text style={{ color: colors.accent, fontWeight: '800' }}>
-                  {isLogin ? 'Create a tenant account' : 'Sign in'}
-                </Text>
-              </Text>
-            </TouchableOpacity>
+            <Text style={[styles.securityCaption, { color: palette.muted }]}>Secure access for your boarding house</Text>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* ── Forgot Password Modal ────────────────────── */}
-      <Modal
-        visible={showForgotModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowForgotModal(false)}
-      >
-        <View
-          style={{
-            flex: 1,
-            backgroundColor: 'rgba(0,0,0,0.7)',
-            justifyContent: 'center',
-            alignItems: 'center',
-            padding: 24,
-          }}
-        >
-          <View
-            style={{
-              width: '100%',
-              maxWidth: 420,
-              backgroundColor: colors.card,
-              borderRadius: 24,
-              borderWidth: 1,
-              borderColor: colors.cardBorder,
-              padding: 24,
-              ...cardShadow,
-            }}
-          >
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
-              <View
-                style={{
-                  width: 48,
-                  height: 48,
-                  borderRadius: 16,
-                  backgroundColor: colors.accentBg,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Ionicons name="key-outline" size={24} color={colors.accent} />
-              </View>
-              <TouchableOpacity onPress={() => setShowForgotModal(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                <Ionicons name="close-circle" size={26} color={colors.textMuted} />
-              </TouchableOpacity>
-            </View>
-
-            <Text style={{ fontSize: fs(19), fontWeight: '800', color: colors.text, marginBottom: 8 }}>
-              Password Recovery
-            </Text>
-
-            <Text style={{ fontSize: fs(14), color: colors.textSecondary, marginBottom: 16, lineHeight: 21 }}>
-              Enter your account email and we’ll send a secure password reset link if an account is registered with that address.
-            </Text>
-
-            {!forgotSent && (
-              <Field
-                label="Email Address"
-                required
-                icon="mail-outline"
-                colors={colors}
-                placeholder="Enter your account email"
-                autoCapitalize="none"
-                keyboardType="email-address"
-                autoComplete="email"
-                value={forgotEmail}
-                onChangeText={(value) => { setForgotEmail(value); setForgotError(''); }}
-              />
-            )}
-
-            {forgotError ? <Banner type="error" text={forgotError} colors={colors} /> : null}
-            {forgotSent ? <Banner type="success" text="If an account uses that email, a reset link is on the way. Check your inbox and spam folder." colors={colors} /> : null}
-
-            {!forgotSent && (
-              <PrimaryButton
-                label="Send Reset Link"
-                icon="mail-outline"
-                loading={forgotLoading}
-                onPress={handleForgotPassword}
-                colors={colors}
-              />
-            )}
-
-            <TouchableOpacity
-              onPress={() => setShowForgotModal(false)}
-              activeOpacity={0.85}
-              style={{
-                marginTop: forgotSent ? 0 : 12,
-                backgroundColor: colors.primary,
-                paddingVertical: 14,
-                borderRadius: 14,
-                alignItems: 'center',
-              }}
-            >
-              <Text style={{ color: '#ffffff', fontWeight: '800', fontSize: fs(15) }}>{forgotSent ? 'Back to Sign In' : 'Cancel'}</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+      <RecoveryModal
+        visible={recoveryVisible}
+        onClose={() => setRecoveryVisible(false)}
+        onSend={handleRecovery}
+        email={recoveryEmail}
+        onEmailChange={(value) => { setRecoveryEmail(value); setRecoveryMessage(null); }}
+        loading={recoveryLoading}
+        sent={recoverySent}
+        message={recoveryMessage}
+        palette={palette}
+      />
     </View>
   );
 }
+
+/* ─── Styles ──────────────────────────────────────────────────────────── */
+
+const styles = StyleSheet.create({
+  page: {
+    flex: 1,
+  },
+
+  /* ── Hero (top teal area) ─────────────────────────── */
+  hero: {
+    overflow: 'hidden',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingBottom: 32,
+  },
+  heroGradientOverlay: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  arc: {
+    position: 'absolute',
+    borderWidth: 1.5,
+    backgroundColor: 'transparent',
+  },
+  topIconRow: {
+    position: 'absolute',
+    zIndex: 5,
+    flexDirection: 'column',
+    gap: 10,
+  },
+  iconBubble: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroBrand: {
+    alignItems: 'center',
+    paddingTop: 20,
+  },
+  heroLogoWrapper: {
+    marginBottom: 16,
+  },
+  heroTitle: {
+    fontWeight: '900',
+    letterSpacing: 3,
+    textAlign: 'center',
+  },
+  heroSubtitle: {
+    fontWeight: '600',
+    letterSpacing: 2,
+    textAlign: 'center',
+    marginTop: 6,
+  },
+
+  /* ── Form area (white card section) ───────────────── */
+  formArea: {
+    flex: 1,
+    marginTop: -24,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    paddingBottom: 32,
+  },
+  formCard: {
+    width: '100%',
+    alignSelf: 'center',
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+    padding: 24,
+    minHeight: '100%',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: -6 },
+    shadowOpacity: 0.1,
+    shadowRadius: 20,
+    elevation: 8,
+    ...Platform.select({ web: { boxShadow: '0 -6px 28px rgba(15, 23, 42, 0.12)' } }),
+  },
+
+  /* ── Form elements ─────────────────────────────────── */
+  formTitle: {
+    fontWeight: '800',
+    letterSpacing: -0.25,
+  },
+  formSubtitle: {
+    fontSize: 13,
+    lineHeight: 19,
+    marginTop: 5,
+    marginBottom: 20,
+  },
+  passwordField: {
+    marginBottom: 7,
+  },
+  utilityRow: {
+    minHeight: 38,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginBottom: 18,
+  },
+  rememberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 36,
+    gap: 8,
+  },
+  checkbox: {
+    width: 19,
+    height: 19,
+    borderWidth: 1.5,
+    borderRadius: 5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rememberText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  forgotButton: {
+    paddingVertical: 8,
+    paddingLeft: 4,
+  },
+  forgotText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  registerNotice: {
+    marginBottom: 18,
+  },
+  footer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 20,
+    paddingHorizontal: 8,
+  },
+  footerText: {
+    fontSize: 13,
+    lineHeight: 20,
+    textAlign: 'center',
+  },
+  securityCaption: {
+    fontSize: 11,
+    textAlign: 'center',
+    marginTop: 16,
+  },
+  eyeButton: {
+    padding: 3,
+  },
+
+  /* ── Recovery modal ────────────────────────────────── */
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.52)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 420,
+    borderWidth: 1,
+    borderRadius: 24,
+    padding: 24,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 14 },
+    shadowOpacity: 0.2,
+    shadowRadius: 24,
+    elevation: 8,
+  },
+  modalTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  modalIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalTitle: {
+    fontSize: 21,
+    fontWeight: '800',
+    marginBottom: 7,
+  },
+  modalDescription: {
+    fontSize: 13,
+    lineHeight: 20,
+    marginBottom: 18,
+  },
+  modalCloseButton: {
+    minHeight: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+  },
+  modalCloseText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+});

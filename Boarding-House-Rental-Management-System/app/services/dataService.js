@@ -396,16 +396,16 @@ export async function getRevenue(month = 'september') {
     const electricityFees = septInvoices.reduce((sum, inv) => sum + (inv.utility_charge || 0), 0);
 
     return {
-      expected: expected || 39000,
-      collected: collected || 27500,
-      outstanding: outstanding || 11500,
-      percentCollected: percentCollected || 71,
-      rentCollected: rentCollected || 35750,
-      electricityFees: electricityFees || 8248,
+      expected: expected || 0,
+      collected: collected || 0,
+      outstanding: outstanding || 0,
+      percentCollected: percentCollected || 0,
+      rentCollected: rentCollected || 0,
+      electricityFees: electricityFees || 0,
     };
   } catch (error) {
     console.error('Error computing revenue:', error);
-    return { expected: 39000, collected: 27500, outstanding: 11500, percentCollected: 71, rentCollected: 35750, electricityFees: 8248 };
+    return { expected: 0, collected: 0, outstanding: 0, percentCollected: 0, rentCollected: 0, electricityFees: 0 };
   }
 }
 
@@ -419,11 +419,11 @@ export async function getMonthlyIncome() {
     const payments = store[COLLECTIONS.PAYMENTS] || [];
 
     const periods = [
-      { month: 'May', period: '2026-05', defaultAmount: 38000 },
-      { month: 'Jun', period: '2026-06', defaultAmount: 43000 },
-      { month: 'Jul', period: '2026-07', defaultAmount: 48000 },
-      { month: 'Aug', period: '2026-08', defaultAmount: 43000 },
-      { month: 'Sep', period: '2026-09', defaultAmount: 44000 },
+      { month: 'May', period: '2026-05', defaultAmount: 0 },
+      { month: 'Jun', period: '2026-06', defaultAmount: 0 },
+      { month: 'Jul', period: '2026-07', defaultAmount: 0 },
+      { month: 'Aug', period: '2026-08', defaultAmount: 0 },
+      { month: 'Sep', period: '2026-09', defaultAmount: 0 },
     ];
 
     return periods.map(({ month, period, defaultAmount }) => {
@@ -441,11 +441,11 @@ export async function getMonthlyIncome() {
   } catch (error) {
     console.error('Error computing monthly income:', error);
     return [
-      { month: 'May', amount: 38000 },
-      { month: 'Jun', amount: 43000 },
-      { month: 'Jul', amount: 48000 },
-      { month: 'Aug', amount: 43000 },
-      { month: 'Sep', amount: 44000 },
+      { month: 'May', amount: 0 },
+      { month: 'Jun', amount: 0 },
+      { month: 'Jul', amount: 0 },
+      { month: 'Aug', amount: 0 },
+      { month: 'Sep', amount: 0 },
     ];
   }
 }
@@ -557,7 +557,7 @@ export async function getSeptemberSummary() {
     };
   } catch (error) {
     console.error('Error computing September summary:', error);
-    return { rentCollected: 35750, unpaidBalance: 11500, electricityFees: 8248, occupiedRooms: 14, totalRooms: 17, newComplaints: 4, resolved: 1 };
+    return { rentCollected: 0, unpaidBalance: 0, electricityFees: 0, occupiedRooms: 0, totalRooms: 0, newComplaints: 0, resolved: 0 };
   }
 }
 
