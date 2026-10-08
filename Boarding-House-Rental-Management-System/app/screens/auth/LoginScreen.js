@@ -363,7 +363,7 @@ export default function LoginScreen({ onLoginSuccess }) {
       setMessage({ type: 'error', text: 'Mobile number must be 11 digits (e.g. 09123456789).' });
       return;
     }
-    if (password !== confirmPassword) {
+    if (password.toLowerCase() !== confirmPassword.toLowerCase()) {
       setMessage({ type: 'error', text: 'Your passwords do not match.' });
       return;
     }
@@ -433,7 +433,7 @@ export default function LoginScreen({ onLoginSuccess }) {
         {/* Decorative arcs */}
         <HeroArcs palette={palette} screenWidth={width} />
 
-        {/* Top-right icon buttons */}
+        {/* Brightness toggle */}
         <View style={[styles.topIconRow, { top: Math.max(safeAreaTop, 12) + 8, right: horizontalPadding }]}>
           <TouchableOpacity
             accessibilityRole="button"
@@ -443,14 +443,6 @@ export default function LoginScreen({ onLoginSuccess }) {
             style={[styles.iconBubble, { backgroundColor: palette.iconBubble }]}
           >
             <Ionicons name={isDark ? 'sunny-outline' : 'moon-outline'} size={20} color={palette.iconColor} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            accessibilityRole="button"
-            accessibilityLabel="Settings"
-            activeOpacity={0.75}
-            style={[styles.iconBubble, { backgroundColor: palette.iconBubble }]}
-          >
-            <Ionicons name="settings-outline" size={20} color={palette.iconColor} />
           </TouchableOpacity>
         </View>
 
@@ -544,6 +536,7 @@ export default function LoginScreen({ onLoginSuccess }) {
                   palette={palette}
                   placeholder="At least 6 characters"
                   secureTextEntry={!showPassword}
+                  autoCapitalize="none"
                   autoComplete="new-password"
                   value={password}
                   onChangeText={setPassword}
@@ -558,6 +551,7 @@ export default function LoginScreen({ onLoginSuccess }) {
                   palette={palette}
                   placeholder="Enter your password again"
                   secureTextEntry={!showPassword}
+                  autoCapitalize="none"
                   autoComplete="new-password"
                   value={confirmPassword}
                   onChangeText={setConfirmPassword}
@@ -601,6 +595,7 @@ export default function LoginScreen({ onLoginSuccess }) {
                   palette={palette}
                   placeholder="Enter your password"
                   secureTextEntry={!showPassword}
+                  autoCapitalize="none"
                   autoComplete="current-password"
                   textContentType="password"
                   value={password}
@@ -718,8 +713,8 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 32,
     borderBottomLeftRadius: 0,
     borderBottomRightRadius: 0,
-    padding: 16,
-    minHeight: 'auto',
+    padding: 24,
+    minHeight: '100%',
     shadowColor: '#0F172A',
     shadowOffset: { width: 0, height: -6 },
     shadowOpacity: 0.1,

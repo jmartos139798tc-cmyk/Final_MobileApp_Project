@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { isMobile, isDesktop, getResponsivePadding, fs, spacing, cardStyle, safeAreaTop } from '../../utils/responsive';
+import { isMobile, isDesktop, getResponsivePadding, fs, spacing, cardStyle } from '../../utils/responsive';
 import { useTheme } from '../../utils/ThemeContext';
 import { getAnnouncements } from '../../services/dataService';
+import AnnouncementDetailsModal from '../../components/AnnouncementDetailsModal';
 
 export default function TenantUpdatesScreen() {
   const { colors } = useTheme();
@@ -14,6 +15,7 @@ export default function TenantUpdatesScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [selectedAnnouncement, setSelectedAnnouncement] = useState(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -48,7 +50,7 @@ export default function TenantUpdatesScreen() {
         <Text style={{ color: colors.danger, fontSize: fs(16), textAlign: 'center', fontWeight: '600' }}>
           {error}
         </Text>
-        <TouchableOpacity onPress={() => setRefreshKey((key) => key + 1)} activeOpacity={0.8} style={{ marginTop: 18, paddingHorizontal: 20, paddingVertical: 12, backgroundColor: colors.primary, borderRadius: 12, minHeight: 46, justifyContent: 'center' }}>
+        <TouchableOpacity onPress={() => setRefreshKey((key) => key + 1)} activeOpacity={0.8} style={{ marginTop: 18, paddingHorizontal: 20, paddingVertical: 12, backgroundColor: colors.primary, borderRadius: 999, overflow: 'hidden', minHeight: 46, justifyContent: 'center' }}>
           <Text style={{ color: colors.onPrimary, fontWeight: '700' }}>Try again</Text>
         </TouchableOpacity>
       </View>
@@ -67,7 +69,7 @@ export default function TenantUpdatesScreen() {
       >
         <View style={{ maxWidth: containerMaxWidth, width: '100%' }}>
           {/* Header */}
-          <View style={{ padding, paddingTop: isMobile ? safeAreaTop + 62 : isDesktop ? 68 : 64, paddingBottom: 20 }}>
+          <View style={{ padding, paddingTop: isMobile ? 16 : isDesktop ? 28 : 24, paddingBottom: 20 }}>
             <Text style={{ fontSize: fs(12), color: colors.textMuted, fontWeight: '800', letterSpacing: 1, marginBottom: 5 }}>TENANT PORTAL</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
               <View style={{ flex: 1 }}>
@@ -90,14 +92,19 @@ export default function TenantUpdatesScreen() {
               </View>
             ) : (
               announcements.map((item) => (
-                <View
+                <TouchableOpacity
                   key={item.id || item.announcement_id}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Read announcement: ${item.title}`}
+                  activeOpacity={0.8}
+                  onPress={() => setSelectedAnnouncement(item)}
                   style={{
                     ...cardStyle,
                     backgroundColor: colors.card,
                     borderColor: colors.cardBorder,
                     padding: isMobile ? 18 : 22,
                     borderRadius: 20,
+                    overflow: 'hidden',
                   }}
                 >
                   <View style={{
@@ -151,12 +158,13 @@ export default function TenantUpdatesScreen() {
                   }}>
                     {item.description}
                   </Text>
-                </View>
+                </TouchableOpacity>
               ))
             )}
           </View>
         </View>
       </ScrollView>
+      <AnnouncementDetailsModal announcement={selectedAnnouncement} onClose={() => setSelectedAnnouncement(null)} />
     </View>
   );
 }

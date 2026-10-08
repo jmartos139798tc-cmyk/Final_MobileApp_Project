@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Modal, TextInput, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { isMobile, isDesktop, getResponsivePadding, fs, spacing, cardStyle, cardShadow, safeAreaTop } from '../../utils/responsive';
+import { isMobile, isDesktop, getResponsivePadding, fs, spacing, cardStyle, cardShadow } from '../../utils/responsive';
 import { useTheme } from '../../utils/ThemeContext';
-import { getCurrentTenant, getTenantComplaints, submitComplaint } from '../../services/dataService';
+import { getTenantComplaints, submitComplaint } from '../../services/dataService';
 
 export default function TenantComplaintsScreen({ user }) {
   const { colors } = useTheme();
@@ -19,18 +19,13 @@ export default function TenantComplaintsScreen({ user }) {
   const [newDescription, setNewDescription] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
-  const [roomAssigned, setRoomAssigned] = useState(true);
 
   const loadComplaints = async () => {
     try {
       setLoading(true);
       setError(null);
-      const [data, tenantProfile] = await Promise.all([
-        getTenantComplaints(user?.tenant_id),
-        getCurrentTenant(user?.tenant_id),
-      ]);
+      const data = await getTenantComplaints(user?.tenant_id);
       setComplaints(data);
-      setRoomAssigned(Boolean(tenantProfile?.roomNumber));
     } catch (err) {
       setError('Failed to load your complaints.');
     } finally {
@@ -45,6 +40,10 @@ export default function TenantComplaintsScreen({ user }) {
   const handleCreateComplaint = async () => {
     if (!newTitle.trim()) {
       setSubmitError('Please enter an issue title.');
+      return;
+    }
+    if (!newDescription.trim()) {
+      setSubmitError('Please enter a message describing your complaint.');
       return;
     }
 
@@ -105,7 +104,7 @@ export default function TenantComplaintsScreen({ user }) {
         <Text style={{ color: colors.danger, fontSize: fs(16), textAlign: 'center', fontWeight: '600' }}>
           {error}
         </Text>
-        <TouchableOpacity onPress={loadComplaints} style={{ marginTop: 18, paddingHorizontal: 20, paddingVertical: 12, backgroundColor: colors.primary, borderRadius: 10 }}>
+        <TouchableOpacity onPress={loadComplaints} style={{ marginTop: 18, paddingHorizontal: 20, paddingVertical: 12, backgroundColor: colors.primary, borderRadius: 999, overflow: 'hidden' }}>
           <Text style={{ color: colors.onPrimary, fontWeight: '700' }}>Try again</Text>
         </TouchableOpacity>
       </View>
@@ -124,49 +123,13 @@ export default function TenantComplaintsScreen({ user }) {
       >
         <View style={{ maxWidth: containerMaxWidth, width: '100%' }}>
           {/* Header */}
-          <View style={{ padding, paddingTop: isMobile ? safeAreaTop + 62 : isDesktop ? 68 : 64, paddingBottom: 20 }}>
+          <View style={{ padding, paddingTop: isMobile ? 16 : isDesktop ? 28 : 24, paddingBottom: 20 }}>
             <Text style={{ fontSize: fs(12), color: colors.textMuted, fontWeight: '800', letterSpacing: 1, marginBottom: 5 }}>TENANT PORTAL</Text>
             <Text style={{ fontSize: fs(28), color: colors.text, fontWeight: '900', letterSpacing: -0.5 }}>My complaints</Text>
             <Text style={{ fontSize: fs(14), color: colors.textSecondary, lineHeight: 21, marginTop: 6, marginBottom: spacing.lg }}>
               Report a maintenance issue and follow its progress here.
             </Text>
 
-            {roomAssigned ? <TouchableOpacity
-              activeOpacity={0.8}
-              onPress={() => {
-                setSubmitError('');
-                setModalVisible(true);
-              }}
-              style={{
-                width: '100%',
-                paddingVertical: 14,
-                borderRadius: 12,
-                borderWidth: 0,
-                borderColor: colors.accent,
-                borderStyle: 'dashed',
-                backgroundColor: colors.primary,
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexDirection: 'row',
-                gap: 8,
-                minHeight: 48,
-              }}
-            >
-              <Ionicons name="add-circle-outline" size={19} color={colors.onPrimary} />
-              <Text style={{
-                fontSize: fs(15),
-                fontWeight: '700',
-                color: colors.onPrimary,
-              }}>
-                Submit new complaint
-              </Text>
-            </TouchableOpacity> : (
-              <View style={{ backgroundColor: colors.infoBg, borderRadius: 12, padding: 14 }}>
-                <Text style={{ color: colors.infoText, fontSize: fs(13), fontWeight: '600', lineHeight: 19 }}>
-                  You can submit a room complaint after the caretaker assigns your room. Contact the property administrator if you need help before then.
-                </Text>
-              </View>
-            )}
           </View>
 
           {/* Complaints List */}
@@ -185,7 +148,7 @@ export default function TenantComplaintsScreen({ user }) {
                   No complaints filed
                 </Text>
                 <Text style={{ fontSize: fs(14), color: colors.textMuted, textAlign: 'center', marginTop: 4 }}>
-                  If something needs attention, use “Submit new complaint” and the caretaker can follow up.
+                  If something needs attention, use the + button and the caretaker can follow up.
                 </Text>
               </View>
             ) : (
@@ -251,6 +214,19 @@ export default function TenantComplaintsScreen({ user }) {
         </View>
       </ScrollView>
 
+      <TouchableOpacity
+          accessibilityRole="button"
+          accessibilityLabel="Add complaint"
+          activeOpacity={0.8}
+          onPress={() => {
+            setSubmitError('');
+            setModalVisible(true);
+          }}
+          style={{ position: 'absolute', right: 20, bottom: 20, width: 58, height: 58, borderRadius: 29, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', elevation: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.22, shadowRadius: 5 }}
+        >
+          <Ionicons name="add" size={30} color={colors.onPrimary} />
+      </TouchableOpacity>
+
       {/* ── Submit Complaint Modal ──────────────────── */}
       <Modal
         visible={modalVisible}
@@ -310,7 +286,7 @@ export default function TenantComplaintsScreen({ user }) {
             />
 
             <Text style={{ fontSize: fs(14), fontWeight: '700', color: colors.textSecondary, marginBottom: 6 }}>
-              Details (Optional)
+              Message *
             </Text>
             <TextInput
               style={{
@@ -326,7 +302,7 @@ export default function TenantComplaintsScreen({ user }) {
                 textAlignVertical: 'top',
                 marginBottom: 14,
               }}
-              placeholder="Provide any additional details or urgency..."
+              placeholder="Describe your complaint and any details the caretaker should know..."
               placeholderTextColor={colors.textMuted}
               multiline
               value={newDescription}
@@ -347,6 +323,7 @@ export default function TenantComplaintsScreen({ user }) {
                   backgroundColor: colors.bg,
                   paddingVertical: 14,
                   borderRadius: 12,
+                  overflow: 'hidden',
                   alignItems: 'center',
                   borderWidth: 1,
                   borderColor: colors.cardBorder,
@@ -365,6 +342,7 @@ export default function TenantComplaintsScreen({ user }) {
                   backgroundColor: colors.primary,
                   paddingVertical: 14,
                   borderRadius: 12,
+                  overflow: 'hidden',
                   alignItems: 'center',
                   minHeight: 48,
                   justifyContent: 'center',

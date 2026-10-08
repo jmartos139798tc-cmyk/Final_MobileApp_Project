@@ -1,23 +1,21 @@
-import React from 'react';
+﻿import React from 'react';
 import { View, Text, TouchableOpacity, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../utils/ThemeContext';
-import { isMobile, isDesktop, fs, spacing, safeAreaTop, cardShadow } from '../utils/responsive';
+import { isMobile, isDesktop, fs, spacing, safeAreaTop } from '../utils/responsive';
 
 /**
- * LandlordHeader - Unified header component for Landlord screens
+ * OwnerHeader - Unified header component for Owner screens
  * 
  * Features:
- * - Hamburger menu button (left)
- * - Screen title and subtitle/date (center-left)
+ * - Screen title and subtitle/date (left)
  * - Theme toggle and logout buttons (right)
  * - Proper safe area handling
  * - Consistent spacing and touch targets
  */
-export default function LandlordHeader({ 
+export default function OwnerHeader({ 
   title = 'Dashboard',
   subtitle = null,
-  onMenuPress,
   onLogout,
   isDark,
   onThemeToggle,
@@ -60,26 +58,8 @@ export default function LandlordHeader({
           paddingHorizontal: 16,
         }}
       >
-        {/* Left Section: Hamburger Menu */}
-        <TouchableOpacity
-          onPress={onMenuPress}
-          activeOpacity={0.7}
-          accessibilityRole="button"
-          accessibilityLabel="Open menu"
-          style={{
-            width: buttonSize,
-            height: buttonSize,
-            borderRadius: buttonSize / 2,
-            overflow: 'hidden',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <Ionicons name="menu" size={iconSize} color={colors.text} />
-        </TouchableOpacity>
-
-        {/* Center Section: Title and Subtitle */}
-        <View style={{ flex: 1, marginLeft: 12 }}>
+        {/* Left Section: Title and Subtitle */}
+        <View style={{ flex: 1, marginRight: 12 }}>
           <Text
             style={{
               fontSize: fs(20),

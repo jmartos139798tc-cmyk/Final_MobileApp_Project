@@ -61,6 +61,7 @@ export default function TenantBottomNav({ user, activeScreen, onNavigate }) {
                 paddingVertical: 12,
                 paddingHorizontal: 13,
                 borderRadius: 13,
+                overflow: 'hidden',
                 marginBottom: 5,
                 backgroundColor: isActive ? activeBg : 'transparent',
                 borderLeftWidth: 3,
@@ -107,15 +108,16 @@ export default function TenantBottomNav({ user, activeScreen, onNavigate }) {
             accessibilityRole="button"
             accessibilityLabel={`Navigate to ${item.label}`}
             accessibilityState={{ selected: isActive }}
-            style={{ flex: 1, alignItems: 'center', paddingVertical: 3, minHeight: 50, justifyContent: 'center' }}
+            style={{ flex: 1, alignItems: 'center', paddingVertical: 3, minHeight: 50, justifyContent: 'center', borderRadius: 26, overflow: 'hidden' }}
             onPress={() => onNavigate(item.id)}
           >
             <View style={{
               alignItems: 'center',
               justifyContent: 'center',
-              width: 52,
-              height: 30,
-              borderRadius: 15,
+              width: 36,
+              height: 36,
+              borderRadius: 18,
+              overflow: 'hidden',
               backgroundColor: isActive ? activeBg : 'transparent',
               marginBottom: 2,
             }}>

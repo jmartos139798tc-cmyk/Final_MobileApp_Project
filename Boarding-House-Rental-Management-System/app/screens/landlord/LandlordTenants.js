@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Modal, TextInput, ActivityIndicator, Pressable, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../utils/ThemeContext';
-import { isMobile, isDesktop, getResponsivePadding, fs, spacing, cardStyle, safeAreaTop } from '../../utils/responsive';
+import { isMobile, getResponsivePadding, fs, spacing, cardStyle } from '../../utils/responsive';
 import { getAllTenantsForManagement, addTenant, updateTenant, deleteTenant, getVacantRoomsForAssignment, createLease, terminateLease } from '../../services/dataService';
 
 export default function OwnerTenants() {
@@ -135,40 +135,56 @@ export default function OwnerTenants() {
     ]);
   };
 
-  if (loading) return (<View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.bg }}><ActivityIndicator size="large" color={colors.accent} /></View>);  return (
+  if (loading) return (<View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.bg }}><ActivityIndicator size="large" color={colors.accent} /></View>);
+  return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: padding, paddingTop: isMobile ? safeAreaTop + 16 : 40, paddingBottom: 24 }}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.lg }}>
-          <Text style={{ fontSize: fs(32), color: colors.text, fontWeight: '700' }}>Tenant Management</Text>
-          <TouchableOpacity onPress={openAddTenant} style={{ backgroundColor: colors.accent, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 12, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: padding, paddingTop: isMobile ? 16 : 24, paddingBottom: 24 }}>
+        <View style={{ flexDirection: isMobile ? 'column' : 'row', justifyContent: 'space-between', alignItems: isMobile ? 'stretch' : 'center', gap: 14, marginBottom: spacing.lg }}>
+          <View>
+            <Text style={{ fontSize: fs(12), color: colors.textMuted, fontWeight: '800', letterSpacing: 1, marginBottom: 4 }}>OWNER PORTAL</Text>
+            <Text style={{ fontSize: fs(isMobile ? 27 : 32), color: colors.text, fontWeight: '800' }}>Tenant Management</Text>
+            <Text style={{ fontSize: fs(13), color: colors.textSecondary, marginTop: 4 }}>{tenants.length} {tenants.length === 1 ? 'tenant' : 'tenants'} registered</Text>
+          </View>
+          <TouchableOpacity onPress={openAddTenant} style={{ backgroundColor: colors.accent, paddingHorizontal: 18, paddingVertical: 12, borderRadius: 999, overflow: 'hidden', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 46 }}>
             <Ionicons name="person-add" size={20} color="#fff" />
             <Text style={{ fontSize: fs(15), fontWeight: '700', color: '#fff' }}>Add Tenant</Text>
           </TouchableOpacity>
         </View>
         <View style={{ gap: spacing.sm }}>
           {tenants.map(tenant => (
-            <View key={tenant.id} style={{ ...cardStyle, backgroundColor: colors.card, borderColor: colors.cardBorder, padding: 16, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-              <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: tenant.color, alignItems: 'center', justifyContent: 'center' }}>
-                <Text style={{ fontSize: fs(16), fontWeight: '800', color: '#fff' }}>{tenant.initials}</Text>
+            <View key={tenant.id} style={{ ...cardStyle, backgroundColor: colors.card, borderColor: colors.cardBorder, padding: 16, flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'stretch' : 'center', gap: 14 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 }}>
+                <View style={{ width: 50, height: 50, borderRadius: 17, backgroundColor: tenant.color || colors.accent, alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ fontSize: fs(16), fontWeight: '800', color: '#fff' }}>{tenant.initials}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: fs(16), fontWeight: '800', color: colors.text }}>{tenant.fullName}</Text>
+                  <Text style={{ fontSize: fs(13), color: colors.textSecondary, marginTop: 2 }}>{tenant.phone || 'No phone number'}</Text>
+                  {tenant.roomNumber ? (
+                    <Text style={{ fontSize: fs(12), color: colors.textMuted, marginTop: 4 }}>Room {tenant.roomNumber} · ₱{Number(tenant.monthlyRent || 0).toLocaleString()}/month</Text>
+                  ) : (
+                    <Text style={{ fontSize: fs(12), color: colors.warningText, marginTop: 4 }}>No room assigned</Text>
+                  )}
+                </View>
+                {isMobile && (
+                  <TouchableOpacity accessibilityRole="button" accessibilityLabel={`Delete ${tenant.fullName}`} onPress={() => handleDeleteTenant(tenant)} style={{ width: 40, height: 40, borderRadius: 20, overflow: 'hidden', backgroundColor: colors.dangerBg, alignItems: 'center', justifyContent: 'center' }}>
+                    <Ionicons name="trash-outline" size={17} color={colors.dangerText} />
+                  </TouchableOpacity>
+                )}
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: fs(16), fontWeight: '700', color: colors.text }}>{tenant.fullName}</Text>
-                <Text style={{ fontSize: fs(13), color: colors.textSecondary }}>{tenant.phone}</Text>
-                {tenant.roomNumber && <Text style={{ fontSize: fs(13), color: colors.textMuted, marginTop: 2 }}>Room {tenant.roomNumber} - P{tenant.monthlyRent.toLocaleString()}/month</Text>}
-              </View>
-              <View style={{ flexDirection: 'row', gap: 8 }}>
+              <View style={{ flexDirection: 'row', gap: 8, width: isMobile ? '100%' : undefined }}>
                 {tenant.leaseStatus === 'active' ? (
-                  <TouchableOpacity onPress={() => handleTerminateLease(tenant)} style={{ backgroundColor: colors.dangerBg, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 }}>
+                  <TouchableOpacity onPress={() => handleTerminateLease(tenant)} style={{ flex: isMobile ? 1 : undefined, alignItems: 'center', overflow: 'hidden', backgroundColor: colors.dangerBg, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 999 }}>
                     <Text style={{ fontSize: fs(13), fontWeight: '600', color: colors.dangerText }}>End Lease</Text>
                   </TouchableOpacity>
                 ) : (
-                  <TouchableOpacity onPress={() => openAssignRoom(tenant)} style={{ backgroundColor: colors.successBg, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 }}>
+                  <TouchableOpacity onPress={() => openAssignRoom(tenant)} style={{ flex: isMobile ? 1 : undefined, alignItems: 'center', overflow: 'hidden', backgroundColor: colors.successBg, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 999 }}>
                     <Text style={{ fontSize: fs(13), fontWeight: '600', color: colors.successText }}>Assign Room</Text>
                   </TouchableOpacity>
                 )}
-                <TouchableOpacity onPress={() => handleDeleteTenant(tenant)} style={{ backgroundColor: colors.dangerBg, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 }}>
+                {!isMobile && <TouchableOpacity accessibilityRole="button" accessibilityLabel={`Delete ${tenant.fullName}`} onPress={() => handleDeleteTenant(tenant)} style={{ width: 40, height: 40, borderRadius: 20, overflow: 'hidden', backgroundColor: colors.dangerBg, alignItems: 'center', justifyContent: 'center' }}>
                   <Ionicons name="trash-outline" size={16} color={colors.dangerText} />
-                </TouchableOpacity>
+                </TouchableOpacity>}
               </View>
             </View>
           ))}
@@ -192,10 +208,10 @@ export default function OwnerTenants() {
             <Text style={{ fontSize: fs(14), fontWeight: '600', color: colors.text, marginBottom: 8 }}>Phone *</Text>
             <TextInput value={phone} onChangeText={v => { setPhone(v); setFormError(''); }} placeholder="09171234567" placeholderTextColor={colors.textMuted} keyboardType="phone-pad" style={{ backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 12, fontSize: fs(15), color: colors.text, marginBottom: 16 }} />
             <View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}>
-              <TouchableOpacity onPress={() => !saving && setTenantModalVisible(false)} disabled={saving} style={{ flex: 1, backgroundColor: colors.bg, paddingVertical: 14, borderRadius: 12, alignItems: 'center' }}>
+              <TouchableOpacity onPress={() => !saving && setTenantModalVisible(false)} disabled={saving} style={{ flex: 1, backgroundColor: colors.bg, paddingVertical: 14, borderRadius: 999, overflow: 'hidden', alignItems: 'center' }}>
                 <Text style={{ fontSize: fs(15), fontWeight: '700', color: colors.text }}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={handleSaveTenant} disabled={saving} style={{ flex: 1, backgroundColor: colors.accent, paddingVertical: 14, borderRadius: 12, alignItems: 'center' }}>
+              <TouchableOpacity onPress={handleSaveTenant} disabled={saving} style={{ flex: 1, backgroundColor: colors.accent, paddingVertical: 14, borderRadius: 999, overflow: 'hidden', alignItems: 'center' }}>
                 {saving ? <ActivityIndicator size="small" color="#fff" /> : <Text style={{ fontSize: fs(15), fontWeight: '700', color: '#fff' }}>{editingTenant ? 'Save' : 'Add'}</Text>}
               </TouchableOpacity>
             </View>
@@ -212,9 +228,9 @@ export default function OwnerTenants() {
             ) : (
               <>
                 <Text style={{ fontSize: fs(14), fontWeight: '600', color: colors.text, marginBottom: 8 }}>Select Room</Text>
-                <View style={{ backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 8, marginBottom: 16 }}>
+                <View style={{ backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 12, overflow: 'hidden', marginBottom: 16 }}>
                   {vacantRooms.map(room => (
-                    <TouchableOpacity key={room.id} onPress={() => { setSelectedRoomId(room.id); setMonthlyRent(String(room.baseRent)); }} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 12, borderBottomWidth: 1, borderBottomColor: colors.cardBorder }}>
+                    <TouchableOpacity key={room.id} onPress={() => { setSelectedRoomId(room.id); setMonthlyRent(String(room.baseRent)); }} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 12, borderRadius: 10, overflow: 'hidden', borderBottomWidth: 1, borderBottomColor: colors.cardBorder }}>
                       <View>
                         <Text style={{ fontSize: fs(15), fontWeight: '700', color: colors.text }}>Room {room.displayNumber}</Text>
                         <Text style={{ fontSize: fs(13), color: colors.textSecondary }}>{room.type} - P{room.baseRent.toLocaleString()}</Text>
@@ -230,10 +246,10 @@ export default function OwnerTenants() {
                 <Text style={{ fontSize: fs(14), fontWeight: '600', color: colors.text, marginBottom: 8 }}>Due Day (1-31)</Text>
                 <TextInput value={dueDay} onChangeText={v => { setDueDay(v); setAssignError(''); }} placeholder="5" placeholderTextColor={colors.textMuted} keyboardType="numeric" style={{ backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 12, fontSize: fs(15), color: colors.text, marginBottom: 16 }} />
                 <View style={{ flexDirection: 'row', gap: 12 }}>
-                  <TouchableOpacity onPress={() => !assigning && setAssignModalVisible(false)} disabled={assigning} style={{ flex: 1, backgroundColor: colors.bg, paddingVertical: 14, borderRadius: 12, alignItems: 'center' }}>
+                  <TouchableOpacity onPress={() => !assigning && setAssignModalVisible(false)} disabled={assigning} style={{ flex: 1, backgroundColor: colors.bg, paddingVertical: 14, borderRadius: 999, overflow: 'hidden', alignItems: 'center' }}>
                     <Text style={{ fontSize: fs(15), fontWeight: '700', color: colors.text }}>Cancel</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity onPress={handleAssignRoom} disabled={assigning} style={{ flex: 1, backgroundColor: colors.accent, paddingVertical: 14, borderRadius: 12, alignItems: 'center' }}>
+                  <TouchableOpacity onPress={handleAssignRoom} disabled={assigning} style={{ flex: 1, backgroundColor: colors.accent, paddingVertical: 14, borderRadius: 999, overflow: 'hidden', alignItems: 'center' }}>
                     {assigning ? <ActivityIndicator size="small" color="#fff" /> : <Text style={{ fontSize: fs(15), fontWeight: '700', color: '#fff' }}>Assign</Text>}
                   </TouchableOpacity>
                 </View>

@@ -13,8 +13,8 @@ import {
   cardShadow,
   safeAreaTop,
   accentShadow,
-} from '../../utils/responsive';
-import { getAnnouncements, addAnnouncement } from '../../services/dataService';
+} from '../utils/responsive';
+import { getAnnouncements, addAnnouncement } from '../services/dataService';
 
 export default function AnnouncementsScreen() {
   const { colors } = useTheme();
@@ -32,6 +32,7 @@ export default function AnnouncementsScreen() {
   const [newCategory, setNewCategory] = useState('Payment');
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
+  const [selectedAnnouncement, setSelectedAnnouncement] = useState(null);
 
   const fetchAnnouncements = async () => {
     try {
@@ -216,8 +217,12 @@ export default function AnnouncementsScreen() {
             announcements.map((announcement) => {
               const catColors = getCategoryColors(announcement.category);
               return (
-                <View
+                <TouchableOpacity
                   key={announcement.id || announcement.announcement_id}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Read announcement: ${announcement.title}`}
+                  activeOpacity={0.85}
+                  onPress={() => setSelectedAnnouncement(announcement)}
                   style={{
                     ...cardStyle,
                     backgroundColor: colors.card,
@@ -225,6 +230,8 @@ export default function AnnouncementsScreen() {
                     borderLeftWidth: 3,
                     borderLeftColor: getCategoryBorderColor(announcement.category),
                     padding: isDesktop ? 24 : 18,
+                    borderRadius: 20,
+                    overflow: 'hidden',
                   }}
                 >
                   {/* Category Badge & Date */}
@@ -297,12 +304,13 @@ export default function AnnouncementsScreen() {
                   >
                     {announcement.description}
                   </Text>
-                </View>
+                </TouchableOpacity>
               );
             })
           )}
         </View>
       </ScrollView>
+      <AnnouncementDetailsModal announcement={selectedAnnouncement} onClose={() => setSelectedAnnouncement(null)} />
 
       {/* Floating Action Button (FAB) */}
       <TouchableOpacity
@@ -315,6 +323,7 @@ export default function AnnouncementsScreen() {
           width: 56,
           height: 56,
           borderRadius: 28,
+          overflow: 'hidden',
           backgroundColor: colors.accent,
           alignItems: 'center',
           justifyContent: 'center',
@@ -353,7 +362,7 @@ export default function AnnouncementsScreen() {
               <Text style={{ fontSize: fs(18), fontWeight: '800', color: colors.text }}>
                 New Announcement
               </Text>
-              <TouchableOpacity onPress={() => setModalVisible(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <TouchableOpacity onPress={() => setModalVisible(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ width: 36, height: 36, borderRadius: 18, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' }}>
                 <Ionicons name="close-circle" size={26} color={colors.textMuted} />
               </TouchableOpacity>
             </View>

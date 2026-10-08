@@ -1,9 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Modal, ActivityIndicator, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { isMobile, isDesktop, getResponsivePadding, fs, spacing, cardStyle, cardShadow, safeAreaTop } from '../../utils/responsive';
+import { isMobile, isDesktop, getResponsivePadding, fs, spacing, cardStyle, cardShadow } from '../../utils/responsive';
 import { useTheme } from '../../utils/ThemeContext';
 import { getCurrentTenant, getTenantBillingBreakdown, getAnnouncements, getTenantExtensionRequests, submitDueDateExtensionRequest } from '../../services/dataService';
+import AnnouncementDetailsModal from '../../components/AnnouncementDetailsModal';
+
+const formatCalendarDate = (date) => date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+const getAnnouncementTime = (announcement) => {
+  const idTime = Number(String(announcement.announcement_id || announcement.id || '').match(/\d{10,}/)?.[0]);
+  if (Number.isFinite(idTime)) return idTime;
+  const dateTime = Date.parse(announcement.created_at || announcement.date || '');
+  return Number.isNaN(dateTime) ? 0 : dateTime;
+};
 
 export default function TenantHomeScreen({ user, onNavigateToUpdates }) {
   const { colors } = useTheme();
@@ -17,12 +27,15 @@ export default function TenantHomeScreen({ user, onNavigateToUpdates }) {
   const [latestNotice, setLatestNotice] = useState(null);
   const [extensionRequests, setExtensionRequests] = useState([]);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [selectedAnnouncement, setSelectedAnnouncement] = useState(null);
 
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [showExtensionModal, setShowExtensionModal] = useState(false);
   const [extensionSubmitted, setExtensionSubmitted] = useState(false);
   const [requestedDueDate, setRequestedDueDate] = useState('');
   const [extensionReason, setExtensionReason] = useState('');
+  const [calendarVisible, setCalendarVisible] = useState(false);
+  const [calendarMonth, setCalendarMonth] = useState(new Date());
   const [extensionError, setExtensionError] = useState('');
   const [extensionSubmitting, setExtensionSubmitting] = useState(false);
 
@@ -41,7 +54,8 @@ export default function TenantHomeScreen({ user, onNavigateToUpdates }) {
         if (isMounted) {
           setTenant(tenantData);
           setBilling(billingData);
-          setLatestNotice(announcementsData && announcementsData.length > 0 ? announcementsData[0] : null);
+          const latestAnnouncement = [...(announcementsData || [])].sort((a, b) => getAnnouncementTime(b) - getAnnouncementTime(a))[0] || null;
+          setLatestNotice(latestAnnouncement);
           setExtensionRequests(extensionData);
         }
       } catch (err) {
@@ -106,7 +120,7 @@ export default function TenantHomeScreen({ user, onNavigateToUpdates }) {
         <Text style={{ color: colors.danger, fontSize: fs(16), textAlign: 'center', fontWeight: '600' }}>
           {error || 'Your profile is not available yet. Please sign in again or contact the property administrator.'}
         </Text>
-        {!!error && <TouchableOpacity onPress={() => setRefreshKey((key) => key + 1)} style={{ marginTop: 18, paddingHorizontal: 20, paddingVertical: 12, backgroundColor: colors.primary, borderRadius: 10 }}><Text style={{ color: colors.onPrimary, fontWeight: '700' }}>Try again</Text></TouchableOpacity>}
+        {!!error && <TouchableOpacity onPress={() => setRefreshKey((key) => key + 1)} style={{ marginTop: 18, paddingHorizontal: 20, paddingVertical: 12, backgroundColor: colors.primary, borderRadius: 999, overflow: 'hidden' }}><Text style={{ color: colors.onPrimary, fontWeight: '700' }}>Try again</Text></TouchableOpacity>}
       </View>
     );
   }
@@ -123,7 +137,7 @@ export default function TenantHomeScreen({ user, onNavigateToUpdates }) {
       >
         <View style={{ maxWidth: containerMaxWidth, width: '100%' }}>
           {/* Header */}
-          <View style={{ padding, paddingTop: isMobile ? safeAreaTop + 62 : isDesktop ? 68 : 64, paddingBottom: 20 }}>
+          <View style={{ padding, paddingTop: isMobile ? 16 : isDesktop ? 28 : 24, paddingBottom: 20 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
               <View style={{ width: 54, height: 54, borderRadius: 18, backgroundColor: colors.accentBg, alignItems: 'center', justifyContent: 'center' }}>
                 <Text style={{ color: colors.accent, fontSize: fs(18), fontWeight: '900' }}>{tenant.initials || tenant.name.split(' ').map((part) => part[0]).join('').slice(0, 2)}</Text>
@@ -211,6 +225,7 @@ export default function TenantHomeScreen({ user, onNavigateToUpdates }) {
                       paddingHorizontal: 20,
                       paddingVertical: 13,
                       borderRadius: 14,
+                      overflow: 'hidden',
                       backgroundColor: colors.heroText,
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -236,6 +251,9 @@ export default function TenantHomeScreen({ user, onNavigateToUpdates }) {
                       setExtensionSubmitted(false);
                       setExtensionError('');
                       setExtensionReason('');
+                      setCalendarVisible(false);
+                      const dueDate = new Date(tenant.dueDate);
+                      setCalendarMonth(Number.isNaN(dueDate.getTime()) ? new Date() : dueDate);
                       const due = new Date(tenant.dueDate);
                       if (!Number.isNaN(due.getTime())) {
                         due.setDate(due.getDate() + 7);
@@ -403,12 +421,13 @@ export default function TenantHomeScreen({ user, onNavigateToUpdates }) {
               {latestNotice && (
                 <TouchableOpacity
                   activeOpacity={0.8}
-                  onPress={onNavigateToUpdates}
+                  onPress={() => setSelectedAnnouncement(latestNotice)}
                   style={{
                     ...cardStyle,
                     backgroundColor: colors.card,
                     borderColor: colors.cardBorder,
                     borderRadius: 20,
+                    overflow: 'hidden',
                     padding: isMobile ? 18 : 22,
                   }}
                 >
@@ -463,6 +482,8 @@ export default function TenantHomeScreen({ user, onNavigateToUpdates }) {
         </View>
       </ScrollView>
 
+      <AnnouncementDetailsModal announcement={selectedAnnouncement} onClose={() => setSelectedAnnouncement(null)} />
+
       {/* ── View Receipt Modal ──────────────────────── */}
       <Modal
         visible={showReceiptModal}
@@ -494,14 +515,15 @@ export default function TenantHomeScreen({ user, onNavigateToUpdates }) {
                   Payment Receipt
                 </Text>
               </View>
-              <TouchableOpacity onPress={() => setShowReceiptModal(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <TouchableOpacity onPress={() => setShowReceiptModal(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ width: 36, height: 36, borderRadius: 18, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' }}>
                 <Ionicons name="close-circle" size={26} color={colors.textMuted} />
               </TouchableOpacity>
             </View>
 
             {billing.receiptNumber ? <View style={{
               backgroundColor: colors.bg,
-              borderRadius: 12,
+                  borderRadius: 12,
+                  overflow: 'hidden',
               padding: 16,
               gap: 10,
               marginBottom: 18,
@@ -542,7 +564,8 @@ export default function TenantHomeScreen({ user, onNavigateToUpdates }) {
               style={{
                 backgroundColor: colors.primary,
                 paddingVertical: 14,
-                borderRadius: 12,
+                  borderRadius: 12,
+                  overflow: 'hidden',
                 alignItems: 'center',
                 minHeight: 48,
                 justifyContent: 'center',
@@ -584,7 +607,7 @@ export default function TenantHomeScreen({ user, onNavigateToUpdates }) {
               <Text style={{ fontSize: fs(18), fontWeight: '800', color: colors.text }}>
                 Request Due Date Extension
               </Text>
-              <TouchableOpacity onPress={() => setShowExtensionModal(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <TouchableOpacity onPress={() => setShowExtensionModal(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ width: 36, height: 36, borderRadius: 18, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' }}>
                 <Ionicons name="close-circle" size={26} color={colors.textMuted} />
               </TouchableOpacity>
             </View>
@@ -620,13 +643,61 @@ export default function TenantHomeScreen({ user, onNavigateToUpdates }) {
                 </Text>
 
                 <Text style={{ fontSize: fs(13), fontWeight: '700', color: colors.textSecondary, marginBottom: 6 }}>Requested due date *</Text>
-                <TextInput
-                  value={requestedDueDate}
-                  onChangeText={(value) => { setRequestedDueDate(value); setExtensionError(''); }}
-                  placeholder="e.g. Oct 12, 2026"
-                  placeholderTextColor={colors.textMuted}
-                  style={{ backgroundColor: colors.searchBg, borderColor: colors.searchBorder, borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: fs(15), color: colors.text, marginBottom: 12 }}
-                />
+                <TouchableOpacity
+                  accessibilityRole="button"
+                  accessibilityLabel="Choose requested due date from calendar"
+                  onPress={() => setCalendarVisible((visible) => !visible)}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.searchBg, borderColor: colors.searchBorder, borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 13, marginBottom: calendarVisible ? 10 : 12 }}
+                >
+                  <Ionicons name="calendar-outline" size={19} color={colors.accent} />
+                  <Text style={{ flex: 1, fontSize: fs(15), color: requestedDueDate ? colors.text : colors.textMuted }}>{requestedDueDate || 'Select a date'}</Text>
+                  <Ionicons name={calendarVisible ? 'chevron-up' : 'chevron-down'} size={17} color={colors.textMuted} />
+                </TouchableOpacity>
+                {calendarVisible && (() => {
+                  const year = calendarMonth.getFullYear();
+                  const month = calendarMonth.getMonth();
+                  const firstWeekday = new Date(year, month, 1).getDay();
+                  const daysInMonth = new Date(year, month + 1, 0).getDate();
+                  const cells = [...Array(firstWeekday).fill(null), ...Array.from({ length: daysInMonth }, (_, index) => index + 1)];
+                  const dueDate = new Date(tenant.dueDate);
+                  dueDate.setHours(0, 0, 0, 0);
+                  return (
+                    <View style={{ padding: 12, marginBottom: 12, borderRadius: 14, backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.cardBorder }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Previous month" onPress={() => setCalendarMonth(new Date(year, month - 1, 1))} style={{ padding: 6 }}>
+                          <Ionicons name="chevron-back" size={19} color={colors.text} />
+                        </TouchableOpacity>
+                        <Text style={{ fontSize: fs(14), fontWeight: '800', color: colors.text }}>{calendarMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</Text>
+                        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Next month" onPress={() => setCalendarMonth(new Date(year, month + 1, 1))} style={{ padding: 6 }}>
+                          <Ionicons name="chevron-forward" size={19} color={colors.text} />
+                        </TouchableOpacity>
+                      </View>
+                      <View style={{ flexDirection: 'row' }}>
+                        {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, index) => <Text key={`${day}-${index}`} style={{ flex: 1, textAlign: 'center', color: colors.textMuted, fontSize: fs(11), fontWeight: '700', paddingVertical: 6 }}>{day}</Text>)}
+                      </View>
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+                        {cells.map((day, index) => {
+                          const selected = day && requestedDueDate === formatCalendarDate(new Date(year, month, day));
+                          const chosenDate = day ? new Date(year, month, day) : null;
+                          if (chosenDate) chosenDate.setHours(0, 0, 0, 0);
+                          const disabled = !day || (Number.isNaN(dueDate.getTime()) ? false : chosenDate <= dueDate);
+                          return (
+                            <TouchableOpacity
+                              key={`day-${index}`}
+                              disabled={disabled}
+                              accessibilityRole={day ? 'button' : undefined}
+                              accessibilityLabel={day ? formatCalendarDate(new Date(year, month, day)) : undefined}
+                              onPress={() => { setRequestedDueDate(formatCalendarDate(new Date(year, month, day))); setExtensionError(''); setCalendarVisible(false); }}
+                              style={{ width: '14.285%', height: 38, alignItems: 'center', justifyContent: 'center' }}
+                            >
+                              {day ? <Text style={{ width: 32, height: 32, textAlign: 'center', textAlignVertical: 'center', lineHeight: 32, borderRadius: 16, overflow: 'hidden', backgroundColor: selected ? colors.primary : 'transparent', color: selected ? colors.onPrimary : disabled ? colors.textMuted : colors.text, opacity: disabled ? 0.4 : 1, fontSize: fs(13), fontWeight: selected ? '800' : '500' }}>{day}</Text> : null}
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    </View>
+                  );
+                })()}
                 <Text style={{ fontSize: fs(13), fontWeight: '700', color: colors.textSecondary, marginBottom: 6 }}>Reason (Optional)</Text>
                 <TextInput
                   value={extensionReason}
