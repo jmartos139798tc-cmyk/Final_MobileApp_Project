@@ -1,11 +1,11 @@
-﻿import React from 'react';
+import React from 'react';
 import { View, Text, TouchableOpacity, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../utils/ThemeContext';
 import { isMobile, isDesktop, fs, spacing, safeAreaTop, cardShadow } from '../utils/responsive';
 
 /**
- * CaretakerHeader - Unified header component for Caretaker screens
+ * LandlordHeader - Unified header component for Landlord screens
  * 
  * Features:
  * - Hamburger menu button (left)
@@ -14,7 +14,7 @@ import { isMobile, isDesktop, fs, spacing, safeAreaTop, cardShadow } from '../ut
  * - Proper safe area handling
  * - Consistent spacing and touch targets
  */
-export default function CaretakerHeader({ 
+export default function LandlordHeader({ 
   title = 'Dashboard',
   subtitle = null,
   onMenuPress,

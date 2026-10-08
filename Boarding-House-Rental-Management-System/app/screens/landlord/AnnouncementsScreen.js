@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Modal, TextInput, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useTheme } from '../utils/ThemeContext';
+import { useTheme } from '../../utils/ThemeContext';
 import {
   isMobile,
   isTablet,
@@ -13,8 +13,8 @@ import {
   cardShadow,
   safeAreaTop,
   accentShadow,
-} from '../utils/responsive';
-import { getAnnouncements, addAnnouncement } from '../services/dataService';
+} from '../../utils/responsive';
+import { getAnnouncements, addAnnouncement } from '../../services/dataService';
 
 export default function AnnouncementsScreen() {
   const { colors } = useTheme();

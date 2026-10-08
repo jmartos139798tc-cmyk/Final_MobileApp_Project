@@ -2,8 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, BackHandler, Platform, View } from 'react-native';
 import { ThemeProvider, useTheme } from './utils/ThemeContext';
 import LoginScreen from './screens/auth/LoginScreen';
-import CaretakerApp from './CaretakerApp';
-import OwnerApp from './OwnerApp';
+import LandlordApp from './LandlordApp';
 import TenantApp from './TenantApp';
 import { logout, subscribeToCurrentUser } from './services/authService';
 
@@ -69,12 +68,9 @@ function AppRouter() {
     return <LoginScreen onLoginSuccess={setCurrentUser} />;
   }
 
-  if (currentUser.role === 'caretaker') {
-    return <CaretakerApp user={currentUser} onLogout={handleLogout} />;
-  }
-
-  if (currentUser.role === 'owner') {
-    return <OwnerApp user={currentUser} onLogout={handleLogout} />;
+  // Landlord role consolidates owner and caretaker
+  if (currentUser.role === 'landlord') {
+    return <LandlordApp user={currentUser} onLogout={handleLogout} />;
   }
 
   if (currentUser.role === 'tenant') {

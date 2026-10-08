@@ -9,12 +9,8 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
     }
 
-    function isOwner() {
-      return signedIn() && accountRole() == 'owner';
-    }
-
-    function isStaff() {
-      return signedIn() && accountRole() in ['owner', 'caretaker'];
+    function isLandlord() {
+      return signedIn() && accountRole() == 'landlord';
     }
 
     function ownsTenant(tenantId) {
@@ -41,22 +37,24 @@ service cloud.firestore {
         && request.resource.data.id == tenantId
         && request.resource.data.user_id == request.auth.uid
         && request.resource.data.keys().hasOnly([
-          'id', 'user_id', 'first_name', 'last_name', 'initials', 'phone', 'avatar_color'
+          'id', 'user_id', 'first_name', 'last_name', 'initials', 'phone', 'avatar_color',
+          'account_status', 'registered_at'
         ])
+        && request.resource.data.account_status == 'pending'
         && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'tenant';
     }
 
     match /users/{userId} {
-      allow get: if isStaff() || (signedIn() && request.auth.uid == userId);
-      allow list: if isStaff();
-      allow create: if isOwner()
+      allow get: if isLandlord() || (signedIn() && request.auth.uid == userId);
+      allow list: if isLandlord();
+      allow create: if isLandlord()
         || (signedIn()
           && request.auth.uid == userId
           && request.resource.data.id == userId
           && request.resource.data.email == request.auth.token.email
           && request.resource.data.role == 'tenant'
           && request.resource.data.keys().hasOnly(['id', 'email', 'role', 'created_at']));
-      allow update: if isOwner()
+      allow update: if isLandlord()
         || (signedIn()
           && request.auth.uid == userId
           && request.resource.data.id == userId
@@ -65,86 +63,89 @@ service cloud.firestore {
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             'created_at', 'name', 'tenant_id'
           ]));
-      allow delete: if isOwner();
+      allow delete: if isLandlord();
     }
 
     match /staff_profiles/{userId} {
-      allow get: if isStaff() || (signedIn() && request.auth.uid == userId);
-      allow list: if isStaff();
-      allow write: if isOwner();
+      allow get: if isLandlord() || (signedIn() && request.auth.uid == userId);
+      allow list: if isLandlord();
+      allow write: if isLandlord();
     }
 
     match /tenants/{tenantId} {
-      allow get, list: if isStaff() || (signedIn() && resource.data.user_id == request.auth.uid);
-      allow create: if isStaff() || validTenantSignup(tenantId);
-      allow update: if isStaff()
+      allow get, list: if isLandlord() || (signedIn() && resource.data.user_id == request.auth.uid);
+      allow create: if isLandlord() || validTenantSignup(tenantId);
+      allow update: if isLandlord()
         || (ownsTenant(tenantId)
           && request.resource.data.user_id == resource.data.user_id
+          && !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+            'account_status', 'approved_at', 'approved_by', 'rejected_at', 'rejection_reason'
+          ])
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             'first_name', 'last_name', 'initials', 'phone', 'avatar_color', 'emergency_contact'
           ]));
-      allow delete: if isOwner();
+      allow delete: if isLandlord();
     }
 
     match /boarding_houses/{houseId} {
       allow read: if signedIn();
-      allow write: if isStaff();
+      allow write: if isLandlord();
     }
 
     match /room_types/{typeId} {
       allow read: if signedIn();
-      allow write: if isOwner();
+      allow write: if isLandlord();
     }
 
     match /rooms/{roomId} {
       allow read: if signedIn();
-      allow create, update, delete: if isOwner();
+      allow create, update, delete: if isLandlord();
     }
 
     match /leases/{leaseId} {
-      allow read: if isStaff() || ownsTenant(resource.data.tenant_id);
-      allow write: if isStaff();
+      allow read: if isLandlord() || ownsTenant(resource.data.tenant_id);
+      allow write: if isLandlord();
     }
 
     match /utility_readings/{readingId} {
-      allow read, write: if isStaff();
+      allow read, write: if isLandlord();
     }
 
     match /invoices/{invoiceId} {
-      allow read: if isStaff() || ownsLease(resource.data.lease_id);
-      allow write: if isStaff();
+      allow read: if isLandlord() || ownsLease(resource.data.lease_id);
+      allow write: if isLandlord();
     }
 
     match /payments/{paymentId} {
-      allow read: if isStaff() || ownsInvoice(resource.data.invoice_id);
-      allow write: if isStaff();
+      allow read: if isLandlord() || ownsInvoice(resource.data.invoice_id);
+      allow write: if isLandlord();
     }
 
     match /complaints/{complaintId} {
-      allow read: if isStaff() || ownsTenant(resource.data.tenant_id);
-      allow create: if isStaff()
+      allow read: if isLandlord() || ownsTenant(resource.data.tenant_id);
+      allow create: if isLandlord()
         || (ownsTenant(request.resource.data.tenant_id)
           && request.resource.data.id == complaintId
           && request.resource.data.status == 'pending'
           && exists(/databases/$(database)/documents/rooms/$(request.resource.data.room_id)));
-      allow update: if isStaff();
-      allow delete: if isOwner();
+      allow update: if isLandlord();
+      allow delete: if isLandlord();
     }
 
     match /room_change_requests/{requestId} {
-      allow read: if isOwner() || ownsTenant(resource.data.tenant_id);
+      allow read: if isLandlord() || ownsTenant(resource.data.tenant_id);
       allow create: if ownsTenant(request.resource.data.tenant_id)
           && request.resource.data.id == requestId
           && request.resource.data.status == 'pending'
           && exists(/databases/$(database)/documents/rooms/$(request.resource.data.requested_room_id))
           && get(/databases/$(database)/documents/rooms/$(request.resource.data.requested_room_id)).data.status == 'vacant';
-      allow update: if isOwner();
-      allow delete: if isOwner();
+      allow update: if isLandlord();
+      allow delete: if isLandlord();
     }
 
     match /due_date_extension_requests/{requestId} {
-      allow read: if isStaff() || ownsTenant(resource.data.tenant_id);
-      allow create: if isStaff()
+      allow read: if isLandlord() || ownsTenant(resource.data.tenant_id);
+      allow create: if isLandlord()
         || (ownsTenant(request.resource.data.tenant_id)
           && request.resource.data.id == requestId
           && request.resource.data.status == 'pending'
@@ -152,14 +153,53 @@ service cloud.firestore {
           && request.resource.data.keys().hasOnly([
             'id', 'tenant_id', 'invoice_id', 'current_due_date', 'requested_due_date', 'reason', 'status', 'requested_at'
           ]));
-      allow update: if isStaff();
-      allow delete: if isOwner();
+      allow update: if isLandlord();
+      allow delete: if isLandlord();
     }
 
     match /announcements/{announcementId} {
       allow read: if signedIn();
-      allow create, update: if isStaff() && request.resource.data.author_user_id == request.auth.uid;
-      allow delete: if isOwner();
+      allow create, update: if isLandlord() && request.resource.data.author_user_id == request.auth.uid;
+      allow delete: if isLandlord();
+      
+      // Subcollection for announcement comments
+      match /comments/{commentId} {
+        allow read: if signedIn();
+        allow create: if signedIn() 
+          && request.resource.data.author_user_id == request.auth.uid;
+        allow update: if signedIn() 
+          && resource.data.author_user_id == request.auth.uid;
+        allow delete: if isLandlord() 
+          || (signedIn() && resource.data.author_user_id == request.auth.uid);
+      }
+    }
+
+    match /tenant_notifications/{notificationId} {
+      allow read: if isLandlord() || ownsTenant(resource.data.tenant_id);
+      allow create: if isLandlord();
+      allow update: if isLandlord() 
+        || (ownsTenant(resource.data.tenant_id)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']));
+      allow delete: if isLandlord();
+    }
+
+    match /payment_proofs/{proofId} {
+      allow read: if isLandlord() || ownsTenant(resource.data.tenant_id);
+      allow create: if ownsTenant(request.resource.data.tenant_id)
+        && request.resource.data.id == proofId
+        && request.resource.data.status == 'pending'
+        && ownsInvoice(request.resource.data.invoice_id)
+        && request.resource.data.keys().hasOnly([
+          'id', 'tenant_id', 'invoice_id', 'amount', 'payment_date', 'payment_method',
+          'reference_no', 'proof_image_url', 'notes', 'status', 'submitted_at',
+          'reviewed_at', 'reviewed_by_user_id', 'rejection_reason'
+        ]);
+      allow update: if isLandlord() 
+        && resource.data.status == 'pending'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'reviewed_at', 'reviewed_by_user_id', 'rejection_reason'
+        ]);
+      allow delete: if isLandlord();
     }
   }
 }

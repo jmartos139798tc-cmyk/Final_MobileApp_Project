@@ -18,10 +18,13 @@ export const COLLECTIONS = {
   UTILITY_READINGS: 'utility_readings',
   INVOICES: 'invoices',
   PAYMENTS: 'payments',
+  PAYMENT_PROOFS: 'payment_proofs',
+  ROOM_ASSIGNMENT_REQUESTS: 'room_assignment_requests',
   COMPLAINTS: 'complaints',
   ROOM_CHANGE_REQUESTS: 'room_change_requests',
   DUE_DATE_EXTENSION_REQUESTS: 'due_date_extension_requests',
   ANNOUNCEMENTS: 'announcements',
+  TENANT_NOTIFICATIONS: 'tenant_notifications',
 };
 
 /**
@@ -50,7 +53,9 @@ export const COLLECTIONS = {
  * 5. TENANTS: Tenant personal records (Independent of room assignment)
  *    - PK: tenant_id
  *    - FK: user_id -> USERS.user_id (nullable for offline tenants)
- *    - Fields: first_name, last_name, initials, phone, emergency_contact, avatar_color
+ *    - Fields: first_name, last_name, initials, phone, emergency_contact, avatar_color,
+ *      account_status ('pending'|'approved'|'rejected'), approved_at, approved_by,
+ *      rejected_at, rejection_reason, registered_at
  *
  * 6. STAFF_PROFILES: Owner/caretaker personal records
  *    - PK: user_id (also FK -> USERS.user_id)
@@ -60,7 +65,8 @@ export const COLLECTIONS = {
  *    - PK: lease_id
  *    - FK: tenant_id -> TENANTS.tenant_id
  *    - FK: room_id -> ROOMS.room_id
- *    - Fields: start_date, end_date, agreed_monthly_rent, due_day_of_month, status ('active'|'terminated')
+ *    - Fields: start_date, end_date, agreed_monthly_rent, due_day_of_month, 
+ *      security_deposit_amount, security_deposit_paid, status ('active'|'terminated')
  * 
  * 8. UTILITY_READINGS: Electricity consumption records per room
  *    - PK: reading_id
@@ -70,7 +76,9 @@ export const COLLECTIONS = {
  * 9. INVOICES: Monthly billing statements per lease
  *    - PK: invoice_id
  *    - FK: lease_id -> LEASES.lease_id
- *    - Fields: billing_period ('2026-09'), rent_charge, utility_charge, total_amount, due_date, status ('paid'|'unpaid'|'partial')
+ *    - Fields: billing_period ('2026-09'), invoice_type ('initial'|'monthly'|'final'),
+ *      rent_charge, utility_charge, security_deposit, other_charges, 
+ *      total_amount, due_date, status ('paid'|'unpaid'|'partial'), created_at, notes
  *    - Tenant is determined through lease_id -> LEASES.tenant_id; do not duplicate tenant_id here.
  * 
  * 10. PAYMENTS: Financial transactions settling invoices
@@ -100,6 +108,28 @@ export const COLLECTIONS = {
  *     - FK: house_id -> BOARDING_HOUSES.house_id
  *     - FK: author_user_id -> USERS.user_id
  *     - Fields: category ('Payment'|'Maintenance'|'House Rules'), title, description, created_at
+ *
+ * 15. TENANT_NOTIFICATIONS: Personal notifications for tenants
+ *     - PK: notification_id
+ *     - FK: tenant_id -> TENANTS.tenant_id
+ *     - FK: related_invoice_id -> INVOICES.invoice_id (optional)
+ *     - Fields: type ('approval'|'rejection'|'invoice_created'|'payment_recorded'),
+ *       title, message, read, created_at
+ *
+ * 16. PAYMENT_PROOFS: Tenant-submitted payment proofs awaiting landlord verification
+ *     - PK: proof_id
+ *     - FK: tenant_id -> TENANTS.tenant_id
+ *     - FK: invoice_id -> INVOICES.invoice_id
+ *     - Fields: amount, payment_date, payment_method ('cash'|'gcash'|'bank_transfer'),
+ *       reference_no, proof_image_url, notes, status ('pending'|'approved'|'rejected'),
+ *       submitted_at, reviewed_at, reviewed_by_user_id, rejection_reason
+ *
+ * 17. ROOM_ASSIGNMENT_REQUESTS: Tenant requests for initial room assignment after payment
+ *     - PK: request_id
+ *     - FK: tenant_id -> TENANTS.tenant_id
+ *     - FK: requested_room_id -> ROOMS.room_id
+ *     - Fields: status ('pending'|'approved'|'rejected'), requested_at,
+ *       reviewed_at, reviewed_by_user_id, rejection_reason, notes
  */
 
 /**

@@ -82,7 +82,7 @@ const styles = StyleSheet.create({
   inputFrame: {
     minHeight: 54,
     borderWidth: 1,
-    borderRadius: 14,
+    borderRadius: 25,
     paddingHorizontal: 15,
     flexDirection: 'row',
     alignItems: 'center',

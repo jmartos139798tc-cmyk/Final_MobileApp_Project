@@ -59,7 +59,8 @@ async function getUserSessionFromFirebaseUser(fbUser) {
         tenantId = tenantDoc.id;
       }
     }
-  } else if (role === 'owner' || role === 'caretaker') {
+  } else if (role === 'landlord') {
+    // Landlord role only
     const staffDoc = await getDoc(doc(db, COLLECTIONS.STAFF_PROFILES, fbUser.uid));
     if (staffDoc.exists()) profile = staffDoc.data();
   }
@@ -159,9 +160,23 @@ export async function subscribeToCurrentUser(onUser, onError) {
   const { onAuthStateChanged } = await import('firebase/auth');
   return onAuthStateChanged(auth, async (fbUser) => {
     try {
-      onUser(await getUserSessionFromFirebaseUser(fbUser));
+      if (!fbUser) {
+        onUser(null);
+        return;
+      }
+      const session = await getUserSessionFromFirebaseUser(fbUser);
+      onUser(session);
     } catch (error) {
       console.warn('Could not restore Firebase session:', error.message);
+      // If profile is missing, sign out and let user re-register or contact admin
+      if (error.message.includes('missing its profile') || error.message.includes('missing its role profile')) {
+        try {
+          const { signOut } = await import('firebase/auth');
+          await signOut(auth);
+        } catch (signOutErr) {
+          console.error('Could not sign out incomplete account:', signOutErr);
+        }
+      }
       if (onError) onError(error);
       onUser(null);
     }
@@ -186,7 +201,7 @@ export async function logout() {
 /**
  * Registers a new user and creates corresponding 3NF database records
  */
-export async function registerUser({ email, password, name, phone = '' }) {
+export async function registerUser({ email, password, name, phone = '', roomNumber = '' }) {
   const cleanEmail = email.trim().toLowerCase();
   const cleanPass = password.trim();
   const cleanName = name.trim();
@@ -249,7 +264,7 @@ export async function registerUser({ email, password, name, phone = '' }) {
         created_at: new Date().toISOString(),
       });
 
-      // Room assignment is handled by property staff.
+      // Room assignment is handled by property staff after approval.
       if (role === 'tenant' && newTenantId) {
         const nameParts = cleanName.split(' ');
         const firstName = nameParts[0] || cleanName;
@@ -264,6 +279,8 @@ export async function registerUser({ email, password, name, phone = '' }) {
           initials,
           phone: phone || '0917-000-0000',
           avatar_color: '#8b5cf6',
+          account_status: 'pending',
+          registered_at: new Date().toISOString(),
         });
 
       }

@@ -11,9 +11,9 @@ import {
   cardStyle,
   cardShadow,
   safeAreaTop,
-} from '../utils/responsive';
-import { useTheme } from '../utils/ThemeContext';
-import { getIssues, updateComplaintStatus } from '../services/dataService';
+} from '../../utils/responsive';
+import { useTheme } from '../../utils/ThemeContext';
+import { getIssues, updateComplaintStatus } from '../../services/dataService';
 
 export default function IssuesScreen() {
   const { colors } = useTheme();

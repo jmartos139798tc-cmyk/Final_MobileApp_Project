@@ -1,17 +1,18 @@
-﻿import React from 'react';
+import React from 'react';
 import { View, Text, TouchableOpacity, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { isDesktop, fs } from '../utils/responsive';
 import { useTheme } from '../utils/ThemeContext';
 
-export default function OwnerBottomNav({ user, activeScreen, onNavigate }) {
+export default function LandlordBottomNav({ user, activeScreen, onNavigate }) {
   const { colors } = useTheme();
 
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: 'home', iconOutline: 'home-outline' },
+    { id: 'approvals', label: 'Approvals', icon: 'checkmark-done-circle', iconOutline: 'checkmark-done-circle-outline' },
+    { id: 'finances', label: 'Finances', icon: 'wallet', iconOutline: 'wallet-outline' },
     { id: 'tenants', label: 'Tenants', icon: 'people', iconOutline: 'people-outline' },
     { id: 'rooms', label: 'Rooms', icon: 'bed', iconOutline: 'bed-outline' },
-    { id: 'reports', label: 'Reports', icon: 'bar-chart', iconOutline: 'bar-chart-outline' },
   ];
 
   // Desktop: sidebar
@@ -37,8 +38,8 @@ export default function OwnerBottomNav({ user, activeScreen, onNavigate }) {
             <Ionicons name="business" size={19} color={colors.ownerAccent} />
           </View>
           <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text }}>Owner portal</Text>
-            <Text style={{ fontSize: 11, color: colors.textMuted }} numberOfLines={1}>{user?.name || 'Owner account'}</Text>
+            <Text style={{ fontSize: 16, fontWeight: '800', color: colors.text }}>Landlord Portal</Text>
+            <Text style={{ fontSize: 11, color: colors.textMuted }} numberOfLines={1}>{user?.name || 'Landlord'}</Text>
           </View>
         </View>
 

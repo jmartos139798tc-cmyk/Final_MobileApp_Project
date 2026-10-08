@@ -416,7 +416,7 @@ export default function LoginScreen({ onLoginSuccess }) {
   };
 
   const isRegistering = formMode === 'register';
-  const heroMinHeight = isRegistering ? 200 : 280;
+  const heroMinHeight = isRegistering ? 160 : 220;
 
   return (
     <View style={[styles.page, { backgroundColor: palette.pageBg }]}>
@@ -457,7 +457,7 @@ export default function LoginScreen({ onLoginSuccess }) {
         {/* Centered brand content */}
         <View style={styles.heroBrand}>
           <View style={styles.heroLogoWrapper}>
-            <Logo variant="mark" width={compact ? 100 : 130} accessibilityLabel="Nads and Gracy house logo" />
+            <Logo variant="mark" width={compact ? 70 : 90} accessibilityLabel="Nads and Gracy house logo" />
           </View>
           <Text style={[styles.heroTitle, { color: palette.heroText, fontSize: Math.round((compact ? 22 : 26) * fontScale) }]}>
             NADS & GRACY
@@ -471,17 +471,17 @@ export default function LoginScreen({ onLoginSuccess }) {
       {/* ─── FORM CARD (overlaps hero with rounded top) ──────── */}
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}
-        style={styles.formArea}
+        style={styles.formArea} 
       >
         <ScrollView
-          contentContainerStyle={[
-            styles.scrollContent,
-            { paddingHorizontal: horizontalPadding },
-          ]}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+          contentContainerStyle={[styles.scrollContent, { paddingHorizontal: horizontalPadding }]}
+          
+          
+          
+         keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
-        >
+          bounces={false}
+          scrollEnabled={true}>
           <View style={[styles.formCard, { backgroundColor: palette.surface, maxWidth: 480 }]}>
             <AuthModeSelector
               value={formMode}
@@ -660,7 +660,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingBottom: 32,
+    paddingBottom: 8,
   },
   heroGradientOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -685,10 +685,10 @@ const styles = StyleSheet.create({
   },
   heroBrand: {
     alignItems: 'center',
-    paddingTop: 20,
+    paddingTop: 40,
   },
   heroLogoWrapper: {
-    marginBottom: 16,
+    marginBottom: 12,
   },
   heroTitle: {
     fontWeight: '900',
@@ -709,7 +709,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-    paddingBottom: 32,
+    paddingBottom: 8,
   },
   formCard: {
     width: '100%',
@@ -718,8 +718,8 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 32,
     borderBottomLeftRadius: 0,
     borderBottomRightRadius: 0,
-    padding: 24,
-    minHeight: '100%',
+    padding: 16,
+    minHeight: 'auto',
     shadowColor: '#0F172A',
     shadowOffset: { width: 0, height: -6 },
     shadowOpacity: 0.1,
@@ -734,16 +734,16 @@ const styles = StyleSheet.create({
     letterSpacing: -0.25,
   },
   formSubtitle: {
-    fontSize: 13,
+    fontSize: 12,
     lineHeight: 19,
     marginTop: 5,
-    marginBottom: 20,
+    marginBottom: 12,
   },
   passwordField: {
     marginBottom: 7,
   },
   utilityRow: {
-    minHeight: 38,
+    minHeight: 32,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -784,18 +784,18 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 20,
+    marginTop: 12,
     paddingHorizontal: 8,
   },
   footerText: {
-    fontSize: 13,
+    fontSize: 12,
     lineHeight: 20,
     textAlign: 'center',
   },
   securityCaption: {
     fontSize: 11,
     textAlign: 'center',
-    marginTop: 16,
+    marginTop: 10,
   },
   eyeButton: {
     padding: 3,
@@ -814,7 +814,7 @@ const styles = StyleSheet.create({
     maxWidth: 420,
     borderWidth: 1,
     borderRadius: 24,
-    padding: 24,
+    padding: 16,
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 14 },
     shadowOpacity: 0.2,
@@ -825,7 +825,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
   },
   modalIcon: {
     width: 46,
@@ -840,7 +840,7 @@ const styles = StyleSheet.create({
     marginBottom: 7,
   },
   modalDescription: {
-    fontSize: 13,
+    fontSize: 12,
     lineHeight: 20,
     marginBottom: 18,
   },

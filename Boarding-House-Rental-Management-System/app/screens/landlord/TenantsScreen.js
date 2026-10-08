@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TextInput, TouchableOpacity, Platform, ActivityIndicator, Modal, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useTheme } from '../utils/ThemeContext';
+import { useTheme } from '../../utils/ThemeContext';
 import {
   isMobile,
   isTablet,
@@ -12,8 +12,8 @@ import {
   cardStyle,
   cardShadow,
   safeAreaTop,
-} from '../utils/responsive';
-import { getTenants } from '../services/dataService';
+} from '../../utils/responsive';
+import { getTenants } from '../../services/dataService';
 
 export default function TenantsScreen() {
   const { colors } = useTheme();

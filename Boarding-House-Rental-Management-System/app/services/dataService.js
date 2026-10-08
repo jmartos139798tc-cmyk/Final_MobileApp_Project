@@ -98,14 +98,13 @@ async function getStore() {
   if (!tenant) return Object.fromEntries(collectionNames.map((name) => [name, []]));
 
   const tenantStore = Object.fromEntries(collectionNames.map((name) => [name, []]));
-  const [boardingHouses, roomTypes, rooms, leases, complaints, announcements, roomChangeRequests, extensionRequests] = await Promise.all([
+  const [boardingHouses, roomTypes, rooms, leases, complaints, announcements, extensionRequests] = await Promise.all([
     readCollection(COLLECTIONS.BOARDING_HOUSES),
     readCollection(COLLECTIONS.ROOM_TYPES),
     readCollection(COLLECTIONS.ROOMS),
     readWhere(COLLECTIONS.LEASES, 'tenant_id', tenant.id),
     readWhere(COLLECTIONS.COMPLAINTS, 'tenant_id', tenant.id),
     readCollection(COLLECTIONS.ANNOUNCEMENTS),
-    readWhere(COLLECTIONS.ROOM_CHANGE_REQUESTS, 'tenant_id', tenant.id),
     readWhere(COLLECTIONS.DUE_DATE_EXTENSION_REQUESTS, 'tenant_id', tenant.id).catch(() => []),
   ]);
   const invoices = (await Promise.all(leases.map((lease) => readWhere(COLLECTIONS.INVOICES, 'lease_id', lease.id)))).flat();
@@ -121,7 +120,6 @@ async function getStore() {
   tenantStore[COLLECTIONS.PAYMENTS] = payments;
   tenantStore[COLLECTIONS.COMPLAINTS] = complaints;
   tenantStore[COLLECTIONS.ANNOUNCEMENTS] = announcements;
-  tenantStore[COLLECTIONS.ROOM_CHANGE_REQUESTS] = roomChangeRequests;
   tenantStore[COLLECTIONS.DUE_DATE_EXTENSION_REQUESTS] = extensionRequests;
   return tenantStore;
 
@@ -826,247 +824,7 @@ export async function submitComplaint({ title, description = '', tenantId }) {
 }
 
 /**
- * 17. Available rooms for a tenant transfer request.
- */
-export async function getAvailableRoomsForChange() {
-  try {
-    const store = await getStore();
-    const rooms = store[COLLECTIONS.ROOMS] || [];
-    const room_types = store[COLLECTIONS.ROOM_TYPES] || [];
-
-    return rooms
-      .filter((room) => room.status === 'vacant')
-      .map((room) => {
-        const type = room_types.find((roomType) => roomType.id === room.type_id);
-        return {
-          id: room.id,
-          number: room.room_number.replace(/^0/, ''),
-          type: type?.name || 'Room',
-          monthlyRent: type?.base_rent || 2500,
-        };
-      });
-  } catch (error) {
-    console.error('Error fetching available rooms:', error);
-    throw error;
-  }
-}
-
-/**
- * 18. Tenant room-change requests scoped to a tenant.
- */
-export async function getTenantRoomChangeRequests(tenantId) {
-  try {
-    const store = await getStore();
-    const tenants = store[COLLECTIONS.TENANTS] || [];
-    const rooms = store[COLLECTIONS.ROOMS] || [];
-    const room_types = store[COLLECTIONS.ROOM_TYPES] || [];
-    const requests = store[COLLECTIONS.ROOM_CHANGE_REQUESTS] || [];
-
-    const tenant = tenants.find((item) => item.id === tenantId);
-
-    if (!tenant) return [];
-
-    return requests
-      .filter((request) => request.tenant_id === tenant.id)
-      .map((request) => {
-        const room = rooms.find((item) => item.id === request.requested_room_id);
-        const type = room && room_types.find((item) => item.id === room.type_id);
-        return {
-          id: request.id,
-          roomNumber: room?.room_number.replace(/^0/, '') || '-',
-          roomType: type?.name || 'Room',
-          reason: request.reason,
-          status: request.status,
-          date: request.requested_at,
-        };
-      });
-  } catch (error) {
-    console.error('Error fetching room change requests:', error);
-    throw error;
-  }
-}
-
-/**
- * 19. Submit a tenant room-change request (Direct to Firebase Firestore).
- */
-export async function submitRoomChangeRequest({ requestedRoomId, reason, tenantId }) {
-  try {
-    const store = await getStore();
-    const tenants = store[COLLECTIONS.TENANTS] || [];
-    const rooms = store[COLLECTIONS.ROOMS] || [];
-    const leases = store[COLLECTIONS.LEASES] || [];
-    const room_types = store[COLLECTIONS.ROOM_TYPES] || [];
-
-    const tenant = tenants.find((item) => item.id === tenantId);
-    if (!tenant) throw new Error('Your tenant profile is not available yet. Please contact the property administrator.');
-
-    const currentLease = leases.find((lease) => lease.tenant_id === tenant.id && lease.status === 'active');
-    const requestedRoom = rooms.find((room) => room.id === requestedRoomId && room.status === 'vacant');
-
-    if (!requestedRoom) throw new Error('The selected room is no longer available.');
-
-    const newId = `room-change-${Date.now()}`;
-    const dateStr = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    const newRequest = {
-      id: newId,
-      tenant_id: tenant.id,
-      current_room_id: currentLease?.room_id || null,
-      requested_room_id: requestedRoom.id,
-      reason,
-      status: 'pending',
-      requested_at: dateStr,
-    };
-
-    if (isFirebaseConfigured && db) {
-      await writeDocument(COLLECTIONS.ROOM_CHANGE_REQUESTS, newId, newRequest);
-    } else {
-      const mockStore = getNormalizedMockDatabase();
-      const mockReqs = mockStore[COLLECTIONS.ROOM_CHANGE_REQUESTS] || (mockStore[COLLECTIONS.ROOM_CHANGE_REQUESTS] = []);
-      mockReqs.unshift(newRequest);
-    }
-
-    const type = room_types.find((item) => item.id === requestedRoom.type_id);
-    return {
-      id: newRequest.id,
-      roomNumber: requestedRoom.room_number.replace(/^0/, ''),
-      roomType: type?.name || 'Room',
-      reason,
-      status: 'pending',
-      date: newRequest.requested_at,
-    };
-  } catch (error) {
-    console.error('Error submitting room change request:', error);
-    throw new Error(error.message || 'Failed to submit room change request. Please try again.');
-  }
-}
-
-/**
- * 20. All room-change requests for caretaker review.
- */
-export async function getRoomChangeRequests() {
-  try {
-    const store = await getStore();
-    const requests = store[COLLECTIONS.ROOM_CHANGE_REQUESTS] || [];
-    const tenants = store[COLLECTIONS.TENANTS] || [];
-    const rooms = store[COLLECTIONS.ROOMS] || [];
-    const room_types = store[COLLECTIONS.ROOM_TYPES] || [];
-
-    return requests.map((request) => {
-      const tenant = tenants.find((item) => item.id === request.tenant_id);
-      const currentRoom = rooms.find((item) => item.id === request.current_room_id);
-      const requestedRoom = rooms.find((item) => item.id === request.requested_room_id);
-      const requestedType = requestedRoom && room_types.find((item) => item.id === requestedRoom.type_id);
-      return {
-        id: request.id,
-        tenant: tenant ? `${tenant.first_name} ${tenant.last_name}` : 'Tenant',
-        initials: tenant?.initials || 'TN',
-        color: tenant?.avatar_color || '#8b5cf6',
-        currentRoom: currentRoom?.room_number.replace(/^0/, '') || '-',
-        requestedRoom: requestedRoom?.room_number.replace(/^0/, '') || '-',
-        requestedRoomType: requestedType?.name || 'Room',
-        reason: request.reason,
-        status: request.status,
-        date: request.requested_at,
-      };
-    });
-  } catch (error) {
-    console.error('Error fetching room change requests:', error);
-    return [];
-  }
-}
-
-/**
- * 21. Caretaker decision for a room-change request (Direct to Firebase Firestore).
- */
-export async function reviewRoomChangeRequest(requestId, decision) {
-  try {
-    if (!['approved', 'declined'].includes(decision)) throw new Error('Invalid room-change decision.');
-
-    const store = await getStore();
-    const requests = store[COLLECTIONS.ROOM_CHANGE_REQUESTS] || [];
-    const rooms = store[COLLECTIONS.ROOMS] || [];
-    const leases = store[COLLECTIONS.LEASES] || [];
-
-    const request = requests.find((item) => item.id === requestId);
-    if (!request || request.status !== 'pending') throw new Error('This request is no longer available for review.');
-
-    const todayStr = new Date().toISOString().split('T')[0];
-
-    if (decision === 'approved') {
-      const requestedRoom = rooms.find((room) => room.id === request.requested_room_id);
-      const currentRoom = rooms.find((room) => room.id === request.current_room_id);
-      const currentLease = leases.find((lease) => lease.tenant_id === request.tenant_id && lease.status === 'active');
-      if (!requestedRoom || requestedRoom.status !== 'vacant') throw new Error('The requested room is no longer available.');
-
-      if (isFirebaseConfigured && db) {
-        if (currentLease) {
-          await updateDocument(COLLECTIONS.LEASES, currentLease.id, { status: 'terminated', end_date: todayStr });
-          const newLeaseId = `lease-${Date.now()}`;
-          await writeDocument(COLLECTIONS.LEASES, newLeaseId, {
-            tenant_id: request.tenant_id,
-            room_id: requestedRoom.id,
-            start_date: todayStr,
-            agreed_monthly_rent: currentLease.agreed_monthly_rent,
-            due_day: currentLease.due_day,
-            status: 'active',
-          });
-        }
-        if (currentRoom) {
-          await updateDocument(COLLECTIONS.ROOMS, currentRoom.id, { status: 'vacant' });
-        }
-        await updateDocument(COLLECTIONS.ROOMS, requestedRoom.id, { status: 'occupied' });
-        await updateDocument(COLLECTIONS.ROOM_CHANGE_REQUESTS, requestId, { status: decision, reviewed_at: todayStr });
-      } else {
-        const mockStore = getNormalizedMockDatabase();
-        const mockLeases = mockStore[COLLECTIONS.LEASES];
-        const mockRooms = mockStore[COLLECTIONS.ROOMS];
-        const mockRequests = mockStore[COLLECTIONS.ROOM_CHANGE_REQUESTS];
-
-        const mockCurrentLease = mockLeases.find((lease) => lease.tenant_id === request.tenant_id && lease.status === 'active');
-        const mockRequestedRoom = mockRooms.find((room) => room.id === request.requested_room_id);
-        const mockCurrentRoom = mockRooms.find((room) => room.id === request.current_room_id);
-        const mockReq = mockRequests.find((r) => r.id === requestId);
-
-        if (mockCurrentLease) {
-          mockCurrentLease.status = 'terminated';
-          mockCurrentLease.end_date = todayStr;
-          mockLeases.unshift({
-            id: `lease-${mockLeases.length + 1}`,
-            tenant_id: request.tenant_id,
-            room_id: mockRequestedRoom.id,
-            start_date: todayStr,
-            agreed_monthly_rent: mockCurrentLease.agreed_monthly_rent,
-            due_day: mockCurrentLease.due_day,
-            status: 'active',
-          });
-        }
-        if (mockCurrentRoom) mockCurrentRoom.status = 'vacant';
-        if (mockRequestedRoom) mockRequestedRoom.status = 'occupied';
-        if (mockReq) {
-          mockReq.status = decision;
-          mockReq.reviewed_at = todayStr;
-        }
-      }
-    } else {
-      // Declined
-      if (isFirebaseConfigured && db) {
-        await updateDocument(COLLECTIONS.ROOM_CHANGE_REQUESTS, requestId, { status: decision, reviewed_at: todayStr });
-      } else {
-        request.status = decision;
-        request.reviewed_at = todayStr;
-      }
-    }
-
-    const allRequests = await getRoomChangeRequests();
-    return allRequests.find((item) => item.id === requestId);
-  } catch (error) {
-    console.error('Error reviewing room change request:', error);
-    throw error;
-  }
-}
-
-/**
- * 22. Billing data: Rent billing list
+ * 17. Billing data: Rent billing list
  */
 export async function getRentBilling() {
   try {
@@ -1281,3 +1039,961 @@ export async function updateComplaintStatus(complaintId, newStatus) {
 }
 
 export { seedFirestoreDatabase };
+
+// ═══════════════════════════════════════════════════════════════
+// TENANT ONBOARDING & FINANCIAL MANAGEMENT
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * 26.5. Get vacant rooms available for tenant assignment
+ */
+export async function getVacantRoomsForAssignment() {
+  try {
+    const store = await getStore();
+    const rooms = store[COLLECTIONS.ROOMS] || [];
+    const roomTypes = store[COLLECTIONS.ROOM_TYPES] || [];
+    
+    return rooms
+      .filter((room) => room.status === 'vacant')
+      .map((room) => {
+        const type = roomTypes.find((rt) => rt.id === room.type_id);
+        return {
+          id: room.id,
+          roomNumber: room.room_number,
+          displayNumber: parseInt(room.room_number, 10),
+          type: type ? type.name : 'Room',
+          baseRent: type ? type.base_rent : 2500,
+          maxCapacity: type ? type.max_capacity : 1,
+        };
+      })
+      .sort((a, b) => a.displayNumber - b.displayNumber);
+  } catch (error) {
+    console.error('Error fetching vacant rooms:', error);
+    return [];
+  }
+}
+
+/**
+ * 27. Get all pending tenant registrations awaiting landlord approval
+ */
+export async function getPendingTenantRegistrations() {
+  try {
+    const store = await getStore();
+    const tenants = store[COLLECTIONS.TENANTS] || [];
+    
+    return tenants
+      .filter((tenant) => tenant.account_status === 'pending')
+      .map((tenant) => ({
+        id: tenant.id,
+        tenantId: tenant.id,
+        name: `${tenant.first_name} ${tenant.last_name}`,
+        firstName: tenant.first_name,
+        lastName: tenant.last_name,
+        email: tenant.email || 'No email',
+        phone: tenant.phone,
+        initials: tenant.initials,
+        color: tenant.avatar_color,
+        registeredAt: tenant.registered_at,
+      }))
+      .sort((a, b) => new Date(b.registeredAt) - new Date(a.registeredAt));
+  } catch (error) {
+    console.error('Error fetching pending tenants:', error);
+    return [];
+  }
+}
+
+/**
+ * 28. Approve tenant and create lease with initial invoice (Transaction)
+ * Creates:
+ * - Updates tenant status to 'approved'
+ * - Creates new lease with security deposit
+ * - Creates initial invoice (advance + deposit)
+ * - Updates room status to 'occupied'
+ * - Creates approval notification
+ */
+export async function approveTenant({ tenantId, roomId, monthlyRent, dueDay, approvedBy }) {
+  try {
+    const store = await getStore();
+    const tenants = store[COLLECTIONS.TENANTS] || [];
+    const rooms = store[COLLECTIONS.ROOMS] || [];
+    const leases = store[COLLECTIONS.LEASES] || [];
+    
+    // Validation
+    const tenant = tenants.find((t) => t.id === tenantId);
+    if (!tenant) throw new Error('Tenant not found');
+    if (tenant.account_status !== 'pending') throw new Error('Tenant is not pending approval');
+    
+    const room = rooms.find((r) => r.id === roomId);
+    if (!room) throw new Error('Room not found');
+    if (room.status !== 'vacant') throw new Error('Room is not available');
+    
+    const existingLease = leases.find((l) => l.tenant_id === tenantId && l.status === 'active');
+    if (existingLease) throw new Error('Tenant already has an active lease');
+    
+    const rent = parseFloat(monthlyRent);
+    if (isNaN(rent) || rent <= 0) throw new Error('Invalid monthly rent amount');
+    
+    const dueDayNum = parseInt(dueDay, 10);
+    if (isNaN(dueDayNum) || dueDayNum < 1 || dueDayNum > 31) throw new Error('Due day must be between 1 and 31');
+    
+    const now = new Date();
+    const approvedAtStr = now.toISOString();
+    const dateStr = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    const startDate = now.toISOString().split('T')[0];
+    
+    // Calculate due date (next month, on due day)
+    const dueDate = new Date(now);
+    dueDate.setMonth(dueDate.getMonth() + 1);
+    dueDate.setDate(dueDayNum);
+    const dueDateStr = dueDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    
+    const leaseId = `lease-${Date.now()}`;
+    const invoiceId = `invoice-${Date.now()}`;
+    const notificationId = `notif-${Date.now()}`;
+    
+    // Create records
+    const updatedTenant = {
+      ...tenant,
+      account_status: 'approved',
+      approved_at: approvedAtStr,
+      approved_by: approvedBy || auth?.currentUser?.uid || 'landlord-uid-1',
+    };
+    
+    const newLease = {
+      id: leaseId,
+      tenant_id: tenantId,
+      room_id: roomId,
+      start_date: startDate,
+      end_date: null,
+      agreed_monthly_rent: rent,
+      due_day_of_month: dueDayNum,
+      security_deposit_amount: rent,
+      security_deposit_paid: false,
+      status: 'active',
+    };
+    
+    const newInvoice = {
+      id: invoiceId,
+      lease_id: leaseId,
+      billing_period: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`,
+      invoice_type: 'initial',
+      rent_charge: rent,
+      utility_charge: 0,
+      security_deposit: rent,
+      other_charges: 0,
+      total_amount: rent * 2,
+      due_date: dueDateStr,
+      status: 'unpaid',
+      created_at: approvedAtStr,
+      notes: 'Initial payment: 1 month advance + security deposit',
+    };
+    
+    const notification = {
+      id: notificationId,
+      tenant_id: tenantId,
+      type: 'approval',
+      title: 'Welcome! Your application was approved',
+      message: `Your account has been approved. You've been assigned to Room ${room.room_number}. Your initial payment of ₱${(rent * 2).toLocaleString()} (1 month advance + security deposit) is due on ${dueDateStr}.`,
+      read: false,
+      created_at: approvedAtStr,
+      related_invoice_id: invoiceId,
+    };
+    
+    // Persist to database
+    if (isFirebaseConfigured && db) {
+      // Use Firestore batch for atomicity
+      const { writeBatch, doc } = await getFirestoreFns();
+      const batch = writeBatch(db);
+      
+      batch.update(doc(db, COLLECTIONS.TENANTS, tenantId), {
+        account_status: 'approved',
+        approved_at: approvedAtStr,
+        approved_by: updatedTenant.approved_by,
+      });
+      
+      batch.set(doc(db, COLLECTIONS.LEASES, leaseId), newLease);
+      batch.set(doc(db, COLLECTIONS.INVOICES, invoiceId), newInvoice);
+      batch.update(doc(db, COLLECTIONS.ROOMS, roomId), { status: 'occupied' });
+      batch.set(doc(db, COLLECTIONS.TENANT_NOTIFICATIONS, notificationId), notification);
+      
+      await batch.commit();
+    } else {
+      // Mock database
+      const mockStore = getNormalizedMockDatabase();
+      const mockTenant = (mockStore[COLLECTIONS.TENANTS] || []).find((t) => t.id === tenantId);
+      if (mockTenant) {
+        mockTenant.account_status = 'approved';
+        mockTenant.approved_at = approvedAtStr;
+        mockTenant.approved_by = updatedTenant.approved_by;
+      }
+      
+      mockStore[COLLECTIONS.LEASES].push(newLease);
+      mockStore[COLLECTIONS.INVOICES].push(newInvoice);
+      
+      const mockRoom = (mockStore[COLLECTIONS.ROOMS] || []).find((r) => r.id === roomId);
+      if (mockRoom) mockRoom.status = 'occupied';
+      
+      if (!mockStore[COLLECTIONS.TENANT_NOTIFICATIONS]) {
+        mockStore[COLLECTIONS.TENANT_NOTIFICATIONS] = [];
+      }
+      mockStore[COLLECTIONS.TENANT_NOTIFICATIONS].unshift(notification);
+    }
+    
+    return {
+      success: true,
+      tenant: updatedTenant,
+      lease: newLease,
+      invoice: newInvoice,
+      message: `${tenant.first_name} ${tenant.last_name} has been approved and assigned to Room ${room.room_number}.`,
+    };
+  } catch (error) {
+    console.error('Error approving tenant:', error);
+    throw new Error(error.message || 'Failed to approve tenant. Please try again.');
+  }
+}
+
+/**
+ * 29. Reject tenant application
+ */
+export async function rejectTenant({ tenantId, rejectionReason, rejectedBy }) {
+  try {
+    const store = await getStore();
+    const tenants = store[COLLECTIONS.TENANTS] || [];
+    
+    const tenant = tenants.find((t) => t.id === tenantId);
+    if (!tenant) throw new Error('Tenant not found');
+    if (tenant.account_status !== 'pending') throw new Error('Tenant is not pending approval');
+    
+    const now = new Date();
+    const rejectedAtStr = now.toISOString();
+    const reason = (rejectionReason || 'No available rooms at this time').trim();
+    
+    const notificationId = `notif-${Date.now()}`;
+    const notification = {
+      id: notificationId,
+      tenant_id: tenantId,
+      type: 'rejection',
+      title: 'Application Update',
+      message: `Your application could not be approved at this time. Reason: ${reason}. Please contact the property manager for more information.`,
+      read: false,
+      created_at: rejectedAtStr,
+      related_invoice_id: null,
+    };
+    
+    if (isFirebaseConfigured && db) {
+      const { writeBatch, doc } = await getFirestoreFns();
+      const batch = writeBatch(db);
+      
+      batch.update(doc(db, COLLECTIONS.TENANTS, tenantId), {
+        account_status: 'rejected',
+        rejected_at: rejectedAtStr,
+        rejection_reason: reason,
+      });
+      
+      batch.set(doc(db, COLLECTIONS.TENANT_NOTIFICATIONS, notificationId), notification);
+      
+      await batch.commit();
+    } else {
+      const mockStore = getNormalizedMockDatabase();
+      const mockTenant = (mockStore[COLLECTIONS.TENANTS] || []).find((t) => t.id === tenantId);
+      if (mockTenant) {
+        mockTenant.account_status = 'rejected';
+        mockTenant.rejected_at = rejectedAtStr;
+        mockTenant.rejection_reason = reason;
+      }
+      
+      if (!mockStore[COLLECTIONS.TENANT_NOTIFICATIONS]) {
+        mockStore[COLLECTIONS.TENANT_NOTIFICATIONS] = [];
+      }
+      mockStore[COLLECTIONS.TENANT_NOTIFICATIONS].unshift(notification);
+    }
+    
+    return {
+      success: true,
+      message: `${tenant.first_name} ${tenant.last_name}'s application has been rejected.`,
+    };
+  } catch (error) {
+    console.error('Error rejecting tenant:', error);
+    throw new Error(error.message || 'Failed to reject tenant. Please try again.');
+  }
+}
+
+/**
+ * 30. Get tenant financial summary
+ */
+export async function getTenantFinancialSummary(tenantId) {
+  try {
+    const store = await getStore();
+    const tenants = store[COLLECTIONS.TENANTS] || [];
+    const leases = store[COLLECTIONS.LEASES] || [];
+    const rooms = store[COLLECTIONS.ROOMS] || [];
+    const invoices = store[COLLECTIONS.INVOICES] || [];
+    const payments = store[COLLECTIONS.PAYMENTS] || [];
+    const roomTypes = store[COLLECTIONS.ROOM_TYPES] || [];
+    
+    const tenant = tenants.find((t) => t.id === tenantId);
+    if (!tenant) throw new Error('Tenant not found');
+    
+    const activeLease = leases.find((l) => l.tenant_id === tenantId && l.status === 'active');
+    if (!activeLease) {
+      return {
+        tenantId,
+        name: `${tenant.first_name} ${tenant.last_name}`,
+        accountStatus: tenant.account_status,
+        hasLease: false,
+        totalCollected: 0,
+        outstandingBalance: 0,
+        securityDeposit: 0,
+        leaseStart: null,
+        roomNumber: null,
+        roomType: null,
+      };
+    }
+    
+    const room = rooms.find((r) => r.id === activeLease.room_id);
+    const roomType = room ? roomTypes.find((rt) => rt.id === room.type_id) : null;
+    
+    const tenantInvoices = invoices.filter((inv) => inv.lease_id === activeLease.id);
+    const tenantPayments = payments.filter((p) => 
+      tenantInvoices.some((inv) => inv.id === p.invoice_id)
+    );
+    
+    const totalCollected = tenantPayments.reduce((sum, p) => sum + (p.amount_paid || 0), 0);
+    const outstandingBalance = tenantInvoices.reduce((sum, inv) => {
+      const invPayments = tenantPayments.filter((p) => p.invoice_id === inv.id);
+      const paidAmount = invPayments.reduce((s, p) => s + (p.amount_paid || 0), 0);
+      return sum + Math.max(0, inv.total_amount - paidAmount);
+    }, 0);
+    
+    return {
+      tenantId,
+      name: `${tenant.first_name} ${tenant.last_name}`,
+      accountStatus: tenant.account_status,
+      hasLease: true,
+      totalCollected,
+      outstandingBalance,
+      securityDeposit: activeLease.security_deposit_amount || 0,
+      securityDepositPaid: activeLease.security_deposit_paid || false,
+      leaseStart: activeLease.start_date,
+      roomNumber: room ? parseInt(room.room_number, 10) : null,
+      roomType: roomType ? roomType.name : null,
+      monthlyRent: activeLease.agreed_monthly_rent,
+    };
+  } catch (error) {
+    console.error('Error fetching tenant financial summary:', error);
+    throw error;
+  }
+}
+
+/**
+ * 31. Calculate tenant balance
+ */
+export async function calculateTenantBalance(tenantId) {
+  try {
+    const summary = await getTenantFinancialSummary(tenantId);
+    return summary.outstandingBalance || 0;
+  } catch (error) {
+    console.error('Error calculating tenant balance:', error);
+    return 0;
+  }
+}
+
+/**
+ * 32. Get all tenants with financial status (for landlord management)
+ * Supports filtering: 'all', 'paid', 'unpaid', 'overdue'
+ */
+export async function getTenantsWithFinancialStatus(filter = 'all') {
+  try {
+    const store = await getStore();
+    const tenants = store[COLLECTIONS.TENANTS] || [];
+    const leases = store[COLLECTIONS.LEASES] || [];
+    const rooms = store[COLLECTIONS.ROOMS] || [];
+    const invoices = store[COLLECTIONS.INVOICES] || [];
+    const payments = store[COLLECTIONS.PAYMENTS] || [];
+    
+    const now = new Date();
+    
+    const tenantsWithFinances = await Promise.all(
+      tenants
+        .filter((t) => t.account_status === 'approved')
+        .map(async (tenant) => {
+          const activeLease = leases.find((l) => l.tenant_id === tenant.id && l.status === 'active');
+          if (!activeLease) return null;
+          
+          const room = rooms.find((r) => r.id === activeLease.room_id);
+          const tenantInvoices = invoices.filter((inv) => inv.lease_id === activeLease.id);
+          const tenantPayments = payments.filter((p) => 
+            tenantInvoices.some((inv) => inv.id === p.invoice_id)
+          );
+          
+          const balance = tenantInvoices.reduce((sum, inv) => {
+            const invPayments = tenantPayments.filter((p) => p.invoice_id === inv.id);
+            const paidAmount = invPayments.reduce((s, p) => s + (p.amount_paid || 0), 0);
+            return sum + Math.max(0, inv.total_amount - paidAmount);
+          }, 0);
+          
+          // Find latest unpaid invoice to check if overdue
+          const unpaidInvoices = tenantInvoices.filter((inv) => {
+            const invPayments = tenantPayments.filter((p) => p.invoice_id === inv.id);
+            const paidAmount = invPayments.reduce((s, p) => s + (p.amount_paid || 0), 0);
+            return inv.total_amount > paidAmount;
+          });
+          
+          let isOverdue = false;
+          if (unpaidInvoices.length > 0) {
+            isOverdue = unpaidInvoices.some((inv) => {
+              const dueDate = new Date(inv.due_date);
+              return dueDate < now;
+            });
+          }
+          
+          const lastPayment = tenantPayments.length > 0 
+            ? tenantPayments.sort((a, b) => new Date(b.payment_date) - new Date(a.payment_date))[0]
+            : null;
+          
+          return {
+            id: tenant.id.replace('tenant-', ''),
+            tenantId: tenant.id,
+            name: `${tenant.first_name} ${tenant.last_name}`,
+            initials: tenant.initials,
+            color: tenant.avatar_color,
+            roomNumber: room ? parseInt(room.room_number, 10) : null,
+            monthlyRent: activeLease.agreed_monthly_rent,
+            balance,
+            lastPayment: lastPayment ? lastPayment.payment_date : null,
+            isOverdue,
+            status: balance === 0 ? 'paid' : (isOverdue ? 'overdue' : 'unpaid'),
+          };
+        })
+    );
+    
+    let filteredTenants = tenantsWithFinances.filter((t) => t !== null);
+    
+    // Apply filter
+    if (filter === 'paid') {
+      filteredTenants = filteredTenants.filter((t) => t.balance === 0);
+    } else if (filter === 'unpaid') {
+      filteredTenants = filteredTenants.filter((t) => t.balance > 0 && !t.isOverdue);
+    } else if (filter === 'overdue') {
+      filteredTenants = filteredTenants.filter((t) => t.isOverdue);
+    }
+    
+    return filteredTenants;
+  } catch (error) {
+    console.error('Error fetching tenants with financial status:', error);
+    return [];
+  }
+}
+
+/**
+ * 33. Get tenant payment history
+ */
+export async function getTenantPaymentHistory(tenantId) {
+  try {
+    const store = await getStore();
+    const leases = store[COLLECTIONS.LEASES] || [];
+    const invoices = store[COLLECTIONS.INVOICES] || [];
+    const payments = store[COLLECTIONS.PAYMENTS] || [];
+    
+    const activeLease = leases.find((l) => l.tenant_id === tenantId && l.status === 'active');
+    if (!activeLease) return [];
+    
+    const tenantInvoices = invoices.filter((inv) => inv.lease_id === activeLease.id);
+    const tenantPayments = payments.filter((p) => 
+      tenantInvoices.some((inv) => inv.id === p.invoice_id)
+    );
+    
+    return tenantPayments
+      .map((payment) => {
+        const invoice = tenantInvoices.find((inv) => inv.id === payment.invoice_id);
+        return {
+          id: payment.id,
+          amount: payment.amount_paid,
+          date: payment.payment_date,
+          method: payment.payment_method,
+          referenceNo: payment.reference_no,
+          invoiceId: payment.invoice_id,
+          billingPeriod: invoice ? invoice.billing_period : null,
+        };
+      })
+      .sort((a, b) => new Date(b.date) - new Date(a.date));
+  } catch (error) {
+    console.error('Error fetching payment history:', error);
+    return [];
+  }
+}
+
+/**
+ * 34. Get invoice details with payments
+ */
+export async function getInvoiceWithPayments(invoiceId) {
+  try {
+    const store = await getStore();
+    const invoices = store[COLLECTIONS.INVOICES] || [];
+    const payments = store[COLLECTIONS.PAYMENTS] || [];
+    const leases = store[COLLECTIONS.LEASES] || [];
+    const tenants = store[COLLECTIONS.TENANTS] || [];
+    const rooms = store[COLLECTIONS.ROOMS] || [];
+    
+    const invoice = invoices.find((inv) => inv.id === invoiceId);
+    if (!invoice) throw new Error('Invoice not found');
+    
+    const invoicePayments = payments.filter((p) => p.invoice_id === invoiceId);
+    const totalPaid = invoicePayments.reduce((sum, p) => sum + (p.amount_paid || 0), 0);
+    const balance = Math.max(0, invoice.total_amount - totalPaid);
+    
+    const lease = leases.find((l) => l.id === invoice.lease_id);
+    const tenant = lease ? tenants.find((t) => t.id === lease.tenant_id) : null;
+    const room = lease ? rooms.find((r) => r.id === lease.room_id) : null;
+    
+    return {
+      ...invoice,
+      tenantName: tenant ? `${tenant.first_name} ${tenant.last_name}` : null,
+      roomNumber: room ? parseInt(room.room_number, 10) : null,
+      payments: invoicePayments.map((p) => ({
+        id: p.id,
+        amount: p.amount_paid,
+        date: p.payment_date,
+        method: p.payment_method,
+        referenceNo: p.reference_no,
+      })),
+      totalPaid,
+      balance,
+    };
+  } catch (error) {
+    console.error('Error fetching invoice with payments:', error);
+    throw error;
+  }
+}
+
+/**
+ * 35. Record payment against an invoice
+ */
+export async function recordPayment({ invoiceId, amountPaid, paymentDate, paymentMethod, referenceNo = '', receivedBy, notes = '' }) {
+  try {
+    const store = await getStore();
+    const invoices = store[COLLECTIONS.INVOICES] || [];
+    const payments = store[COLLECTIONS.PAYMENTS] || [];
+    const leases = store[COLLECTIONS.LEASES] || [];
+    const tenants = store[COLLECTIONS.TENANTS] || [];
+    
+    // Validation
+    const invoice = invoices.find((inv) => inv.id === invoiceId);
+    if (!invoice) throw new Error('Invoice not found');
+    
+    const amount = parseFloat(amountPaid);
+    if (isNaN(amount) || amount <= 0) throw new Error('Payment amount must be greater than zero');
+    
+    const payDate = new Date(paymentDate);
+    if (isNaN(payDate.getTime())) throw new Error('Invalid payment date');
+    if (payDate > new Date()) throw new Error('Payment date cannot be in the future');
+    
+    if (!['cash', 'gcash', 'bank_transfer'].includes(paymentMethod)) {
+      throw new Error('Invalid payment method');
+    }
+    
+    // Calculate new invoice status
+    const existingPayments = payments.filter((p) => p.invoice_id === invoiceId);
+    const totalPaid = existingPayments.reduce((sum, p) => sum + (p.amount_paid || 0), 0) + amount;
+    const newBalance = Math.max(0, invoice.total_amount - totalPaid);
+    
+    let newStatus = 'unpaid';
+    if (totalPaid >= invoice.total_amount) {
+      newStatus = 'paid';
+    } else if (totalPaid > 0) {
+      newStatus = 'partial';
+    }
+    
+    const paymentId = `payment-${Date.now()}`;
+    const payDateStr = payDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    
+    const newPayment = {
+      id: paymentId,
+      invoice_id: invoiceId,
+      amount_paid: amount,
+      payment_date: payDateStr,
+      payment_method: paymentMethod,
+      reference_no: referenceNo.trim() || `${paymentMethod.toUpperCase()}-${Date.now()}`,
+      received_by_user_id: receivedBy || auth?.currentUser?.uid || 'landlord-uid-1',
+    };
+    
+    // Create notification for tenant
+    const lease = leases.find((l) => l.id === invoice.lease_id);
+    if (lease) {
+      const notificationId = `notif-${Date.now()}`;
+      const notification = {
+        id: notificationId,
+        tenant_id: lease.tenant_id,
+        type: 'payment_recorded',
+        title: 'Payment Received',
+        message: `Your payment of ₱${amount.toLocaleString()} has been recorded. Receipt: ${newPayment.reference_no}. Remaining balance: ₱${newBalance.toLocaleString()}.`,
+        read: false,
+        created_at: new Date().toISOString(),
+        related_invoice_id: invoiceId,
+      };
+      
+      if (isFirebaseConfigured && db) {
+        const { writeBatch, doc } = await getFirestoreFns();
+        const batch = writeBatch(db);
+        
+        batch.set(doc(db, COLLECTIONS.PAYMENTS, paymentId), newPayment);
+        batch.update(doc(db, COLLECTIONS.INVOICES, invoiceId), { status: newStatus });
+        batch.set(doc(db, COLLECTIONS.TENANT_NOTIFICATIONS, notificationId), notification);
+        
+        // Update security deposit paid status if this is initial invoice
+        if (invoice.invoice_type === 'initial' && newStatus === 'paid') {
+          batch.update(doc(db, COLLECTIONS.LEASES, invoice.lease_id), { security_deposit_paid: true });
+        }
+        
+        await batch.commit();
+      } else {
+        const mockStore = getNormalizedMockDatabase();
+        mockStore[COLLECTIONS.PAYMENTS].push(newPayment);
+        
+        const mockInvoice = (mockStore[COLLECTIONS.INVOICES] || []).find((inv) => inv.id === invoiceId);
+        if (mockInvoice) mockInvoice.status = newStatus;
+        
+        if (!mockStore[COLLECTIONS.TENANT_NOTIFICATIONS]) {
+          mockStore[COLLECTIONS.TENANT_NOTIFICATIONS] = [];
+        }
+        mockStore[COLLECTIONS.TENANT_NOTIFICATIONS].unshift(notification);
+        
+        if (invoice.invoice_type === 'initial' && newStatus === 'paid') {
+          const mockLease = (mockStore[COLLECTIONS.LEASES] || []).find((l) => l.id === invoice.lease_id);
+          if (mockLease) mockLease.security_deposit_paid = true;
+        }
+      }
+    }
+    
+    return {
+      success: true,
+      payment: newPayment,
+      newInvoiceStatus: newStatus,
+      remainingBalance: newBalance,
+      message: `Payment of ₱${amount.toLocaleString()} recorded successfully.`,
+    };
+  } catch (error) {
+    console.error('Error recording payment:', error);
+    throw new Error(error.message || 'Failed to record payment. Please try again.');
+  }
+}
+
+/**
+ * 36. Get tenant notifications
+ */
+export async function getTenantNotifications(tenantId) {
+  try {
+    const store = await getStore();
+    const notifications = store[COLLECTIONS.TENANT_NOTIFICATIONS] || [];
+    
+    return notifications
+      .filter((notif) => notif.tenant_id === tenantId)
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  } catch (error) {
+    console.error('Error fetching tenant notifications:', error);
+    return [];
+  }
+}
+
+/**
+ * 37. Mark notification as read
+ */
+export async function markNotificationAsRead(notificationId) {
+  try {
+    if (isFirebaseConfigured && db) {
+      await updateDocument(COLLECTIONS.TENANT_NOTIFICATIONS, notificationId, { read: true });
+    } else {
+      const mockStore = getNormalizedMockDatabase();
+      const notification = (mockStore[COLLECTIONS.TENANT_NOTIFICATIONS] || []).find((n) => n.id === notificationId);
+      if (notification) notification.read = true;
+    }
+    
+    return { success: true };
+  } catch (error) {
+    console.error('Error marking notification as read:', error);
+    throw error;
+  }
+}
+
+/**
+ * 38. Create notification (helper function)
+ */
+export async function createNotification({ tenantId, type, title, message, relatedInvoiceId = null }) {
+  try {
+    const notificationId = `notif-${Date.now()}`;
+    const notification = {
+      id: notificationId,
+      tenant_id: tenantId,
+      type,
+      title,
+      message,
+      read: false,
+      created_at: new Date().toISOString(),
+      related_invoice_id: relatedInvoiceId,
+    };
+    
+    if (isFirebaseConfigured && db) {
+      await writeDocument(COLLECTIONS.TENANT_NOTIFICATIONS, notificationId, notification);
+    } else {
+      const mockStore = getNormalizedMockDatabase();
+      if (!mockStore[COLLECTIONS.TENANT_NOTIFICATIONS]) {
+        mockStore[COLLECTIONS.TENANT_NOTIFICATIONS] = [];
+      }
+      mockStore[COLLECTIONS.TENANT_NOTIFICATIONS].unshift(notification);
+    }
+    
+    return notification;
+  } catch (error) {
+    console.error('Error creating notification:', error);
+    throw error;
+  }
+}
+
+/**
+ * 40. Submit payment proof (tenant submits payment with image)
+ */
+export async function submitPaymentProof({ tenantId, invoiceId, amount, paymentDate, paymentMethod, referenceNo, proofImageUrl, notes }) {
+  try {
+    const store = await getStore();
+    const tenants = store[COLLECTIONS.TENANTS] || [];
+    const invoices = store[COLLECTIONS.INVOICES] || [];
+    
+    const tenant = tenants.find((t) => t.id === tenantId);
+    if (!tenant) throw new Error('Tenant not found');
+    
+    const invoice = invoices.find((inv) => inv.id === invoiceId);
+    if (!invoice) throw new Error('Invoice not found');
+    
+    const proofId = `proof-${Date.now()}`;
+    const now = new Date().toISOString();
+    
+    const paymentProof = {
+      id: proofId,
+      tenant_id: tenantId,
+      invoice_id: invoiceId,
+      amount: parseFloat(amount),
+      payment_date: paymentDate,
+      payment_method: paymentMethod,
+      reference_no: referenceNo || '',
+      proof_image_url: proofImageUrl || '',
+      notes: notes || '',
+      status: 'pending',
+      submitted_at: now,
+      reviewed_at: null,
+      reviewed_by_user_id: null,
+      rejection_reason: null,
+    };
+    
+    if (isFirebaseConfigured && db) {
+      await writeDocument(COLLECTIONS.PAYMENT_PROOFS, proofId, paymentProof);
+    } else {
+      const mockStore = getNormalizedMockDatabase();
+      if (!mockStore[COLLECTIONS.PAYMENT_PROOFS]) {
+        mockStore[COLLECTIONS.PAYMENT_PROOFS] = [];
+      }
+      mockStore[COLLECTIONS.PAYMENT_PROOFS].push(paymentProof);
+    }
+    
+    // Create notification for landlord (optional)
+    await createNotification({
+      tenantId,
+      type: 'payment_proof_submitted',
+      title: 'Payment Proof Submitted',
+      message: `Payment proof for ₱${amount.toLocaleString()} submitted and awaiting verification.`,
+    });
+    
+    return paymentProof;
+  } catch (error) {
+    console.error('Error submitting payment proof:', error);
+    throw new Error(error.message || 'Failed to submit payment proof');
+  }
+}
+
+/**
+ * 41. Get pending payment proofs for landlord review
+ */
+export async function getPendingPaymentProofs() {
+  try {
+    const store = await getStore();
+    const proofs = store[COLLECTIONS.PAYMENT_PROOFS] || [];
+    const tenants = store[COLLECTIONS.TENANTS] || [];
+    const invoices = store[COLLECTIONS.INVOICES] || [];
+    const leases = store[COLLECTIONS.LEASES] || [];
+    const rooms = store[COLLECTIONS.ROOMS] || [];
+    
+    return proofs
+      .filter((proof) => proof.status === 'pending')
+      .map((proof) => {
+        const tenant = tenants.find((t) => t.id === proof.tenant_id);
+        const invoice = invoices.find((inv) => inv.id === proof.invoice_id);
+        const lease = invoice ? leases.find((l) => l.id === invoice.lease_id) : null;
+        const room = lease ? rooms.find((r) => r.id === lease.room_id) : null;
+        
+        return {
+          id: proof.id,
+          tenantId: proof.tenant_id,
+          tenantName: tenant ? `${tenant.first_name} ${tenant.last_name}` : 'Unknown',
+          tenantInitials: tenant?.initials || 'T',
+          tenantColor: tenant?.avatar_color || '#8b5cf6',
+          roomNumber: room ? room.room_number.replace(/^0/, '') : '-',
+          invoiceId: proof.invoice_id,
+          invoicePeriod: invoice?.billing_period || '-',
+          amount: proof.amount,
+          paymentDate: proof.payment_date,
+          paymentMethod: proof.payment_method,
+          referenceNo: proof.reference_no,
+          proofImageUrl: proof.proof_image_url,
+          notes: proof.notes,
+          submittedAt: proof.submitted_at,
+        };
+      })
+      .sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
+  } catch (error) {
+    console.error('Error fetching pending payment proofs:', error);
+    return [];
+  }
+}
+
+/**
+ * 42. Get tenant's payment proof submissions
+ */
+export async function getTenantPaymentProofs(tenantId) {
+  try {
+    const store = await getStore();
+    const proofs = store[COLLECTIONS.PAYMENT_PROOFS] || [];
+    const invoices = store[COLLECTIONS.INVOICES] || [];
+    
+    return proofs
+      .filter((proof) => proof.tenant_id === tenantId)
+      .map((proof) => {
+        const invoice = invoices.find((inv) => inv.id === proof.invoice_id);
+        
+        return {
+          id: proof.id,
+          invoiceId: proof.invoice_id,
+          invoicePeriod: invoice?.billing_period || '-',
+          amount: proof.amount,
+          paymentDate: proof.payment_date,
+          paymentMethod: proof.payment_method,
+          referenceNo: proof.reference_no,
+          proofImageUrl: proof.proof_image_url,
+          notes: proof.notes,
+          status: proof.status,
+          submittedAt: proof.submitted_at,
+          reviewedAt: proof.reviewed_at,
+          rejectionReason: proof.rejection_reason,
+        };
+      })
+      .sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
+  } catch (error) {
+    console.error('Error fetching tenant payment proofs:', error);
+    return [];
+  }
+}
+
+/**
+ * 43. Approve payment proof and record payment
+ */
+export async function approvePaymentProof(proofId, reviewerUserId) {
+  try {
+    const store = await getStore();
+    const proofs = store[COLLECTIONS.PAYMENT_PROOFS] || [];
+    
+    const proof = proofs.find((p) => p.id === proofId);
+    if (!proof) throw new Error('Payment proof not found');
+    if (proof.status !== 'pending') throw new Error('Payment proof has already been reviewed');
+    
+    const now = new Date().toISOString();
+    
+    // Update proof status
+    if (isFirebaseConfigured && db) {
+      await updateDocument(COLLECTIONS.PAYMENT_PROOFS, proofId, {
+        status: 'approved',
+        reviewed_at: now,
+        reviewed_by_user_id: reviewerUserId,
+      });
+      
+      // Record the actual payment
+      await recordPayment({
+        invoiceId: proof.invoice_id,
+        amount: proof.amount,
+        paymentDate: proof.payment_date,
+        paymentMethod: proof.payment_method,
+        referenceNo: proof.reference_no,
+        receivedBy: reviewerUserId,
+      });
+    } else {
+      proof.status = 'approved';
+      proof.reviewed_at = now;
+      proof.reviewed_by_user_id = reviewerUserId;
+      
+      // Record the actual payment
+      await recordPayment({
+        invoiceId: proof.invoice_id,
+        amount: proof.amount,
+        paymentDate: proof.payment_date,
+        paymentMethod: proof.payment_method,
+        referenceNo: proof.reference_no,
+        receivedBy: reviewerUserId,
+      });
+    }
+    
+    // Notify tenant
+    await createNotification({
+      tenantId: proof.tenant_id,
+      type: 'payment_verified',
+      title: 'Payment Verified',
+      message: `Your payment of ₱${proof.amount.toLocaleString()} has been verified and recorded.`,
+      relatedInvoiceId: proof.invoice_id,
+    });
+    
+    return { success: true, message: 'Payment verified and recorded successfully' };
+  } catch (error) {
+    console.error('Error approving payment proof:', error);
+    throw new Error(error.message || 'Failed to approve payment proof');
+  }
+}
+
+/**
+ * 44. Reject payment proof
+ */
+export async function rejectPaymentProof(proofId, reviewerUserId, reason) {
+  try {
+    const store = await getStore();
+    const proofs = store[COLLECTIONS.PAYMENT_PROOFS] || [];
+    
+    const proof = proofs.find((p) => p.id === proofId);
+    if (!proof) throw new Error('Payment proof not found');
+    if (proof.status !== 'pending') throw new Error('Payment proof has already been reviewed');
+    
+    const now = new Date().toISOString();
+    
+    if (isFirebaseConfigured && db) {
+      await updateDocument(COLLECTIONS.PAYMENT_PROOFS, proofId, {
+        status: 'rejected',
+        reviewed_at: now,
+        reviewed_by_user_id: reviewerUserId,
+        rejection_reason: reason,
+      });
+    } else {
+      proof.status = 'rejected';
+      proof.reviewed_at = now;
+      proof.reviewed_by_user_id = reviewerUserId;
+      proof.rejection_reason = reason;
+    }
+    
+    // Notify tenant
+    await createNotification({
+      tenantId: proof.tenant_id,
+      type: 'payment_rejected',
+      title: 'Payment Proof Rejected',
+      message: `Your payment proof was rejected. Reason: ${reason}`,
+      relatedInvoiceId: proof.invoice_id,
+    });
+    
+    return { success: true, message: 'Payment proof rejected' };
+  } catch (error) {
+    console.error('Error rejecting payment proof:', error);
+    throw new Error(error.message || 'Failed to reject payment proof');
+  }
+}

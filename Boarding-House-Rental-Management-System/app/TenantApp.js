@@ -10,7 +10,8 @@ import TenantHeader from './components/TenantHeader';
 import TenantHomeScreen from './screens/tenant/TenantHomeScreen';
 import TenantComplaintsScreen from './screens/tenant/TenantComplaintsScreen';
 import TenantUpdatesScreen from './screens/tenant/TenantUpdatesScreen';
-import TenantRoomChangeScreen from './screens/tenant/TenantRoomChangeScreen';
+import TenantFinancesScreen from './screens/tenant/TenantFinancesScreen';
+import TenantNotificationsScreen from './screens/tenant/TenantNotificationsScreen';
 import TenantBottomNav from './components/TenantBottomNav';
 
 export default function TenantApp({ user, onLogout }) {
@@ -25,8 +26,10 @@ export default function TenantApp({ user, onLogout }) {
         return 'Complaints';
       case 'updates':
         return 'Updates';
-      case 'room-change':
-        return 'Room Change';
+      case 'finances':
+        return 'My Finances';
+      case 'notifications':
+        return 'Notifications';
       default:
         return 'Home';
     }
@@ -53,8 +56,10 @@ export default function TenantApp({ user, onLogout }) {
         return <TenantComplaintsScreen user={user} />;
       case 'updates':
         return <TenantUpdatesScreen />;
-      case 'room-change':
-        return <TenantRoomChangeScreen user={user} />;
+      case 'finances':
+        return <TenantFinancesScreen user={user} />;
+      case 'notifications':
+        return <TenantNotificationsScreen user={user} />;
       default:
         return <TenantHomeScreen user={user} onNavigateToUpdates={() => setActiveScreen('updates')} />;
     }

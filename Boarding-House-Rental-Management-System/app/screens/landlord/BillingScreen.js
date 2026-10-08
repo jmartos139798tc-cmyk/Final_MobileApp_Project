@@ -11,9 +11,9 @@ import {
   cardStyle, 
   cardShadow, 
   safeAreaTop 
-} from '../utils/responsive';
-import { useTheme } from '../utils/ThemeContext';
-import { getRentBilling, getUtilityBills } from '../services/dataService';
+} from '../../utils/responsive';
+import { useTheme } from '../../utils/ThemeContext';
+import { getRentBilling, getUtilityBills } from '../../services/dataService';
 
 export default function BillingScreen() {
   const { colors } = useTheme();

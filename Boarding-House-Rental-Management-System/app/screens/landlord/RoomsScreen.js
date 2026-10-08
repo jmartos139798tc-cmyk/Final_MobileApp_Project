@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Modal, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useTheme } from '../utils/ThemeContext';
+import { useTheme } from '../../utils/ThemeContext';
 import {
   isMobile,
   isTablet,
@@ -13,8 +13,8 @@ import {
   cardShadow,
   safeAreaTop,
   getGridColumns,
-} from '../utils/responsive';
-import { getRooms } from '../services/dataService';
+} from '../../utils/responsive';
+import { getRooms } from '../../services/dataService';
 
 export default function RoomsScreen() {
   const { colors } = useTheme();

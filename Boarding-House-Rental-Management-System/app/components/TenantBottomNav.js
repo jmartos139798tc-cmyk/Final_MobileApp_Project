@@ -9,9 +9,9 @@ export default function TenantBottomNav({ user, activeScreen, onNavigate }) {
 
   const navItems = [
     { id: 'home', label: 'Home', icon: 'home', iconOutline: 'home-outline' },
+    { id: 'finances', label: 'Finances', icon: 'wallet', iconOutline: 'wallet-outline' },
+    { id: 'notifications', label: 'Notifications', icon: 'notifications', iconOutline: 'notifications-outline' },
     { id: 'complaints', label: 'Complaints', icon: 'chatbubble', iconOutline: 'chatbubble-outline' },
-    { id: 'room-change', label: 'Room Change', icon: 'swap-horizontal', iconOutline: 'swap-horizontal-outline' },
-    { id: 'updates', label: 'Updates', icon: 'notifications', iconOutline: 'notifications-outline' },
   ];
 
   const activeColor = colors.accent;
