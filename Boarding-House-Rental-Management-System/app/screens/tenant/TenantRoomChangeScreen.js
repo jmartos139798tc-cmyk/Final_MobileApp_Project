@@ -28,7 +28,7 @@ export default function TenantRoomChangeScreen({ user }) {
       setLoading(true);
       setError('');
       const [rooms, reqs, tenantProfile] = await Promise.all([
-        getAvailableRoomsForChange(),
+        getAvailableRoomsForChange(user?.tenant_id),
         getTenantRoomChangeRequests(user?.tenant_id),
         getCurrentTenant(user?.tenant_id),
       ]);
@@ -140,7 +140,7 @@ export default function TenantRoomChangeScreen({ user }) {
                       }}>
                         <View>
                           <Text style={{ fontSize: fs(16), color: colors.text, fontWeight: '800' }}>Room {room.number}</Text>
-                          <Text style={{ fontSize: fs(13), color: colors.textMuted, marginTop: 3 }}>{room.type} · ₱{room.monthlyRent.toLocaleString()}/month</Text>
+                          <Text style={{ fontSize: fs(13), color: colors.textMuted, marginTop: 3 }}>{room.type} | PHP {Number(room.monthlyRent || 0).toLocaleString()}/month</Text>
                         </View>
                         <Ionicons name={selected ? 'radio-button-on' : 'radio-button-off'} size={24} color={selected ? colors.accent : colors.textMuted} />
                       </TouchableOpacity>
@@ -191,7 +191,7 @@ export default function TenantRoomChangeScreen({ user }) {
                   <View key={request.id} style={{ ...cardStyle, backgroundColor: colors.card, borderColor: colors.cardBorder, padding: 16, marginBottom: 10 }}>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
                       <View style={{ flex: 1 }}>
-                        <Text style={{ fontSize: fs(16), color: colors.text, fontWeight: '800' }}>Room {request.roomNumber} · {request.roomType}</Text>
+                        <Text style={{ fontSize: fs(16), color: colors.text, fontWeight: '800' }}>Room {request.roomNumber} | {request.roomType}</Text>
                         <Text style={{ fontSize: fs(14), color: colors.textSecondary, marginTop: 6, lineHeight: 20 }}>{request.reason}</Text>
                       </View>
                       <View style={{ backgroundColor: status.bg, borderRadius: 10, paddingHorizontal: 9, paddingVertical: 5, alignSelf: 'flex-start' }}>

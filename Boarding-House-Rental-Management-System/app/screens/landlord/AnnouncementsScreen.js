@@ -13,8 +13,9 @@ import {
   cardShadow,
   safeAreaTop,
   accentShadow,
-} from '../utils/responsive';
-import { getAnnouncements, addAnnouncement } from '../services/dataService';
+} from '../../utils/responsive';
+import { getAnnouncements, addAnnouncement } from '../../services/dataService';
+import AnnouncementDetailsModal from '../../components/AnnouncementDetailsModal';
 
 export default function AnnouncementsScreen() {
   const { colors } = useTheme();

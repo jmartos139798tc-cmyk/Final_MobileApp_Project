@@ -10,7 +10,7 @@ service cloud.firestore {
     }
 
     function isLandlord() {
-      return signedIn() && accountRole() == 'landlord';
+      return signedIn() && accountRole() in ['landlord', 'owner', 'caretaker'];
     }
 
     function ownsTenant(tenantId) {
@@ -141,6 +141,10 @@ service cloud.firestore {
           && get(/databases/$(database)/documents/rooms/$(request.resource.data.requested_room_id)).data.status == 'vacant';
       allow update: if isLandlord();
       allow delete: if isLandlord();
+    }
+
+    match /room_assignment_requests/{requestId} {
+      allow read, write: if isLandlord();
     }
 
     match /due_date_extension_requests/{requestId} {

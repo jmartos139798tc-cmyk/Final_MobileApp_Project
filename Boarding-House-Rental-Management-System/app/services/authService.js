@@ -59,8 +59,8 @@ async function getUserSessionFromFirebaseUser(fbUser) {
         tenantId = tenantDoc.id;
       }
     }
-  } else if (role === 'landlord') {
-    // Landlord role only
+  } else if (role === 'landlord' || role === 'owner' || role === 'caretaker') {
+    // Older Firebase setups use owner/caretaker; the app routes both through the landlord portal.
     const staffDoc = await getDoc(doc(db, COLLECTIONS.STAFF_PROFILES, fbUser.uid));
     if (staffDoc.exists()) profile = staffDoc.data();
   }
@@ -77,7 +77,7 @@ async function getUserSessionFromFirebaseUser(fbUser) {
     uid: fbUser.uid,
     email: fbUser.email,
     name: name || fbUser.displayName || fbUser.email,
-    role,
+    role: role === 'owner' || role === 'caretaker' ? 'landlord' : role,
     room: role === 'tenant' ? 2 : undefined,
     tenant_id: tenantId,
   };
@@ -106,7 +106,7 @@ export async function loginWithEmail(email, password) {
     for (const candidate of passwordCandidates) {
       try {
         const userCredential = await signInWithEmailAndPassword(auth, cleanEmail, candidate);
-        return getUserSessionFromFirebaseUser(userCredential.user);
+        return await getUserSessionFromFirebaseUser(userCredential.user);
       } catch (error) {
         if (!['auth/invalid-credential', 'auth/wrong-password', 'auth/user-not-found'].includes(error?.code)) {
           throw getFriendlyAuthError(error, 'sign in');

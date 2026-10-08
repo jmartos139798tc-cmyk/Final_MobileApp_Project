@@ -3,7 +3,8 @@ import { View, Text, ScrollView, TouchableOpacity, Modal, TextInput, ActivityInd
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../utils/ThemeContext';
 import { isMobile, getResponsivePadding, fs, spacing, cardStyle } from '../../utils/responsive';
-import { getAllTenantsForManagement, addTenant, updateTenant, deleteTenant, getVacantRoomsForAssignment, createLease, terminateLease } from '../../services/dataService';
+import { getAllTenantsForManagement, addTenant, updateTenant, deleteTenant, getVacantRoomsForAssignment, createLease, terminateLease, getPendingTenantRegistrations } from '../../services/dataService';
+import TenantApprovalModal from '../../components/landlord/TenantApprovalModal';
 
 export default function OwnerTenants() {
   const { colors } = useTheme();
@@ -12,6 +13,10 @@ export default function OwnerTenants() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [tenantModalVisible, setTenantModalVisible] = useState(false);
+  const [signupModalVisible, setSignupModalVisible] = useState(false);
+  const [pendingSignups, setPendingSignups] = useState([]);
+  const [loadingSignups, setLoadingSignups] = useState(false);
+  const [selectedSignup, setSelectedSignup] = useState(null);
   const [editingTenant, setEditingTenant] = useState(null);
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -40,15 +45,38 @@ export default function OwnerTenants() {
     }
   };
 
-  useEffect(() => { loadTenants(); }, []);
+  const loadPendingSignups = async () => {
+    try {
+      setPendingSignups(await getPendingTenantRegistrations());
+    } catch (err) {
+      console.error('Failed to load tenant sign-ups:', err);
+    }
+  };
 
-  const openAddTenant = () => {
-    setEditingTenant(null);
-    setFirstName('');
-    setLastName('');
-    setPhone('');
-    setFormError('');
-    setTenantModalVisible(true);
+  useEffect(() => {
+    loadTenants();
+    loadPendingSignups();
+    const refreshTimer = setInterval(loadPendingSignups, 30000);
+    return () => clearInterval(refreshTimer);
+  }, []);
+
+  const openAddTenant = async () => {
+    setSignupModalVisible(true);
+    setLoadingSignups(true);
+    try {
+      await loadPendingSignups();
+    } catch (err) {
+      setPendingSignups([]);
+      Alert.alert('Error', 'Failed to load tenant sign-ups. Please try again.');
+    } finally {
+      setLoadingSignups(false);
+    }
+  };
+
+  const handleSignupApproved = async () => {
+    setSelectedSignup(null);
+    setSignupModalVisible(false);
+    await loadTenants();
   };
 
   const handleSaveTenant = async () => {
@@ -150,6 +178,38 @@ export default function OwnerTenants() {
             <Text style={{ fontSize: fs(15), fontWeight: '700', color: '#fff' }}>Add Tenant</Text>
           </TouchableOpacity>
         </View>
+        <View style={{ ...cardStyle, backgroundColor: colors.card, borderColor: pendingSignups.length ? colors.warningText : colors.cardBorder, borderWidth: pendingSignups.length ? 2 : 1, padding: 16, marginBottom: spacing.md }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: pendingSignups.length ? 12 : 0 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+              <Ionicons name={pendingSignups.length ? 'notifications' : 'people-outline'} size={20} color={pendingSignups.length ? colors.warningText : colors.textMuted} />
+              <Text style={{ fontSize: fs(15), fontWeight: '800', color: colors.text }}>New Tenant Sign-ups</Text>
+              {pendingSignups.length > 0 && (
+                <View style={{ backgroundColor: colors.warningBg, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 3 }}>
+                  <Text style={{ fontSize: fs(12), color: colors.warningText, fontWeight: '800' }}>{pendingSignups.length}</Text>
+                </View>
+              )}
+            </View>
+            <TouchableOpacity onPress={loadPendingSignups} accessibilityRole="button" accessibilityLabel="Refresh tenant sign-ups" style={{ padding: 6 }}>
+              <Ionicons name="refresh" size={18} color={colors.accent} />
+            </TouchableOpacity>
+          </View>
+          {pendingSignups.length === 0 ? (
+            <Text style={{ fontSize: fs(13), color: colors.textMuted }}>No new sign-ups waiting for approval.</Text>
+          ) : pendingSignups.map(signup => (
+            <TouchableOpacity key={signup.id} onPress={() => setSelectedSignup(signup)} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, borderTopWidth: 1, borderTopColor: colors.cardBorder }}>
+              <View style={{ width: 38, height: 38, borderRadius: 14, backgroundColor: signup.color || colors.accent, alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ fontSize: fs(13), fontWeight: '800', color: '#fff' }}>{signup.initials || signup.name?.slice(0, 2).toUpperCase()}</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: fs(14), fontWeight: '700', color: colors.text }}>{signup.name}</Text>
+                <Text style={{ fontSize: fs(12), color: colors.textSecondary, marginTop: 2 }}>{signup.email} · {signup.phone || 'No phone number'}</Text>
+              </View>
+              <View style={{ backgroundColor: colors.warningBg, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 }}>
+                <Text style={{ fontSize: fs(11), color: colors.warningText, fontWeight: '800' }}>REVIEW</Text>
+              </View>
+            </TouchableOpacity>
+          ))}
+        </View>
         <View style={{ gap: spacing.sm }}>
           {tenants.map(tenant => (
             <View key={tenant.id} style={{ ...cardStyle, backgroundColor: colors.card, borderColor: colors.cardBorder, padding: 16, flexDirection: isMobile ? 'column' : 'row', alignItems: isMobile ? 'stretch' : 'center', gap: 14 }}>
@@ -196,6 +256,29 @@ export default function OwnerTenants() {
           )}
         </View>
       </ScrollView>
+      <Modal visible={signupModalVisible} transparent animationType="fade" onRequestClose={() => setSignupModalVisible(false)}>
+        <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' }} onPress={() => setSignupModalVisible(false)}>
+          <Pressable style={{ width: isMobile ? '90%' : 520, maxHeight: '80%', backgroundColor: colors.card, borderRadius: 16, padding: 24 }} onPress={e => e.stopPropagation()}>
+            <Text style={{ fontSize: fs(20), fontWeight: '800', color: colors.text, marginBottom: 16 }}>Tenant Sign-ups</Text>
+            {loadingSignups ? <ActivityIndicator size="large" color={colors.accent} /> : pendingSignups.length === 0 ? (
+              <Text style={{ fontSize: fs(15), color: colors.textMuted, paddingVertical: 24, textAlign: 'center' }}>No tenant sign-ups are waiting for approval.</Text>
+            ) : (
+              <ScrollView style={{ maxHeight: 420 }}>
+                {pendingSignups.map(signup => (
+                  <TouchableOpacity key={signup.id} onPress={() => setSelectedSignup(signup)} style={{ paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: colors.cardBorder }}>
+                    <Text style={{ fontSize: fs(16), fontWeight: '700', color: colors.text }}>{signup.name}</Text>
+                    <Text style={{ fontSize: fs(13), color: colors.textSecondary, marginTop: 3 }}>{signup.email} · {signup.phone || 'No phone number'}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )}
+            <TouchableOpacity onPress={() => setSignupModalVisible(false)} style={{ marginTop: 16, backgroundColor: colors.bg, paddingVertical: 12, borderRadius: 999, alignItems: 'center' }}>
+              <Text style={{ fontSize: fs(15), fontWeight: '700', color: colors.text }}>Close</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
+      {selectedSignup && <TenantApprovalModal visible tenant={selectedSignup} onClose={() => setSelectedSignup(null)} onSuccess={handleSignupApproved} />}
       <Modal visible={tenantModalVisible} transparent animationType="fade" onRequestClose={() => !saving && setTenantModalVisible(false)}>
         <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' }} onPress={() => !saving && setTenantModalVisible(false)}>
           <Pressable style={{ width: isMobile ? '90%' : 480, backgroundColor: colors.card, borderRadius: 16, padding: 24 }} onPress={e => e.stopPropagation()}>

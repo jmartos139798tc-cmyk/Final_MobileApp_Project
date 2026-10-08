@@ -416,12 +416,14 @@ export default function LoginScreen({ onLoginSuccess }) {
   };
 
   const isRegistering = formMode === 'register';
-  const heroMinHeight = isRegistering ? 160 : 220;
+  const heroHeight = isRegistering
+    ? Math.min(190, Math.max(150, screenHeight * 0.25))
+    : Math.min(220, Math.max(175, screenHeight * 0.30));
 
   return (
     <View style={[styles.page, { backgroundColor: palette.pageBg }]}>
       {/* ─── HERO (top teal section) ─────────────────────────── */}
-      <View style={[styles.hero, { backgroundColor: palette.heroStart, minHeight: heroMinHeight }]}>
+      <View style={[styles.hero, { backgroundColor: palette.heroStart, height: heroHeight }]}>
         {/* Gradient overlay for depth */}
         <View
           style={[
@@ -449,7 +451,7 @@ export default function LoginScreen({ onLoginSuccess }) {
         {/* Centered brand content */}
         <View style={styles.heroBrand}>
           <View style={styles.heroLogoWrapper}>
-            <Logo variant="mark" width={compact ? 70 : 90} accessibilityLabel="Nads and Gracy house logo" />
+            <Logo variant="mark" width={compact || screenHeight < 650 ? 58 : 76} accessibilityLabel="Nads and Gracy house logo" />
           </View>
           <Text style={[styles.heroTitle, { color: palette.heroText, fontSize: Math.round((compact ? 22 : 26) * fontScale) }]}>
             NADS & GRACY
@@ -466,15 +468,20 @@ export default function LoginScreen({ onLoginSuccess }) {
         style={styles.formArea} 
       >
         <ScrollView
-          contentContainerStyle={[styles.scrollContent, { paddingHorizontal: horizontalPadding }]}
-          
-          
-          
-         keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-          bounces={false}
-          scrollEnabled={true}>
-          <View style={[styles.formCard, { backgroundColor: palette.surface, maxWidth: 480 }]}>
+          style={styles.formContent}
+          contentContainerStyle={styles.formContentInner}
+          scrollEnabled={isRegistering}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          showsVerticalScrollIndicator={isRegistering}
+          bounces={isRegistering}
+          decelerationRate="normal"
+        >
+          <View style={[styles.formCard, {
+            backgroundColor: palette.surface,
+            borderColor: palette.border,
+            padding: screenHeight < 700 ? 18 : 24,
+          }]}>
             <AuthModeSelector
               value={formMode}
               onChange={(mode) => { setFormMode(mode); setMessage(null); }}
@@ -573,7 +580,6 @@ export default function LoginScreen({ onLoginSuccess }) {
             ) : (
               <>
                 <AuthFormField
-                  inputRef={passwordRef}
                   label="Email address"
                   icon="mail-outline"
                   palette={palette}
@@ -590,6 +596,7 @@ export default function LoginScreen({ onLoginSuccess }) {
                 />
 
                 <AuthFormField
+                  inputRef={passwordRef}
                   label="Password"
                   icon="lock-closed-outline"
                   palette={palette}
@@ -652,6 +659,7 @@ const styles = StyleSheet.create({
 
   /* ── Hero (top teal area) ─────────────────────────── */
   hero: {
+    flexShrink: 0,
     overflow: 'hidden',
     justifyContent: 'center',
     alignItems: 'center',
@@ -680,7 +688,7 @@ const styles = StyleSheet.create({
   },
   heroBrand: {
     alignItems: 'center',
-    paddingTop: 40,
+    paddingTop: 18,
   },
   heroLogoWrapper: {
     marginBottom: 12,
@@ -700,27 +708,31 @@ const styles = StyleSheet.create({
   /* ── Form area (white card section) ───────────────── */
   formArea: {
     flex: 1,
-    marginTop: -24,
   },
-  scrollContent: {
+  formContent: {
+    flex: 1,
+  },
+  formContentInner: {
     flexGrow: 1,
+    paddingHorizontal: 14,
+    paddingTop: 14,
     paddingBottom: 8,
   },
   formCard: {
-    width: '100%',
-    alignSelf: 'center',
-    borderTopLeftRadius: 32,
-    borderTopRightRadius: 32,
-    borderBottomLeftRadius: 0,
-    borderBottomRightRadius: 0,
+    flexGrow: 1,
+    alignSelf: 'stretch',
+    borderWidth: 1,
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    borderBottomLeftRadius: 30,
+    borderBottomRightRadius: 30,
     padding: 24,
-    minHeight: '100%',
     shadowColor: '#0F172A',
-    shadowOffset: { width: 0, height: -6 },
-    shadowOpacity: 0.1,
-    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.12,
+    shadowRadius: 24,
     elevation: 8,
-    ...Platform.select({ web: { boxShadow: '0 -6px 28px rgba(15, 23, 42, 0.12)' } }),
+    ...Platform.select({ web: { boxShadow: '0 12px 32px rgba(15, 23, 42, 0.12)' } }),
   },
 
   /* ── Form elements ─────────────────────────────────── */

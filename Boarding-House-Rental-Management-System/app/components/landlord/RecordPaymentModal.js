@@ -3,7 +3,7 @@ import { View, Text, Modal, Pressable, TouchableOpacity, ActivityIndicator, Text
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../utils/ThemeContext';
 import { isMobile, fs } from '../../utils/responsive';
-import { recordPayment, getInvoiceWithPayments, getTenantFinancialSummary } from '../../services/dataService';
+import { recordPayment, getTenantFinancialSummary, getNextUnpaidInvoiceForTenant } from '../../services/dataService';
 
 export default function RecordPaymentModal({ visible, tenant, onClose, onSuccess }) {
   const { colors } = useTheme();
@@ -11,6 +11,7 @@ export default function RecordPaymentModal({ visible, tenant, onClose, onSuccess
   const [loading, setLoading] = useState(true);
   const [outstandingBalance, setOutstandingBalance] = useState(0);
   const [latestInvoiceId, setLatestInvoiceId] = useState(null);
+  const [invoiceBalance, setInvoiceBalance] = useState(0);
   
   const [amount, setAmount] = useState('');
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]); // YYYY-MM-DD format
@@ -31,18 +32,20 @@ export default function RecordPaymentModal({ visible, tenant, onClose, onSuccess
     try {
       setLoading(true);
       setError('');
+      setLatestInvoiceId(null);
+      setInvoiceBalance(0);
+      setAmount('');
       
       // Get tenant's outstanding balance and latest invoice
-      const summary = await getTenantFinancialSummary(tenant.tenantId);
+      const [summary, invoice] = await Promise.all([
+        getTenantFinancialSummary(tenant.tenantId),
+        getNextUnpaidInvoiceForTenant(tenant.tenantId),
+      ]);
       setOutstandingBalance(summary.outstandingBalance || 0);
-      
-      // Pre-fill amount with outstanding balance
-      if (summary.outstandingBalance > 0) {
-        setAmount(String(summary.outstandingBalance));
-      }
-      
-      // We'll need to get the latest unpaid invoice ID - for now use balance
-      setLatestInvoiceId('invoice-latest'); // This should be fetched properly
+      setLatestInvoiceId(invoice?.id || null);
+      setInvoiceBalance(invoice?.balance || 0);
+      setAmount(invoice ? String(invoice.balance) : '');
+      if (!invoice) setError('This tenant has no unpaid invoice to record a payment against.');
     } catch (err) {
       console.error('Error loading balance:', err);
       setError('Failed to load balance information.');
@@ -69,9 +72,24 @@ export default function RecordPaymentModal({ visible, tenant, onClose, onSuccess
         return;
       }
 
-      const selectedDate = new Date(paymentDate);
-      if (selectedDate > new Date()) {
+      const selectedDate = new Date(`${paymentDate}T00:00:00`);
+      if (Number.isNaN(selectedDate.getTime())) {
+        setError('Enter a valid payment date in YYYY-MM-DD format.');
+        return;
+      }
+      if (paymentAmount > invoiceBalance) {
+        setError(`Payment cannot exceed this invoice's remaining balance of ${invoiceBalance.toLocaleString()}.`);
+        return;
+      }
+      const today = new Date();
+      today.setHours(23, 59, 59, 999);
+      if (selectedDate > today) {
         setError('Payment date cannot be in the future');
+        return;
+      }
+
+      if (!latestInvoiceId) {
+        setError('No unpaid invoice is available for this tenant.');
         return;
       }
 
@@ -93,10 +111,8 @@ export default function RecordPaymentModal({ visible, tenant, onClose, onSuccess
             onPress: async () => {
               setSubmitting(true);
               try {
-                // In a real implementation, we would get the specific invoice ID
-                // For now, we'll use a simplified approach
                 await recordPayment({
-                  invoiceId: latestInvoiceId || `invoice-${Date.now()}`,
+                  invoiceId: latestInvoiceId,
                   amountPaid: paymentAmount,
                   paymentDate: paymentDate,
                   paymentMethod,
@@ -390,7 +406,7 @@ export default function RecordPaymentModal({ visible, tenant, onClose, onSuccess
 
             <TouchableOpacity
               onPress={handleRecordPayment}
-              disabled={submitting || loading || !amount}
+              disabled={submitting || loading || !amount || !latestInvoiceId}
               style={{
                 flex: 1,
                 backgroundColor: !amount ? colors.textMuted : colors.accent,

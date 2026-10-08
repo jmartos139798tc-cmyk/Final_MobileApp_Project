@@ -79,7 +79,7 @@ async function getStore() {
   const userSnapshot = await getDoc(doc(db, COLLECTIONS.USERS, uid));
   const role = userSnapshot.exists() ? userSnapshot.data().role : null;
 
-  if (role === 'owner' || role === 'caretaker') {
+  if (role === 'owner' || role === 'caretaker' || role === 'landlord') {
     const staffResults = await Promise.all(collectionNames.map(async (name) => {
       try {
         return [name, await readCollection(name)];
@@ -98,7 +98,7 @@ async function getStore() {
   if (!tenant) return Object.fromEntries(collectionNames.map((name) => [name, []]));
 
   const tenantStore = Object.fromEntries(collectionNames.map((name) => [name, []]));
-  const [boardingHouses, roomTypes, rooms, leases, complaints, announcements, extensionRequests] = await Promise.all([
+  const [boardingHouses, roomTypes, rooms, leases, complaints, announcements, extensionRequests, roomChangeRequests] = await Promise.all([
     readCollection(COLLECTIONS.BOARDING_HOUSES),
     readCollection(COLLECTIONS.ROOM_TYPES),
     readCollection(COLLECTIONS.ROOMS),
@@ -106,6 +106,7 @@ async function getStore() {
     readWhere(COLLECTIONS.COMPLAINTS, 'tenant_id', tenant.id),
     readCollection(COLLECTIONS.ANNOUNCEMENTS),
     readWhere(COLLECTIONS.DUE_DATE_EXTENSION_REQUESTS, 'tenant_id', tenant.id).catch(() => []),
+    readWhere(COLLECTIONS.ROOM_CHANGE_REQUESTS, 'tenant_id', tenant.id).catch(() => []),
   ]);
   const invoices = (await Promise.all(leases.map((lease) => readWhere(COLLECTIONS.INVOICES, 'lease_id', lease.id)))).flat();
   const payments = (await Promise.all(invoices.map((invoice) => readWhere(COLLECTIONS.PAYMENTS, 'invoice_id', invoice.id)))).flat();
@@ -121,6 +122,7 @@ async function getStore() {
   tenantStore[COLLECTIONS.COMPLAINTS] = complaints;
   tenantStore[COLLECTIONS.ANNOUNCEMENTS] = announcements;
   tenantStore[COLLECTIONS.DUE_DATE_EXTENSION_REQUESTS] = extensionRequests;
+  tenantStore[COLLECTIONS.ROOM_CHANGE_REQUESTS] = roomChangeRequests;
   return tenantStore;
 
 }
@@ -666,6 +668,106 @@ export async function getTenantBillingBreakdown(id = '2') {
   }
 }
 
+/**
+ * Room-change requests for a tenant.
+ */
+export async function getAvailableRoomsForChange(tenantId) {
+  const store = await getStore();
+  const tenantKey = String(tenantId || '');
+  const leases = store[COLLECTIONS.LEASES] || [];
+  const lease = leases.find((item) => item.tenant_id === tenantKey && item.status === 'active');
+  const currentRoom = lease && (store[COLLECTIONS.ROOMS] || []).find((room) => room.id === lease.room_id);
+  const occupiedRoomIds = new Set(leases.filter((item) => item.status === 'active').map((item) => item.room_id));
+  const roomTypes = store[COLLECTIONS.ROOM_TYPES] || [];
+
+  return (store[COLLECTIONS.ROOMS] || [])
+    .filter((room) => room.status === 'vacant' && !occupiedRoomIds.has(room.id) &&
+      (!currentRoom || room.house_id === currentRoom.house_id))
+    .map((room) => {
+      const type = roomTypes.find((item) => item.id === room.type_id);
+      return {
+        id: room.id,
+        number: room.room_number,
+        type: type?.name || 'Room',
+        monthlyRent: type?.base_rent || 0,
+      };
+    });
+}
+
+export async function getTenantRoomChangeRequests(tenantId) {
+  const store = await getStore();
+  const tenantKey = String(tenantId || '');
+  const requests = store[COLLECTIONS.ROOM_CHANGE_REQUESTS] || [];
+  const rooms = store[COLLECTIONS.ROOMS] || [];
+  const roomTypes = store[COLLECTIONS.ROOM_TYPES] || [];
+  return requests
+    .filter((request) => request.tenant_id === tenantKey)
+    .sort((a, b) => (Date.parse(b.requested_at) || 0) - (Date.parse(a.requested_at) || 0))
+    .map((request) => {
+      const room = rooms.find((item) => item.id === request.requested_room_id);
+      const type = roomTypes.find((item) => item.id === room?.type_id);
+      return {
+        id: request.id,
+        roomNumber: room?.room_number ?? '-',
+        roomType: type?.name || 'Room',
+        reason: request.reason || '',
+        status: request.status,
+        date: request.requested_at,
+      };
+    });
+}
+
+export async function submitRoomChangeRequest({ requestedRoomId, reason, tenantId }) {
+  const store = await getStore();
+  const tenantKey = String(tenantId || '');
+  const tenant = (store[COLLECTIONS.TENANTS] || []).find((item) => item.id === tenantKey);
+  if (!tenant) throw new Error('Your tenant profile is not available. Please sign in again.');
+
+  const lease = (store[COLLECTIONS.LEASES] || []).find(
+    (item) => item.tenant_id === tenant.id && item.status === 'active'
+  );
+  if (!lease) throw new Error('Your active lease could not be found. Please contact the property administrator.');
+
+  const room = (store[COLLECTIONS.ROOMS] || []).find(
+    (item) => item.id === requestedRoomId && item.status === 'vacant'
+  );
+  if (!room) throw new Error('That room is no longer available. Please reload the room options.');
+
+  const existing = (store[COLLECTIONS.ROOM_CHANGE_REQUESTS] || []).find(
+    (item) => item.tenant_id === tenant.id && item.status === 'pending'
+  );
+  if (existing) throw new Error('You already have a pending room-change request.');
+
+  const requestId = 'room-change-' + Date.now();
+  const request = {
+    id: requestId,
+    tenant_id: tenant.id,
+    current_room_id: lease.room_id,
+    requested_room_id: room.id,
+    reason: String(reason || '').trim(),
+    status: 'pending',
+    requested_at: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+  };
+
+  if (isFirebaseConfigured && db) {
+    await writeDocument(COLLECTIONS.ROOM_CHANGE_REQUESTS, requestId, request);
+  } else {
+    const mockStore = getNormalizedMockDatabase();
+    const requests = mockStore[COLLECTIONS.ROOM_CHANGE_REQUESTS] ||
+      (mockStore[COLLECTIONS.ROOM_CHANGE_REQUESTS] = []);
+    requests.unshift(request);
+  }
+
+  const type = (store[COLLECTIONS.ROOM_TYPES] || []).find((item) => item.id === room.type_id);
+  return {
+    id: request.id,
+    roomNumber: room.room_number,
+    roomType: type?.name || 'Room',
+    reason: request.reason,
+    status: request.status,
+    date: request.requested_at,
+  };
+}
 /**
  * Tenant due-date extension requests.
  */
@@ -1385,6 +1487,30 @@ export async function getTenantFinancialSummary(tenantId) {
   }
 }
 
+/** Return the oldest unpaid invoice for a tenant's active lease. */
+export async function getNextUnpaidInvoiceForTenant(tenantId) {
+  const store = await getStore();
+  const activeLease = (store[COLLECTIONS.LEASES] || []).find(
+    (lease) => lease.tenant_id === tenantId && lease.status === 'active'
+  );
+  if (!activeLease) return null;
+
+  const invoices = (store[COLLECTIONS.INVOICES] || [])
+    .filter((invoice) => invoice.lease_id === activeLease.id)
+    .sort((a, b) => String(a.due_date || '').localeCompare(String(b.due_date || '')));
+  const payments = store[COLLECTIONS.PAYMENTS] || [];
+
+  for (const invoice of invoices) {
+    const paid = payments
+      .filter((payment) => payment.invoice_id === invoice.id)
+      .reduce((sum, payment) => sum + (Number(payment.amount_paid) || 0), 0);
+    const balance = Math.max(0, (Number(invoice.total_amount) || 0) - paid);
+    if (balance > 0) return { id: invoice.id, balance };
+  }
+
+  return null;
+}
+
 /**
  * 31. Calculate tenant balance
  */
@@ -1615,6 +1741,7 @@ export async function recordPayment({ invoiceId, amountPaid, paymentDate, paymen
       payment_method: paymentMethod,
       reference_no: referenceNo.trim() || `${paymentMethod.toUpperCase()}-${Date.now()}`,
       received_by_user_id: receivedBy || auth?.currentUser?.uid || 'landlord-uid-1',
+      notes: String(notes || '').trim(),
     };
     
     // Create notification for tenant
