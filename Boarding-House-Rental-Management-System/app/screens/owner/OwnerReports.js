@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { isMobile, isDesktop, getResponsivePadding, fs, spacing, cardStyle, cardShadow, safeAreaTop } from '../../utils/responsive';
+import { isMobile, isDesktop, getResponsivePadding, fs, spacing, cardStyle, cardShadow } from '../../utils/responsive';
 import { useTheme } from '../../utils/ThemeContext';
 import { getMonthlyIncome, getSeptemberSummary } from '../../services/dataService';
 
@@ -62,7 +62,7 @@ export default function OwnerReports() {
       >
         <View style={{ maxWidth: containerMaxWidth, width: '100%' }}>
           {/* Header */}
-          <View style={{ padding, paddingTop: isMobile ? safeAreaTop + 62 : isDesktop ? 68 : 64, paddingBottom: 20 }}>
+          <View style={{ padding, paddingTop: isMobile ? 16 : isDesktop ? 28 : 24, paddingBottom: 16 }}>
             <Text style={{ fontSize: fs(12), color: colors.textMuted, fontWeight: '800', letterSpacing: 1, marginBottom: 5 }}>OWNER PORTAL</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
               <View style={{ flex: 1 }}>

@@ -70,6 +70,7 @@ export default function CaretakerHeader({
             width: buttonSize,
             height: buttonSize,
             borderRadius: buttonSize / 2,
+            overflow: 'hidden',
             alignItems: 'center',
             justifyContent: 'center',
           }}
@@ -118,6 +119,7 @@ export default function CaretakerHeader({
               width: buttonSize,
               height: buttonSize,
               borderRadius: buttonSize / 2,
+              overflow: 'hidden',
               alignItems: 'center',
               justifyContent: 'center',
             }}
@@ -140,6 +142,7 @@ export default function CaretakerHeader({
                 width: buttonSize,
                 height: buttonSize,
                 borderRadius: buttonSize / 2,
+                overflow: 'hidden',
                 alignItems: 'center',
                 justifyContent: 'center',
               }}

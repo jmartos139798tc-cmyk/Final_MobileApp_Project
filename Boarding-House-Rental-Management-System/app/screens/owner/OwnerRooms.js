@@ -9,7 +9,6 @@ import {
   fs,
   spacing,
   cardStyle,
-  safeAreaTop,
   getGridColumns,
 } from '../../utils/responsive';
 import { addRoom, getRooms, getRoomTypes } from '../../services/dataService';
@@ -207,7 +206,7 @@ export default function RoomsScreen() {
         <Ionicons name="cloud-offline-outline" size={38} color={colors.danger} />
         <Text style={{ color: colors.text, fontSize: fs(17), fontWeight: '800', marginTop: 12 }}>Unable to load rooms</Text>
         <Text style={{ color: colors.textSecondary, fontSize: fs(13), textAlign: 'center', lineHeight: 20, marginTop: 6 }}>{error}</Text>
-        <TouchableOpacity accessibilityRole="button" onPress={loadData} style={{ minHeight: 44, marginTop: 18, paddingHorizontal: 18, borderRadius: 12, backgroundColor: colors.ownerAccent, justifyContent: 'center' }}>
+        <TouchableOpacity accessibilityRole="button" onPress={loadData} style={{ minHeight: 44, marginTop: 18, paddingHorizontal: 18, borderRadius: 999, overflow: 'hidden', backgroundColor: colors.ownerAccent, justifyContent: 'center' }}>
           <Text style={{ color: colors.onPrimary || '#ffffff', fontSize: fs(13), fontWeight: '800' }}>Retry</Text>
         </TouchableOpacity>
       </View>
@@ -219,7 +218,7 @@ export default function RoomsScreen() {
       {/* Header */}
       <View style={{ 
         padding, 
-        paddingTop: isMobile ? safeAreaTop + 62 : isDesktop ? 68 : 64,
+        paddingTop: isMobile ? 16 : isDesktop ? 28 : 24,
         alignItems: isDesktop ? 'center' : 'stretch'
       }}>
         <View style={{ maxWidth: containerMaxWidth, width: '100%' }}>
@@ -233,7 +232,7 @@ export default function RoomsScreen() {
               accessibilityRole="button"
               accessibilityLabel="Create room"
               onPress={openCreateRoom}
-              style={{ minHeight: 44, paddingHorizontal: 14, borderRadius: 13, backgroundColor: colors.ownerAccent, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 }}
+              style={{ minHeight: 44, paddingHorizontal: 16, borderRadius: 999, overflow: 'hidden', backgroundColor: colors.ownerAccent, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 }}
             >
               <Ionicons name="add" size={19} color={colors.onPrimary || '#ffffff'} />
               <Text style={{ color: colors.onPrimary || '#ffffff', fontWeight: '800', fontSize: fs(13) }}>Add room</Text>
@@ -294,6 +293,7 @@ export default function RoomsScreen() {
                     paddingHorizontal: isDesktop ? 22 : 16, 
                     paddingVertical: isDesktop ? 10 : 8, 
                     borderRadius: 20, 
+                    overflow: 'hidden',
                     backgroundColor: isActive ? colors.ownerAccentBg : colors.filterBg,
                     borderWidth: 1,
                     borderColor: isActive ? colors.ownerAccent : colors.filterBorder,
@@ -453,7 +453,7 @@ export default function RoomsScreen() {
               <Text style={{ color: colors.textSecondary, fontSize: fs(13), textAlign: 'center', marginTop: 5 }}>
                 {rooms.length === 0 ? 'Tap Add room to create your first one.' : 'Choose another filter to see more rooms.'}
               </Text>
-              <TouchableOpacity accessibilityRole="button" onPress={loadData} style={{ minHeight: 40, marginTop: 15, paddingHorizontal: 15, borderRadius: 11, borderWidth: 1, borderColor: colors.ownerAccent, justifyContent: 'center' }}>
+              <TouchableOpacity accessibilityRole="button" onPress={loadData} style={{ minHeight: 40, marginTop: 15, paddingHorizontal: 15, borderRadius: 999, overflow: 'hidden', borderWidth: 1, borderColor: colors.ownerAccent, justifyContent: 'center' }}>
                 <Text style={{ color: colors.ownerAccent, fontSize: fs(12), fontWeight: '800' }}>Retry</Text>
               </TouchableOpacity>
             </View>
@@ -515,7 +515,7 @@ export default function RoomsScreen() {
                 <Text style={{ fontSize: fs(21), color: colors.text, fontWeight: '900' }}>Add a room</Text>
                 <Text style={{ fontSize: fs(13), color: colors.textSecondary, marginTop: 4 }}>New rooms start as vacant.</Text>
               </View>
-              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close" disabled={saving} onPress={closeCreateRoom} style={{ padding: 8, opacity: saving ? 0.5 : 1 }}>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close" disabled={saving} onPress={closeCreateRoom} style={{ width: 40, height: 40, borderRadius: 20, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', opacity: saving ? 0.5 : 1 }}>
                 <Ionicons name="close" size={22} color={colors.textSecondary} />
               </TouchableOpacity>
             </View>
@@ -546,7 +546,7 @@ export default function RoomsScreen() {
                     onPress={() => selectRoomType(type)}
                     accessibilityRole="button"
                     accessibilityState={{ selected: active, disabled: saving || loadingRoomTypes }}
-                    style={{ paddingHorizontal: 13, paddingVertical: 10, borderRadius: 12, borderWidth: 1, borderColor: active ? colors.ownerAccent : colors.cardBorder, backgroundColor: active ? colors.ownerAccentBg : colors.bg, opacity: saving || loadingRoomTypes ? 0.6 : 1 }}
+                    style={{ paddingHorizontal: 13, paddingVertical: 10, borderRadius: 999, overflow: 'hidden', borderWidth: 1, borderColor: active ? colors.ownerAccent : colors.cardBorder, backgroundColor: active ? colors.ownerAccentBg : colors.bg, opacity: saving || loadingRoomTypes ? 0.6 : 1 }}
                   >
                     <Text style={{ fontSize: fs(13), fontWeight: '700', color: active ? colors.ownerAccent : colors.textSecondary }}>{type.name}</Text>
                   </TouchableOpacity>
@@ -576,7 +576,7 @@ export default function RoomsScreen() {
             {!loadingRoomTypes && roomTypes.length === 0 && !formError && <Text style={{ color: colors.textMuted, marginTop: 10, fontSize: fs(12) }}>No room types found. Ask the administrator to upload the sample data.</Text>}
 
             {!!formError && <Text accessibilityRole="alert" style={{ color: colors.danger, marginTop: 13, fontSize: fs(13), fontWeight: '600' }}>{formError}</Text>}
-            <TouchableOpacity accessibilityRole="button" disabled={saving || loadingRoomTypes || roomTypes.length === 0} onPress={saveRoom} style={{ minHeight: 48, marginTop: 20, borderRadius: 13, backgroundColor: colors.ownerAccent, alignItems: 'center', justifyContent: 'center', opacity: saving || loadingRoomTypes || roomTypes.length === 0 ? 0.6 : 1 }}>
+            <TouchableOpacity accessibilityRole="button" disabled={saving || loadingRoomTypes || roomTypes.length === 0} onPress={saveRoom} style={{ minHeight: 48, marginTop: 20, borderRadius: 999, overflow: 'hidden', backgroundColor: colors.ownerAccent, alignItems: 'center', justifyContent: 'center', opacity: saving || loadingRoomTypes || roomTypes.length === 0 ? 0.6 : 1 }}>
               {saving || loadingRoomTypes ? <ActivityIndicator color={colors.onPrimary || '#ffffff'} /> : <Text style={{ color: colors.onPrimary || '#ffffff', fontSize: fs(14), fontWeight: '800' }}>Create room</Text>}
                 </TouchableOpacity>
               </ScrollView>

@@ -87,7 +87,12 @@ async function getUserSessionFromFirebaseUser(fbUser) {
  */
 export async function loginWithEmail(email, password) {
   const cleanEmail = email.trim().toLowerCase();
-  const cleanPass = password.trim();
+  const enteredPass = password.trim();
+  const passwordCandidates = [...new Set([
+    enteredPass.toLowerCase(),
+    enteredPass.toUpperCase(),
+    enteredPass,
+  ])];
 
   if (!isFirebaseConfigured || !auth || !db) {
     throw new Error('Online sign-in is unavailable right now. Please try again later.');
@@ -95,15 +100,20 @@ export async function loginWithEmail(email, password) {
 
   // 1. Live Firebase Authentication (When configured)
   if (isFirebaseConfigured && auth) {
-    try {
-      const { signInWithEmailAndPassword } = await import('firebase/auth');
-      const userCredential = await signInWithEmailAndPassword(auth, cleanEmail, cleanPass);
-      return getUserSessionFromFirebaseUser(userCredential.user);
-    } catch (error) {
-      console.warn('Firebase sign-in failed:', error.message);
-      if (!error?.code) throw error;
-      throw getFriendlyAuthError(error, 'sign in');
+    const { signInWithEmailAndPassword } = await import('firebase/auth');
+    let lastCredentialError;
+    for (const candidate of passwordCandidates) {
+      try {
+        const userCredential = await signInWithEmailAndPassword(auth, cleanEmail, candidate);
+        return getUserSessionFromFirebaseUser(userCredential.user);
+      } catch (error) {
+        if (!['auth/invalid-credential', 'auth/wrong-password', 'auth/user-not-found'].includes(error?.code)) {
+          throw getFriendlyAuthError(error, 'sign in');
+        }
+        lastCredentialError = error;
+      }
     }
+    throw getFriendlyAuthError(lastCredentialError, 'sign in');
   }
 
   throw new Error('Could not sign in. Please check your email and password.');
@@ -188,7 +198,7 @@ export async function logout() {
  */
 export async function registerUser({ email, password, name, phone = '' }) {
   const cleanEmail = email.trim().toLowerCase();
-  const cleanPass = password.trim();
+  const cleanPass = password.trim().toLowerCase();
   const cleanName = name.trim();
   // Public self-registration is restricted to tenants. Staff roles are provisioned
   // by trusted administration in Firebase Authentication and Firestore.

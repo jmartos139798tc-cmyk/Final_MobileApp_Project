@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, TextInput, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { isMobile, isDesktop, getResponsivePadding, fs, spacing, cardStyle, safeAreaTop } from '../../utils/responsive';
+import { isMobile, isDesktop, getResponsivePadding, fs, spacing, cardStyle } from '../../utils/responsive';
 import { useTheme } from '../../utils/ThemeContext';
 import {
   getAvailableRoomsForChange,
@@ -93,7 +93,7 @@ export default function TenantRoomChangeScreen({ user }) {
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <ScrollView contentContainerStyle={{ paddingBottom: 32, alignItems: isDesktop ? 'center' : 'stretch' }} showsVerticalScrollIndicator={false}>
         <View style={{ maxWidth: containerMaxWidth, width: '100%' }}>
-          <View style={{ padding, paddingTop: isMobile ? safeAreaTop + 62 : isDesktop ? 68 : 64, paddingBottom: 20 }}>
+          <View style={{ padding, paddingTop: isMobile ? 16 : isDesktop ? 28 : 24, paddingBottom: 20 }}>
             <Text style={{ fontSize: fs(12), color: colors.textMuted, fontWeight: '800', letterSpacing: 1, marginBottom: 5 }}>TENANT PORTAL</Text>
             <Text style={{ fontSize: fs(28), color: colors.text, fontWeight: '900', letterSpacing: -0.5 }}>Room change</Text>
             <Text style={{ fontSize: fs(14), color: colors.textSecondary, marginTop: 6, lineHeight: 21 }}>
@@ -106,7 +106,7 @@ export default function TenantRoomChangeScreen({ user }) {
               </View>
             )}
             {error === 'Failed to load room change data.' && (
-              <TouchableOpacity onPress={loadData} style={{ alignSelf: 'flex-start', marginTop: 12, paddingHorizontal: 16, paddingVertical: 10, backgroundColor: colors.primary, borderRadius: 10 }}>
+              <TouchableOpacity onPress={loadData} style={{ alignSelf: 'flex-start', marginTop: 12, paddingHorizontal: 16, paddingVertical: 10, backgroundColor: colors.primary, borderRadius: 999, overflow: 'hidden' }}>
                 <Text style={{ color: colors.onPrimary, fontWeight: '700' }}>Reload room options</Text>
               </TouchableOpacity>
             )}
@@ -136,7 +136,7 @@ export default function TenantRoomChangeScreen({ user }) {
                     return (
                       <TouchableOpacity key={room.id} activeOpacity={0.75} onPress={() => { setSelectedRoomId(room.id); setError(''); }} style={{
                         borderWidth: 1.5, borderColor: selected ? colors.accent : colors.cardBorder, backgroundColor: selected ? colors.accentBg : colors.bg,
-                        borderRadius: 14, padding: 15, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 66,
+                        borderRadius: 14, overflow: 'hidden', padding: 15, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 66,
                       }}>
                         <View>
                           <Text style={{ fontSize: fs(16), color: colors.text, fontWeight: '800' }}>Room {room.number}</Text>
@@ -168,7 +168,7 @@ export default function TenantRoomChangeScreen({ user }) {
                 activeOpacity={0.8}
                 onPress={submitting ? undefined : submitRequest}
                 accessibilityState={{ disabled: submitting }}
-                style={{ pointerEvents: submitting ? 'none' : 'auto', backgroundColor: colors.primary, paddingVertical: 14, borderRadius: 12, alignItems: 'center', marginTop: 18, minHeight: 48, justifyContent: 'center', opacity: submitting ? 0.6 : 1 }}
+                style={{ pointerEvents: submitting ? 'none' : 'auto', backgroundColor: colors.primary, paddingVertical: 14, borderRadius: 999, overflow: 'hidden', alignItems: 'center', marginTop: 18, minHeight: 48, justifyContent: 'center', opacity: submitting ? 0.6 : 1 }}
               >
                 {submitting ? (
                   <ActivityIndicator size="small" color={colors.onPrimary} />

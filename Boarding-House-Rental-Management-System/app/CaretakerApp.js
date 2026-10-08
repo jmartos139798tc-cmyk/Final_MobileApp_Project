@@ -16,7 +16,7 @@ import IssuesScreen from './screens/IssuesScreen';
 import AnnouncementsScreen from './screens/AnnouncementsScreen';
 
 // Import navigation
-import BottomNav from './components/BottomNav';
+import BottomNav from './components/CaretakerBottomNav';
 
 export default function CaretakerApp({ user, onLogout }) {
   const [activeScreen, setActiveScreen] = useState('home');
@@ -163,7 +163,7 @@ export default function CaretakerApp({ user, onLogout }) {
                 <TouchableOpacity
                   onPress={closeMenu}
                   hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                  style={{ padding: 4 }}
+                  style={{ width: 40, height: 40, borderRadius: 20, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' }}
                 >
                   <Ionicons name="close" size={24} color={colors.textSecondary} />
                 </TouchableOpacity>
@@ -184,6 +184,7 @@ export default function CaretakerApp({ user, onLogout }) {
                         paddingVertical: 14,
                         paddingHorizontal: 16,
                         borderRadius: 12,
+                        overflow: 'hidden',
                         marginBottom: 6,
                         backgroundColor: isActive ? colors.accentBg : 'transparent',
                       }}
