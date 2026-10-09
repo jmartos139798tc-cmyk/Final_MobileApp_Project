@@ -5,7 +5,9 @@
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",
     "@react-native-async-storage/async-storage": "2.2.0",
+    "@supabase/supabase-js": "^2.117.3",
     "expo": "~57.0.21",
+    "expo-image-manipulator": "~57.0.21",
     "expo-image-picker": "~57.0.20",
     "expo-status-bar": "~57.0.1",
     "firebase": "^12.19.0",
@@ -13,6 +15,7 @@
     "react-dom": "19.2.3",
     "react-native": "0.86.3",
     "react-native-svg": "15.15.4",
+    "react-native-url-polyfill": "^4.0.0",
     "react-native-web": "^0.21.2"
   },
   "scripts": {
@@ -25,6 +28,7 @@
   "devDependencies": {
     "@expo/ngrok": "^4.1.0",
     "@types/react": "~19.2.4",
+    "firebase-admin": "^14.5.0",
     "react-native-svg-transformer": "^1.5.3",
     "typescript": "~6.0.3"
   }

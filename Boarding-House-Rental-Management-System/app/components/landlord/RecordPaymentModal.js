@@ -142,8 +142,6 @@ export default function RecordPaymentModal({ visible, tenant, onClose, onSuccess
 
   const paymentMethods = [
     { id: 'cash', label: 'Cash', icon: 'cash-outline' },
-    { id: 'gcash', label: 'GCash', icon: 'phone-portrait-outline' },
-    { id: 'bank_transfer', label: 'Bank Transfer', icon: 'business-outline' },
   ];
 
   return (
@@ -342,7 +340,7 @@ export default function RecordPaymentModal({ visible, tenant, onClose, onSuccess
                 <TextInput
                   value={referenceNo}
                   onChangeText={setReferenceNo}
-                  placeholder="e.g., GCash Ref: 123456789"
+                  placeholder="e.g., Cash receipt number (optional)"
                   placeholderTextColor={colors.textMuted}
                   editable={!submitting}
                   style={{

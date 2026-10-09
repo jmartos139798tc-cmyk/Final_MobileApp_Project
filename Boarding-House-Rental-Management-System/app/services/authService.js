@@ -16,6 +16,19 @@ function getFriendlyAuthError(error, action) {
       return new Error('No account exists for this email. Check the address or contact the property administrator.');
     case 'auth/configuration-not-found':
       return new Error('Firebase Authentication is not configured for this project. Enable Email/Password in Firebase Console.');
+    case 'auth/operation-not-allowed':
+      return new Error('Email and password sign-in is disabled for this Firebase project. Enable it under Firebase Console → Authentication → Sign-in method.');
+    case 'auth/invalid-api-key':
+    case 'auth/api-key-not-valid.-please-pass-a-valid-api-key.':
+      return new Error('Firebase rejected this app’s API key. Check the Firebase configuration in app/utils/firebase.js.');
+    case 'auth/app-not-authorized':
+      return new Error('This app is not authorized for the Firebase project. Check its Firebase app configuration.');
+    case 'auth/unauthorized-domain':
+      return new Error('This website domain is not authorized for Firebase Authentication. Add it in Firebase Console → Authentication → Settings → Authorized domains.');
+    case 'auth/user-disabled':
+      return new Error('This account has been disabled. Contact the property administrator.');
+    case 'auth/too-many-requests':
+      return new Error('There have been too many sign-in attempts. Wait a while, then try again.');
     case 'auth/weak-password':
       return new Error('Choose a password with at least 6 characters.');
     case 'auth/invalid-email':
@@ -26,19 +39,43 @@ function getFriendlyAuthError(error, action) {
     case 'auth/network-request-failed':
       return new Error('Could not connect to Firebase. Check your internet connection and try again.');
     default:
-      return new Error(`Could not ${action}. Please check your connection and try again.`);
+      console.warn(`Firebase ${action} failed:`, error?.code || 'unknown error', error?.message || error);
+      return new Error(`Firebase could not ${action} (${error?.code || 'unknown error'}). Check the error code and try again.`);
   }
 }
 
 async function getUserSessionFromFirebaseUser(fbUser) {
   if (!fbUser || !db) return null;
 
-  const { doc, getDoc, collection, query, where, getDocs } = await import('firebase/firestore');
+  const { doc, getDoc, collection, query, where, getDocs, setDoc } = await import('firebase/firestore');
   const userDoc = await getDoc(doc(db, COLLECTIONS.USERS, fbUser.uid));
-  const userProfile = userDoc.exists() ? userDoc.data() : null;
+  let userProfile = userDoc.exists() ? userDoc.data() : null;
 
   if (!userProfile?.role) {
-    throw new Error('Your account is missing its profile. Please contact the property administrator.');
+    // Recover Auth accounts whose original signup wrote a tenant record but did
+    // not finish creating the matching users document. The tenant query is
+    // constrained to records linked to this authenticated UID, and Firestore
+    // rules permit users to create only their own tenant user document.
+    if (!userDoc.exists() && fbUser.email) {
+      const tenantQuery = query(collection(db, COLLECTIONS.TENANTS), where('user_id', '==', fbUser.uid));
+      const tenantSnapshot = await getDocs(tenantQuery);
+      const linkedTenant = tenantSnapshot.docs[0];
+      if (linkedTenant) {
+        userProfile = {
+          id: fbUser.uid,
+          email: fbUser.email,
+          role: 'tenant',
+          created_at: new Date().toISOString(),
+        };
+        await setDoc(doc(db, COLLECTIONS.USERS, fbUser.uid), userProfile);
+      }
+    }
+  }
+
+  if (!userProfile?.role) {
+    const error = new Error('Your account is missing its profile. Please contact the property administrator.');
+    error.code = 'app/profile-missing';
+    throw error;
   }
 
   const role = userProfile.role;
@@ -66,7 +103,9 @@ async function getUserSessionFromFirebaseUser(fbUser) {
   }
 
   if (!profile && !userProfile.name) {
-    throw new Error('Your account is missing its role profile. Ask the property owner to finish setting it up.');
+    const error = new Error('Your account is missing its role profile. Ask the property owner to finish setting it up.');
+    error.code = 'app/role-profile-missing';
+    throw error;
   }
 
   const name = profile
@@ -108,6 +147,10 @@ export async function loginWithEmail(email, password) {
         const userCredential = await signInWithEmailAndPassword(auth, cleanEmail, candidate);
         return await getUserSessionFromFirebaseUser(userCredential.user);
       } catch (error) {
+        // These errors come from Firestore profile lookup after Firebase Auth has
+        // succeeded. Preserve the actionable profile message instead of reporting
+        // it as an unknown Firebase authentication error.
+        if (error?.code?.startsWith('app/')) throw error;
         if (!['auth/invalid-credential', 'auth/wrong-password', 'auth/user-not-found'].includes(error?.code)) {
           throw getFriendlyAuthError(error, 'sign in');
         }

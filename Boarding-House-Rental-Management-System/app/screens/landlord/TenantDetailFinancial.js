@@ -53,10 +53,6 @@ export default function TenantDetailFinancial({ route, navigation }) {
     switch (method?.toLowerCase()) {
       case 'cash':
         return 'cash-outline';
-      case 'gcash':
-        return 'phone-portrait-outline';
-      case 'bank_transfer':
-        return 'business-outline';
       default:
         return 'wallet-outline';
     }

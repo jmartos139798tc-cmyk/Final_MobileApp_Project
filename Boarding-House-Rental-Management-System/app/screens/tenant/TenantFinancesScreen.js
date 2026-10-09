@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, RefreshControl, ActivityIndicator, Linking, Alert } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, RefreshControl, ActivityIndicator, Linking } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../utils/ThemeContext';
 import { isMobile, getResponsivePadding, fs, spacing, cardStyle, safeAreaTop } from '../../utils/responsive';
 import { getCurrentTenant, getTenantBillingBreakdown, getTenantPaymentHistory, getTenantPaymentProofs } from '../../services/dataService';
 import SubmitPaymentProofModal from '../../components/tenant/SubmitPaymentProofModal';
+import TenantApplicationStatusCard from '../../components/tenant/TenantApplicationStatusCard';
 
 export default function TenantFinancesScreen({ user }) {
   const { colors } = useTheme();
@@ -56,11 +57,6 @@ export default function TenantFinancesScreen({ user }) {
     loadFinancialData();
   }, [user]);
 
-  const handleCopyText = (text, label) => {
-    // In a real app, you'd use Clipboard API
-    Alert.alert('Copied', `${label} copied to clipboard`, [{ text: 'OK' }]);
-  };
-
   const formatDate = (dateStr) => {
     if (!dateStr) return '-';
     try {
@@ -75,10 +71,6 @@ export default function TenantFinancesScreen({ user }) {
     switch (method?.toLowerCase()) {
       case 'cash':
         return 'cash-outline';
-      case 'gcash':
-        return 'phone-portrait-outline';
-      case 'bank_transfer':
-        return 'business-outline';
       default:
         return 'wallet-outline';
     }
@@ -105,6 +97,15 @@ export default function TenantFinancesScreen({ user }) {
             <Text style={{ fontSize: fs(14), fontWeight: '600', color: '#fff' }}>Retry</Text>
           </TouchableOpacity>
         </View>
+      </View>
+    );
+  }
+
+  if (tenantInfo.accountStatus !== 'approved') {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.bg, paddingTop: isMobile ? safeAreaTop + 16 : 40 }}>
+        <Text style={{ fontSize: fs(28), color: colors.text, fontWeight: '700', paddingHorizontal: padding, marginBottom: 18 }}>My Finances</Text>
+        <TenantApplicationStatusCard tenant={tenantInfo} tenantId={user?.tenant_id} onChanged={loadFinancialData} />
       </View>
     );
   }
@@ -197,31 +198,6 @@ export default function TenantFinancesScreen({ user }) {
           </View>
 
           <View style={{ gap: 12 }}>
-            {/* GCash */}
-            <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
-              <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' }}>
-                <Ionicons name="phone-portrait-outline" size={18} color={colors.text} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: fs(14), fontWeight: '600', color: colors.text }}>GCash</Text>
-                <TouchableOpacity onPress={() => handleCopyText('09171234567', 'GCash number')}>
-                  <Text style={{ fontSize: fs(13), color: colors.accent, marginTop: 2 }}>09171234567 (Tap to copy)</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            {/* Bank Transfer */}
-            <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
-              <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' }}>
-                <Ionicons name="business-outline" size={18} color={colors.text} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: fs(14), fontWeight: '600', color: colors.text }}>Bank Transfer</Text>
-                <Text style={{ fontSize: fs(13), color: colors.textSecondary, marginTop: 2 }}>BDO: 1234567890</Text>
-                <Text style={{ fontSize: fs(13), color: colors.textSecondary }}>Account Name: Property Owner</Text>
-              </View>
-            </View>
-
             {/* Cash */}
             <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
               <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' }}>
@@ -229,7 +205,7 @@ export default function TenantFinancesScreen({ user }) {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: fs(14), fontWeight: '600', color: colors.text }}>Cash Payment</Text>
-                <Text style={{ fontSize: fs(13), color: colors.textSecondary, marginTop: 2 }}>Office hours: Mon-Fri, 9:00 AM - 5:00 PM</Text>
+                <Text style={{ fontSize: fs(13), color: colors.textSecondary, marginTop: 2 }}>Pay the landlord or property staff in person and ask for a receipt.</Text>
               </View>
             </View>
           </View>
@@ -250,9 +226,16 @@ export default function TenantFinancesScreen({ user }) {
 
             <View style={{ gap: 10 }}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <Text style={{ fontSize: fs(14), color: colors.textSecondary }}>Monthly Rent</Text>
+                <Text style={{ fontSize: fs(14), color: colors.textSecondary }}>{billingBreakdown.invoiceType === 'initial' ? '1 Month Advance' : 'Monthly Rent'}</Text>
                 <Text style={{ fontSize: fs(14), fontWeight: '600', color: colors.text }}>₱{billingBreakdown.monthlyRent.toLocaleString()}</Text>
               </View>
+
+              {billingBreakdown.securityDeposit > 0 && (
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <Text style={{ fontSize: fs(14), color: colors.textSecondary }}>1 Month Security Deposit</Text>
+                  <Text style={{ fontSize: fs(14), fontWeight: '600', color: colors.text }}>₱{billingBreakdown.securityDeposit.toLocaleString()}</Text>
+                </View>
+              )}
 
               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                 <Text style={{ fontSize: fs(14), color: colors.textSecondary }}>Electricity</Text>
@@ -263,13 +246,6 @@ export default function TenantFinancesScreen({ user }) {
                 <Text style={{ fontSize: fs(14), color: colors.textSecondary }}>Water</Text>
                 <Text style={{ fontSize: fs(14), fontWeight: '600', color: colors.text }}>{billingBreakdown.water}</Text>
               </View>
-
-              {billingBreakdown.receiptAmount > 0 && (
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                  <Text style={{ fontSize: fs(14), color: colors.textSecondary }}>Security Deposit</Text>
-                  <Text style={{ fontSize: fs(14), fontWeight: '600', color: colors.text }}>₱{billingBreakdown.receiptAmount.toLocaleString()}</Text>
-                </View>
-              )}
 
               <View style={{ height: 1, backgroundColor: colors.cardBorder, marginVertical: 4 }} />
 

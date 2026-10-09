@@ -34,6 +34,20 @@ yarn-error.*
 .env*.local
 .env
 
+# Local migration exports contain tenant, billing, and account data.
+.migration-data/
+
+# Firebase Admin private keys must never be committed.
+firebase-service-account*.json
+serviceAccountKey*.json
+
+# Local migration exports contain tenant, billing, and account data.
+.migration-data/
+
+# Firebase Admin private keys must never be committed.
+firebase-service-account*.json
+serviceAccountKey*.json
+
 # typescript
 *.tsbuildinfo
 

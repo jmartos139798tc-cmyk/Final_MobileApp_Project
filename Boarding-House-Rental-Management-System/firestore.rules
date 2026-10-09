@@ -144,7 +144,8 @@ service cloud.firestore {
     }
 
     match /room_assignment_requests/{requestId} {
-      allow read, write: if isLandlord();
+      // Initial room and payment setup moved to Supabase.
+      allow read, write: if false;
     }
 
     match /due_date_extension_requests/{requestId} {

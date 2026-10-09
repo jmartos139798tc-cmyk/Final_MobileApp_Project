@@ -270,8 +270,8 @@ export const SEED_DATA = {
       invoice_id: 'invoice-1',
       amount_paid: 5000,
       payment_date: 'Sep 03, 2026',
-      payment_method: 'gcash',
-      reference_no: 'GC-2026090312345',
+      payment_method: 'cash',
+      reference_no: 'CASH-20260903-001',
       received_by_user_id: 'landlord-uid-1',
     },
     {
@@ -289,8 +289,8 @@ export const SEED_DATA = {
       invoice_id: 'invoice-4',
       amount_paid: 7000,
       payment_date: 'Sep 08, 2026',
-      payment_method: 'gcash',
-      reference_no: 'GC-2026090854321',
+      payment_method: 'cash',
+      reference_no: 'CASH-20260908-001',
       received_by_user_id: 'landlord-uid-1',
     },
     {

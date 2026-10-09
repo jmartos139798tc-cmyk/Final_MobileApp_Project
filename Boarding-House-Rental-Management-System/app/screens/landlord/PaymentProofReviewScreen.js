@@ -100,10 +100,6 @@ export default function PaymentProofReviewScreen() {
 
   const getMethodLabel = (method) => {
     switch (method) {
-      case 'gcash':
-        return 'GCash';
-      case 'bank_transfer':
-        return 'Bank Transfer';
       case 'cash':
         return 'Cash';
       default:
@@ -113,10 +109,6 @@ export default function PaymentProofReviewScreen() {
 
   const getMethodIcon = (method) => {
     switch (method) {
-      case 'gcash':
-        return 'phone-portrait-outline';
-      case 'bank_transfer':
-        return 'business-outline';
       case 'cash':
         return 'cash-outline';
       default:

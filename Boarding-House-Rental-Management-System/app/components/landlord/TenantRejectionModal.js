@@ -139,7 +139,7 @@ export default function TenantRejectionModal({ visible, tenant, onClose, onSucce
           </View>
 
           {/* Error Display */}
-          {error && (
+          {!!error && (
             <View style={{ backgroundColor: colors.dangerBg, padding: 12, borderRadius: 8, marginBottom: 16 }}>
               <Text style={{ fontSize: fs(14), color: colors.dangerText, fontWeight: '600' }}>{error}</Text>
             </View>

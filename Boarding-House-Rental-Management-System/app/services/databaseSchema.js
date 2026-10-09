@@ -84,7 +84,7 @@ export const COLLECTIONS = {
  * 10. PAYMENTS: Financial transactions settling invoices
  *    - PK: payment_id
  *    - FK: invoice_id -> INVOICES.invoice_id
- *    - Fields: amount_paid, payment_date, payment_method ('cash'|'gcash'), reference_no, received_by_user_id
+ *    - Fields: amount_paid, payment_date, payment_method ('cash'), reference_no, received_by_user_id
  * 
  * 11. COMPLAINTS: Issues filed by tenants
  *     - PK: complaint_id
@@ -120,11 +120,11 @@ export const COLLECTIONS = {
  *     - PK: proof_id
  *     - FK: tenant_id -> TENANTS.tenant_id
  *     - FK: invoice_id -> INVOICES.invoice_id
- *     - Fields: amount, payment_date, payment_method ('cash'|'gcash'|'bank_transfer'),
+ *     - Fields: amount, payment_date, payment_method ('cash'),
  *       reference_no, proof_image_url, notes, status ('pending'|'approved'|'rejected'),
  *       submitted_at, reviewed_at, reviewed_by_user_id, rejection_reason
  *
- * 17. ROOM_ASSIGNMENT_REQUESTS: Tenant requests for initial room assignment after payment
+ * 17. ROOM_ASSIGNMENT_REQUESTS: Supabase tenant requests for initial room assignment and payment proof
  *     - PK: request_id
  *     - FK: tenant_id -> TENANTS.tenant_id
  *     - FK: requested_room_id -> ROOMS.room_id

@@ -3,7 +3,7 @@ import { View, Text, Modal, TouchableOpacity, TextInput, ScrollView, Alert, Acti
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '../../utils/ThemeContext';
-import { fs, spacing } from '../../utils/responsive';
+import { fs } from '../../utils/responsive';
 import { submitPaymentProof } from '../../services/dataService';
 
 export default function SubmitPaymentProofModal({ visible, onClose, invoice, tenantId, onSuccess }) {
@@ -11,7 +11,7 @@ export default function SubmitPaymentProofModal({ visible, onClose, invoice, ten
   
   const [amount, setAmount] = useState(invoice?.outstanding?.toString() || '');
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
-  const [paymentMethod, setPaymentMethod] = useState('gcash');
+  const paymentMethod = 'cash';
   const [referenceNo, setReferenceNo] = useState('');
   const [notes, setNotes] = useState('');
   const [proofImage, setProofImage] = useState(null);
@@ -91,12 +91,8 @@ export default function SubmitPaymentProofModal({ visible, onClose, invoice, ten
       setError('Please enter payment date');
       return false;
     }
-    if (!paymentMethod) {
-      setError('Please select payment method');
-      return false;
-    }
     if (!proofImage) {
-      setError('Please upload proof of payment (screenshot or receipt)');
+      setError('Please upload a clear photo of your cash payment receipt');
       return false;
     }
     return true;
@@ -143,7 +139,6 @@ export default function SubmitPaymentProofModal({ visible, onClose, invoice, ten
   const handleClose = () => {
     setAmount(invoice?.outstanding?.toString() || '');
     setPaymentDate(new Date().toISOString().split('T')[0]);
-    setPaymentMethod('gcash');
     setReferenceNo('');
     setNotes('');
     setProofImage(null);
@@ -215,50 +210,18 @@ export default function SubmitPaymentProofModal({ visible, onClose, invoice, ten
               <Text style={{ fontSize: fs(12), color: colors.textMuted, marginTop: 4 }}>Format: YYYY-MM-DD (e.g., 2026-10-09)</Text>
             </View>
 
-            {/* Payment Method */}
-            <View style={{ marginBottom: 16 }}>
-              <Text style={{ fontSize: fs(14), fontWeight: '600', color: colors.text, marginBottom: 8 }}>Payment Method *</Text>
-              <View style={{ gap: 10 }}>
-                {[
-                  { value: 'gcash', label: 'GCash', icon: 'phone-portrait-outline' },
-                  { value: 'bank_transfer', label: 'Bank Transfer', icon: 'business-outline' },
-                  { value: 'cash', label: 'Cash', icon: 'cash-outline' },
-                ].map((method) => (
-                  <TouchableOpacity
-                    key={method.value}
-                    onPress={() => setPaymentMethod(method.value)}
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: 12,
-                      padding: 12,
-                      borderWidth: 1.5,
-                      borderColor: paymentMethod === method.value ? colors.accent : colors.cardBorder,
-                      borderRadius: 10,
-                      backgroundColor: paymentMethod === method.value ? colors.accentBg : colors.bg,
-                    }}
-                  >
-                    <Ionicons name={method.icon} size={20} color={paymentMethod === method.value ? colors.accent : colors.textSecondary} />
-                    <Text style={{ flex: 1, fontSize: fs(15), fontWeight: '600', color: paymentMethod === method.value ? colors.accent : colors.text }}>
-                      {method.label}
-                    </Text>
-                    <Ionicons
-                      name={paymentMethod === method.value ? 'radio-button-on' : 'radio-button-off'}
-                      size={22}
-                      color={paymentMethod === method.value ? colors.accent : colors.textMuted}
-                    />
-                  </TouchableOpacity>
-                ))}
-              </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+              <Ionicons name="cash-outline" size={20} color={colors.accent} />
+              <Text style={{ fontSize: fs(14), fontWeight: '600', color: colors.text }}>Payment method: Cash paid in person</Text>
             </View>
 
             {/* Reference Number */}
             <View style={{ marginBottom: 16 }}>
-              <Text style={{ fontSize: fs(14), fontWeight: '600', color: colors.text, marginBottom: 8 }}>Reference Number</Text>
+              <Text style={{ fontSize: fs(14), fontWeight: '600', color: colors.text, marginBottom: 8 }}>Cash Receipt Number (Optional)</Text>
               <TextInput
                 value={referenceNo}
                 onChangeText={setReferenceNo}
-                placeholder="Transaction/Reference number (optional)"
+                placeholder="Enter the number printed on your receipt"
                 placeholderTextColor={colors.textMuted}
                 style={{
                   backgroundColor: colors.bg,
@@ -274,7 +237,7 @@ export default function SubmitPaymentProofModal({ visible, onClose, invoice, ten
 
             {/* Proof Image */}
             <View style={{ marginBottom: 16 }}>
-              <Text style={{ fontSize: fs(14), fontWeight: '600', color: colors.text, marginBottom: 8 }}>Proof of Payment *</Text>
+              <Text style={{ fontSize: fs(14), fontWeight: '600', color: colors.text, marginBottom: 8 }}>Photo of Cash Receipt *</Text>
               {proofImage ? (
                 <View style={{ borderWidth: 1, borderColor: colors.successText, borderRadius: 10, padding: 12, backgroundColor: colors.successBg }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -299,7 +262,7 @@ export default function SubmitPaymentProofModal({ visible, onClose, invoice, ten
                   }}
                 >
                   <Ionicons name="camera-outline" size={32} color={colors.textMuted} />
-                  <Text style={{ fontSize: fs(14), fontWeight: '600', color: colors.text, marginTop: 8 }}>Upload Payment Proof</Text>
+                  <Text style={{ fontSize: fs(14), fontWeight: '600', color: colors.text, marginTop: 8 }}>Upload Cash Receipt Photo</Text>
                   <Text style={{ fontSize: fs(12), color: colors.textMuted, marginTop: 4, textAlign: 'center' }}>
                     Take a photo or choose from gallery
                   </Text>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, Modal, Pressable, TouchableOpacity, ActivityIndicator, TextInput, ScrollView, Alert } from 'react-native';
+import { View, Text, Image, Modal, Pressable, TouchableOpacity, ActivityIndicator, TextInput, ScrollView, Alert, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../utils/ThemeContext';
 import { isMobile, fs } from '../../utils/responsive';
@@ -20,7 +20,7 @@ export default function TenantApprovalModal({ visible, tenant, onClose, onSucces
     if (visible) {
       loadVacantRooms();
     }
-  }, [visible]);
+  }, [visible, tenant?.tenantId, tenant?.preferredRoomId]);
 
   const loadVacantRooms = async () => {
     try {
@@ -30,8 +30,10 @@ export default function TenantApprovalModal({ visible, tenant, onClose, onSucces
       setVacantRooms(rooms);
 
       if (rooms.length > 0) {
-        setSelectedRoomId(rooms[0].id);
-        setMonthlyRent(String(rooms[0].baseRent));
+        const preferredRoom = rooms.find((room) => room.id === tenant?.preferredRoomId);
+        const initialRoom = preferredRoom || rooms[0];
+        setSelectedRoomId(initialRoom.id);
+        setMonthlyRent(String(initialRoom.baseRent));
       } else {
         setError('No vacant rooms available for assignment.');
       }
@@ -53,6 +55,31 @@ export default function TenantApprovalModal({ visible, tenant, onClose, onSucces
     const rent = parseFloat(monthlyRent);
     if (isNaN(rent) || rent <= 0) return 0;
     return rent * 2; // 1 month advance + 1 month security deposit
+  };
+
+  const commitApproval = async (rent, day) => {
+    setSubmitting(true);
+    try {
+      await approveTenant({
+        tenantId: tenant.tenantId,
+        roomId: selectedRoomId,
+        monthlyRent: rent,
+        dueDay: day,
+      });
+
+      if (Platform.OS === 'web') {
+        onSuccess?.();
+        return;
+      }
+
+      Alert.alert('Success', `${tenant.name} has been approved and assigned to the selected room.`, [
+        { text: 'OK', onPress: onSuccess },
+      ]);
+    } catch (err) {
+      console.error('Approval error:', err);
+      setError(err.message || 'Failed to approve tenant. Please try again.');
+      setSubmitting(false);
+    }
   };
 
   const handleApprove = async () => {
@@ -77,43 +104,30 @@ export default function TenantApprovalModal({ visible, tenant, onClose, onSucces
         return;
       }
 
-      // Confirm approval
-      Alert.alert(
-        'Confirm Approval',
-        `Approve ${tenant.name}?\n\nRoom: ${vacantRooms.find((r) => r.id === selectedRoomId)?.displayNumber}\nMonthly Rent: ₱${rent.toLocaleString()}\nInitial Payment: ₱${calculateInitialPayment().toLocaleString()}`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Approve',
-            onPress: async () => {
-              setSubmitting(true);
-              try {
-                await approveTenant({
-                  tenantId: tenant.tenantId,
-                  roomId: selectedRoomId,
-                  monthlyRent: rent,
-                  dueDay: day,
-                });
+      const confirmation = `Approve ${tenant.name}?` +
+        `\n\nRoom: ${vacantRooms.find((r) => r.id === selectedRoomId)?.displayNumber}` +
+        `\nMonthly Rent: PHP ${rent.toLocaleString()}` +
+        `\nInitial Payment: PHP ${calculateInitialPayment().toLocaleString()}`;
 
-                Alert.alert('Success', `${tenant.name} has been approved and assigned to the selected room.`, [
-                  { text: 'OK', onPress: onSuccess },
-                ]);
-              } catch (err) {
-                console.error('Approval error:', err);
-                setError(err.message || 'Failed to approve tenant. Please try again.');
-                setSubmitting(false);
-              }
-            },
-          },
-        ]
-      );
+      // React Native Web's Alert.alert is a no-op. Use browser confirmation on
+      // web, while retaining the native confirmation dialog on mobile.
+      if (Platform.OS === 'web') {
+        if (typeof window !== 'undefined' && !window.confirm(confirmation)) return;
+        await commitApproval(rent, day);
+        return;
+      }
+
+      Alert.alert('Confirm Approval', confirmation, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Approve', onPress: () => commitApproval(rent, day) },
+      ]);
     } catch (err) {
       console.error('Validation error:', err);
       setError('An error occurred. Please try again.');
     }
   };
 
-  const selectedRoom = vacantRooms.find((r) => r.id === selectedRoomId);
+  const preferredRoomAvailable = vacantRooms.some((room) => room.id === tenant?.preferredRoomId);
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={() => !submitting && onClose()}>
@@ -169,8 +183,27 @@ export default function TenantApprovalModal({ visible, tenant, onClose, onSucces
             </View>
           </View>
 
+          {!!tenant.preferredRoomNumber && (
+            <View style={{ backgroundColor: colors.accentBg, padding: 11, borderRadius: 10, marginTop: -8, marginBottom: 14 }}>
+              <Text style={{ fontSize: fs(13), color: colors.accent, fontWeight: '700' }}>
+                Tenant preference: Room {tenant.preferredRoomNumber}. {preferredRoomAvailable ? 'It is selected by default; confirm it or choose another vacant room.' : 'It is no longer vacant; choose another vacant room.'}
+              </Text>
+            </View>
+          )}
+
+          {!!tenant.paymentProofUrl && (
+            <View style={{ backgroundColor: colors.accentBg, padding: 12, borderRadius: 10, marginBottom: 14 }}>
+              <Text style={{ fontSize: fs(13), color: colors.accent, fontWeight: '800', marginBottom: 4 }}>Initial payment proof submitted</Text>
+              <Text style={{ fontSize: fs(12), color: colors.textSecondary, marginBottom: 9 }}>
+                ₱{Number(tenant.initialPaymentAmount || 0).toLocaleString()} · paid {tenant.paymentDate || 'date not provided'}{tenant.paymentReference ? ` · Ref ${tenant.paymentReference}` : ''}
+              </Text>
+              <Image source={{ uri: tenant.paymentProofUrl }} resizeMode="contain" style={{ width: '100%', height: 150, borderRadius: 8, backgroundColor: colors.card }} />
+              <Text style={{ fontSize: fs(11), color: colors.warningText, fontWeight: '700', marginTop: 7 }}>Verify the receipt before approving the application.</Text>
+            </View>
+          )}
+
           {/* Error Display */}
-          {error && (
+          {!!error && (
             <View style={{ backgroundColor: colors.dangerBg, padding: 12, borderRadius: 8, marginBottom: 16 }}>
               <Text style={{ fontSize: fs(14), color: colors.dangerText, fontWeight: '600' }}>{error}</Text>
             </View>
@@ -301,7 +334,7 @@ export default function TenantApprovalModal({ visible, tenant, onClose, onSucces
             />
 
             {/* Payment Summary */}
-            {monthlyRent && parseFloat(monthlyRent) > 0 && (
+            {parseFloat(monthlyRent) > 0 && (
               <View
                 style={{
                   backgroundColor: colors.successBg,

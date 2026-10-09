@@ -1,15 +1,15 @@
 /**
  * 3NF Data Service Layer
  * 
- * Executes relational queries across the normalized Firestore collections. Staff
- * profiles are read by the authentication service; the remaining collections hold
- * property, tenancy, billing, issue, request, and announcement records.
+ * Reads and writes the app's Firestore collections, with the initial room and
+ * payment setup request stored in Supabase.
  * 
- * Reads and writes directly to Firebase Firestore when configured.
+ * Uses Firebase Firestore for the existing app data when configured.
  * Gracefully falls back to in-memory 3NF mock store in demo mode.
  */
 
 import { auth, db, isFirebaseConfigured } from '../utils/firebase.js';
+import { isSupabaseConfigured, supabase } from '../utils/supabase.js';
 import { COLLECTIONS } from './databaseSchema.js';
 import { getNormalizedMockDatabase, seedFirestoreDatabase } from './seedDatabase.js';
 
@@ -81,6 +81,8 @@ async function getStore() {
 
   if (role === 'owner' || role === 'caretaker' || role === 'landlord') {
     const staffResults = await Promise.all(collectionNames.map(async (name) => {
+      // Initial room setup requests are stored in Supabase, never Firestore.
+      if (name === COLLECTIONS.ROOM_ASSIGNMENT_REQUESTS) return [name, []];
       try {
         return [name, await readCollection(name)];
       } catch {
@@ -598,10 +600,12 @@ export async function getCurrentTenant(id = '2') {
 
     const leases = store[COLLECTIONS.LEASES] || [];
     const rooms = store[COLLECTIONS.ROOMS] || [];
+    const roomTypes = store[COLLECTIONS.ROOM_TYPES] || [];
     const invoices = store[COLLECTIONS.INVOICES] || [];
 
     const lease = leases.find((l) => l.tenant_id === tenant.id && l.status === 'active');
     const room = lease ? rooms.find((r) => r.id === lease.room_id) : null;
+    const roomType = room ? roomTypes.find((type) => type.id === room.type_id) : null;
     const invoice = lease ? getLatestInvoiceForLease(invoices, lease.id) : null;
     const balance = invoice ? getInvoiceBalance(invoice.id, store) : 0;
 
@@ -610,8 +614,11 @@ export async function getCurrentTenant(id = '2') {
       tenant_id: tenant.id,
       name: `${tenant.first_name} ${tenant.last_name}`,
       initials: tenant.initials,
+      accountStatus: tenant.account_status || 'pending',
+      rejectionReason: tenant.rejection_reason || '',
+      registeredAt: tenant.registered_at || null,
       roomNumber: room ? parseInt(room.room_number, 10) : null,
-      roomType: 'Single Occupancy',
+      roomType: roomType?.name || null,
       outstandingBalance: balance,
       dueDate: invoice ? invoice.due_date : 'Pending room assignment',
       color: tenant.avatar_color,
@@ -620,6 +627,212 @@ export async function getCurrentTenant(id = '2') {
     console.warn('Could not fetch current tenant:', error.message || error);
     return null;
   }
+}
+
+/** Return a pending tenant's available initial room options. */
+export async function getAvailableRoomsForInitialAssignment(tenantId) {
+  const store = await getStore();
+  const tenantKey = String(tenantId || '');
+  const tenant = (store[COLLECTIONS.TENANTS] || []).find((item) => item.id === tenantKey);
+  if (!tenant || tenant.account_status !== 'pending') return [];
+
+  const leases = store[COLLECTIONS.LEASES] || [];
+  if (leases.some((lease) => lease.tenant_id === tenantKey && lease.status === 'active')) return [];
+
+  const occupiedRoomIds = new Set(leases.filter((lease) => lease.status === 'active').map((lease) => lease.room_id));
+  const roomTypes = store[COLLECTIONS.ROOM_TYPES] || [];
+  return (store[COLLECTIONS.ROOMS] || [])
+    .filter((room) => room.status === 'vacant' && !occupiedRoomIds.has(room.id))
+    .map((room) => {
+      const type = roomTypes.find((item) => item.id === room.type_id);
+      return {
+        id: room.id,
+        number: room.room_number,
+        type: type?.name || 'Room',
+        estimatedRent: type?.base_rent || 0,
+      };
+    })
+    .sort((a, b) => String(a.number).localeCompare(String(b.number), undefined, { numeric: true }));
+}
+
+/** Return the tenant's initial room preference and its current review state. */
+export async function getTenantRoomAssignmentRequest(tenantId) {
+  const tenantKey = String(tenantId || '');
+  if (isFirebaseConfigured && !supabase) {
+    throw new Error('Supabase is required for room and payment setup. Check the Supabase project URL and publishable key.');
+  }
+  if (supabase) {
+    const { data: request, error } = await supabase
+      .from(COLLECTIONS.ROOM_ASSIGNMENT_REQUESTS)
+      .select('*')
+      .eq('tenant_id', tenantKey)
+      .maybeSingle();
+    if (error) throw error;
+    if (!request) return null;
+    const store = await getStore();
+    const room = (store[COLLECTIONS.ROOMS] || []).find((item) => item.id === request.requested_room_id);
+    const roomType = (store[COLLECTIONS.ROOM_TYPES] || []).find((item) => item.id === room?.type_id);
+    const paymentProofUrl = request.payment_proof_path
+      ? await getInitialPaymentProofUrl(request.payment_proof_path)
+      : '';
+    return {
+      id: request.id,
+      requestedRoomId: request.requested_room_id,
+      roomNumber: room?.room_number || null,
+      roomType: roomType?.name || null,
+      estimatedRent: roomType?.base_rent || 0,
+      status: request.status,
+      initialPaymentAmount: request.initial_payment_amount || null,
+      paymentDate: request.payment_date || null,
+      paymentReference: request.payment_reference || '',
+      paymentProofPath: request.payment_proof_path || '',
+      paymentProofUrl,
+      paymentProofStatus: request.payment_proof_status || 'pending',
+      requestedAt: request.requested_at,
+      updatedAt: request.updated_at || null,
+    };
+  }
+
+  const store = await getStore();
+  const requests = store[COLLECTIONS.ROOM_ASSIGNMENT_REQUESTS] || [];
+  const request = requests
+    .filter((item) => item.tenant_id === tenantKey)
+    .sort((a, b) => (Date.parse(b.updated_at || b.requested_at) || 0) - (Date.parse(a.updated_at || a.requested_at) || 0))[0];
+  if (!request) return null;
+
+  const room = (store[COLLECTIONS.ROOMS] || []).find((item) => item.id === request.requested_room_id);
+  const roomType = (store[COLLECTIONS.ROOM_TYPES] || []).find((item) => item.id === room?.type_id);
+  return {
+    id: request.id,
+    requestedRoomId: request.requested_room_id,
+    roomNumber: room?.room_number || null,
+    roomType: roomType?.name || null,
+    estimatedRent: roomType?.base_rent || 0,
+    status: request.status,
+    initialPaymentAmount: request.initial_payment_amount || null,
+    paymentDate: request.payment_date || null,
+    paymentReference: request.payment_reference || '',
+    paymentProofUrl: request.payment_proof_data || request.payment_proof_url || '',
+    paymentProofStatus: request.payment_proof_status || '',
+    requestedAt: request.requested_at,
+    updatedAt: request.updated_at || null,
+  };
+}
+
+async function getInitialPaymentProofUrl(path) {
+  const { data, error } = await supabase.storage
+    .from('initial-payment-proofs')
+    .createSignedUrl(path, 60 * 60);
+  if (error) throw error;
+  return data.signedUrl;
+}
+
+/** Resize and upload a receipt image to the private Supabase bucket. */
+export async function uploadInitialPaymentProof({ tenantId, asset }) {
+  if (!asset?.uri) throw new Error('Choose a payment proof photo first.');
+  if (!supabase) throw new Error('Supabase is not configured. Add its project URL and publishable key to the app environment.');
+  const ImageManipulator = await import('expo-image-manipulator');
+  const image = await ImageManipulator.manipulateAsync(
+    asset.uri,
+    [{ resize: { width: 1200 } }],
+    { compress: 0.65, format: ImageManipulator.SaveFormat.JPEG }
+  );
+  const response = await fetch(image.uri);
+  if (!response.ok) throw new Error('Could not prepare the selected receipt photo.');
+  const imageBuffer = await response.arrayBuffer();
+  const objectPath = `${tenantId}/${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`;
+  const { error } = await supabase.storage
+    .from('initial-payment-proofs')
+    .upload(objectPath, imageBuffer, { contentType: 'image/jpeg', upsert: false });
+  if (error) throw new Error(error.message || 'Could not upload the receipt photo to Supabase.');
+  return objectPath;
+}
+
+/** Submit or change a tenant's preferred initial room; staff still assign the room. */
+export async function submitRoomAssignmentRequest({ tenantId, requestedRoomId, paymentAmount, paymentDate, paymentReference, paymentProofPath }) {
+  const tenantKey = String(tenantId || '');
+  if (isFirebaseConfigured && !supabase) {
+    throw new Error('Supabase is required for room and payment setup. Check the Supabase project URL and publishable key.');
+  }
+  const store = await getStore();
+  const tenant = (store[COLLECTIONS.TENANTS] || []).find((item) => item.id === tenantKey);
+  if (!tenant) throw new Error('Your tenant profile is not available. Please sign in again.');
+  if (tenant.account_status !== 'pending') throw new Error('Room preferences are available while your application is awaiting approval.');
+  if ((store[COLLECTIONS.LEASES] || []).some((lease) => lease.tenant_id === tenantKey && lease.status === 'active')) {
+    throw new Error('You already have an active room assignment.');
+  }
+
+  const room = (store[COLLECTIONS.ROOMS] || []).find((item) => item.id === requestedRoomId && item.status === 'vacant');
+  if (!room) throw new Error('That room is no longer available. Refresh the list and choose another room.');
+  const occupiedRoomIds = new Set((store[COLLECTIONS.LEASES] || []).filter((lease) => lease.status === 'active').map((lease) => lease.room_id));
+  if (occupiedRoomIds.has(room.id)) throw new Error('That room is already assigned. Choose another room.');
+  const roomType = (store[COLLECTIONS.ROOM_TYPES] || []).find((item) => item.id === room.type_id);
+  const expectedAmount = Number(roomType?.base_rent || 0) * 2;
+  if (!paymentProofPath) throw new Error('Attach proof of your one month advance and one month security deposit.');
+  if (!paymentDate) throw new Error('Enter the date you paid.');
+  if (!Number.isFinite(Number(paymentAmount)) || Number(paymentAmount) <= 0) throw new Error('Enter a valid payment amount.');
+  if (expectedAmount > 0 && Number(paymentAmount) !== expectedAmount) {
+    throw new Error(`The amount for this room should be ₱${expectedAmount.toLocaleString()} (one month advance plus one month deposit).`);
+  }
+
+  const requestId = `assignment-${tenantKey}`;
+  let existing = null;
+  if (supabase) {
+    const { data, error } = await supabase.from(COLLECTIONS.ROOM_ASSIGNMENT_REQUESTS)
+      .select('id,status,requested_at').eq('id', requestId).maybeSingle();
+    if (error) throw error;
+    existing = data;
+  } else {
+    existing = (store[COLLECTIONS.ROOM_ASSIGNMENT_REQUESTS] || []).find((item) => item.id === requestId);
+  }
+  if (existing?.status === 'approved') throw new Error('Your room has already been assigned.');
+  const now = new Date().toISOString();
+  const request = {
+    id: requestId,
+    tenant_id: tenantKey,
+    requested_room_id: room.id,
+    initial_payment_amount: Number(paymentAmount),
+    payment_date: paymentDate,
+    payment_reference: paymentReference || '',
+    payment_proof_path: paymentProofPath,
+    payment_proof_status: 'pending',
+    status: 'pending',
+    requested_at: existing?.requested_at || now,
+    updated_at: now,
+  };
+
+  if (isSupabaseConfigured && !supabase) {
+    throw new Error('Supabase is not ready. Check the Supabase project URL and publishable key.');
+  }
+  if (supabase) {
+    const { error } = await supabase.from(COLLECTIONS.ROOM_ASSIGNMENT_REQUESTS)
+      .upsert(request, { onConflict: 'id' });
+    if (error) throw new Error(error.message || 'Could not save the room and payment setup to Supabase.');
+  } else {
+    const mockStore = getNormalizedMockDatabase();
+    const requests = mockStore[COLLECTIONS.ROOM_ASSIGNMENT_REQUESTS] ||
+      (mockStore[COLLECTIONS.ROOM_ASSIGNMENT_REQUESTS] = []);
+    const index = requests.findIndex((item) => item.id === requestId);
+    if (index >= 0) requests[index] = request;
+    else requests.unshift(request);
+  }
+
+  return {
+    id: requestId,
+    requestedRoomId: room.id,
+    roomNumber: room.room_number,
+    roomType: roomType?.name || 'Room',
+    estimatedRent: roomType?.base_rent || 0,
+    initialPaymentAmount: request.initial_payment_amount,
+    paymentDate: request.payment_date,
+    paymentReference: request.payment_reference,
+    paymentProofPath: request.payment_proof_path,
+    paymentProofUrl: supabase ? await getInitialPaymentProofUrl(request.payment_proof_path) : '',
+    paymentProofStatus: request.payment_proof_status,
+    status: 'pending',
+    requestedAt: request.requested_at,
+    updatedAt: now,
+  };
 }
 
 /**
@@ -649,6 +862,8 @@ export async function getTenantBillingBreakdown(id = '2') {
           : 'Current period',
         monthlyRent: invoice.rent_charge,
         electricity: invoice.utility_charge,
+        securityDeposit: invoice.security_deposit || 0,
+        invoiceType: invoice.invoice_type || 'monthly',
         water: 'Included',
         totalDue: invoice.total_amount,
         dueDate: invoice.due_date,
@@ -661,10 +876,10 @@ export async function getTenantBillingBreakdown(id = '2') {
       };
     }
 
-    return { month: '', monthlyRent: 0, electricity: 0, water: 'Included', totalDue: 0, dueDate: 'Pending room assignment', paidAmount: 0, outstanding: 0 };
+    return { month: '', monthlyRent: 0, electricity: 0, securityDeposit: 0, invoiceType: null, water: 'Included', totalDue: 0, dueDate: 'Pending room assignment', paidAmount: 0, outstanding: 0 };
   } catch (error) {
     console.warn('Could not fetch billing breakdown:', error.message || error);
-    return { month: '', monthlyRent: 0, electricity: 0, water: 'Included', totalDue: 0, dueDate: 'Pending room assignment', paidAmount: 0, outstanding: 0 };
+    return { month: '', monthlyRent: 0, electricity: 0, securityDeposit: 0, invoiceType: null, water: 'Included', totalDue: 0, dueDate: 'Pending room assignment', paidAmount: 0, outstanding: 0 };
   }
 }
 
@@ -1180,23 +1395,51 @@ export async function getVacantRoomsForAssignment() {
  */
 export async function getPendingTenantRegistrations() {
   try {
+    if (isFirebaseConfigured && !supabase) {
+      throw new Error('Supabase is required to review initial room and payment submissions.');
+    }
     const store = await getStore();
     const tenants = store[COLLECTIONS.TENANTS] || [];
+    let roomRequests = !isFirebaseConfigured ? (store[COLLECTIONS.ROOM_ASSIGNMENT_REQUESTS] || []) : [];
+    if (supabase) {
+      const { data, error } = await supabase.from(COLLECTIONS.ROOM_ASSIGNMENT_REQUESTS)
+        .select('*').eq('status', 'pending');
+      if (error) throw error;
+      roomRequests = await Promise.all((data || []).map(async (request) => ({
+        ...request,
+        payment_proof_url: request.payment_proof_path
+          ? await getInitialPaymentProofUrl(request.payment_proof_path)
+          : '',
+      })));
+    }
+    const rooms = store[COLLECTIONS.ROOMS] || [];
     
     return tenants
       .filter((tenant) => tenant.account_status === 'pending')
-      .map((tenant) => ({
-        id: tenant.id,
-        tenantId: tenant.id,
-        name: `${tenant.first_name} ${tenant.last_name}`,
-        firstName: tenant.first_name,
-        lastName: tenant.last_name,
-        email: tenant.email || 'No email',
-        phone: tenant.phone,
-        initials: tenant.initials,
-        color: tenant.avatar_color,
-        registeredAt: tenant.registered_at,
-      }))
+      .map((tenant) => {
+        const roomRequest = roomRequests.find((request) => request.tenant_id === tenant.id && request.status === 'pending');
+        const preferredRoom = rooms.find((room) => room.id === roomRequest?.requested_room_id);
+        return {
+          id: tenant.id,
+          tenantId: tenant.id,
+          name: `${tenant.first_name} ${tenant.last_name}`,
+          firstName: tenant.first_name,
+          lastName: tenant.last_name,
+          email: tenant.email || 'No email',
+          phone: tenant.phone,
+          initials: tenant.initials,
+          color: tenant.avatar_color,
+          registeredAt: tenant.registered_at,
+          preferredRoomId: preferredRoom?.id || null,
+          preferredRoomNumber: preferredRoom?.room_number || null,
+          initialPaymentAmount: roomRequest?.initial_payment_amount || null,
+          paymentDate: roomRequest?.payment_date || null,
+          paymentReference: roomRequest?.payment_reference || '',
+          paymentProofPath: roomRequest?.payment_proof_path || '',
+          paymentProofUrl: roomRequest?.payment_proof_url || '',
+          paymentProofStatus: roomRequest?.payment_proof_status || '',
+        };
+      })
       .sort((a, b) => new Date(b.registeredAt) - new Date(a.registeredAt));
   } catch (error) {
     console.error('Error fetching pending tenants:', error);
@@ -1317,7 +1560,7 @@ export async function approveTenant({ tenantId, roomId, monthlyRent, dueDay, app
       batch.set(doc(db, COLLECTIONS.INVOICES, invoiceId), newInvoice);
       batch.update(doc(db, COLLECTIONS.ROOMS, roomId), { status: 'occupied' });
       batch.set(doc(db, COLLECTIONS.TENANT_NOTIFICATIONS, notificationId), notification);
-      
+
       await batch.commit();
     } else {
       // Mock database
@@ -1331,7 +1574,7 @@ export async function approveTenant({ tenantId, roomId, monthlyRent, dueDay, app
       
       mockStore[COLLECTIONS.LEASES].push(newLease);
       mockStore[COLLECTIONS.INVOICES].push(newInvoice);
-      
+
       const mockRoom = (mockStore[COLLECTIONS.ROOMS] || []).find((r) => r.id === roomId);
       if (mockRoom) mockRoom.status = 'occupied';
       
@@ -1339,6 +1582,13 @@ export async function approveTenant({ tenantId, roomId, monthlyRent, dueDay, app
         mockStore[COLLECTIONS.TENANT_NOTIFICATIONS] = [];
       }
       mockStore[COLLECTIONS.TENANT_NOTIFICATIONS].unshift(notification);
+    }
+
+    if (supabase) {
+      const { error: assignmentSyncError } = await supabase.from(COLLECTIONS.ROOM_ASSIGNMENT_REQUESTS)
+        .update({ status: 'approved', assigned_room_id: roomId, payment_proof_status: 'approved', reviewed_at: approvedAtStr })
+        .eq('tenant_id', tenantId).eq('status', 'pending');
+      if (assignmentSyncError) console.warn('Could not update the Supabase room request after approval:', assignmentSyncError.message);
     }
     
     return {
@@ -1393,7 +1643,7 @@ export async function rejectTenant({ tenantId, rejectionReason, rejectedBy }) {
       });
       
       batch.set(doc(db, COLLECTIONS.TENANT_NOTIFICATIONS, notificationId), notification);
-      
+
       await batch.commit();
     } else {
       const mockStore = getNormalizedMockDatabase();
@@ -1403,11 +1653,18 @@ export async function rejectTenant({ tenantId, rejectionReason, rejectedBy }) {
         mockTenant.rejected_at = rejectedAtStr;
         mockTenant.rejection_reason = reason;
       }
-      
+
       if (!mockStore[COLLECTIONS.TENANT_NOTIFICATIONS]) {
         mockStore[COLLECTIONS.TENANT_NOTIFICATIONS] = [];
       }
       mockStore[COLLECTIONS.TENANT_NOTIFICATIONS].unshift(notification);
+    }
+
+    if (supabase) {
+      const { error: assignmentSyncError } = await supabase.from(COLLECTIONS.ROOM_ASSIGNMENT_REQUESTS)
+        .update({ status: 'rejected', payment_proof_status: 'rejected', reviewed_at: rejectedAtStr, rejection_reason: reason })
+        .eq('tenant_id', tenantId).eq('status', 'pending');
+      if (assignmentSyncError) console.warn('Could not update the Supabase room request after rejection:', assignmentSyncError.message);
     }
     
     return {
@@ -1714,8 +1971,8 @@ export async function recordPayment({ invoiceId, amountPaid, paymentDate, paymen
     if (isNaN(payDate.getTime())) throw new Error('Invalid payment date');
     if (payDate > new Date()) throw new Error('Payment date cannot be in the future');
     
-    if (!['cash', 'gcash', 'bank_transfer'].includes(paymentMethod)) {
-      throw new Error('Invalid payment method');
+    if (paymentMethod !== 'cash') {
+      throw new Error('Only in-person cash payments are accepted');
     }
     
     // Calculate new invoice status
@@ -1881,6 +2138,9 @@ export async function createNotification({ tenantId, type, title, message, relat
  */
 export async function submitPaymentProof({ tenantId, invoiceId, amount, paymentDate, paymentMethod, referenceNo, proofImageUrl, notes }) {
   try {
+    if (paymentMethod !== 'cash') {
+      throw new Error('Only in-person cash payments can be submitted');
+    }
     const store = await getStore();
     const tenants = store[COLLECTIONS.TENANTS] || [];
     const invoices = store[COLLECTIONS.INVOICES] || [];
