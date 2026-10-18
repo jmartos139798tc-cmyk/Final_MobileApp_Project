@@ -146,20 +146,27 @@ export default function TenantFinancialManagement({ initialFilter = 'all', navig
               accessibilityLabel="Review tenant payment proofs"
               onPress={() => navigation?.navigate('payment-review', { returnFilter: activeFilter })}
               style={{
-                minHeight: isMobile ? 32 : 42,
-                flexDirection: 'row',
+                minWidth: isMobile ? 58 : undefined,
+                minHeight: isMobile ? 46 : 42,
+                flexDirection: isMobile ? 'column' : 'row',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: isMobile ? 3 : 7,
-                paddingHorizontal: isMobile ? 5 : 14,
+                gap: isMobile ? 0 : 7,
+                paddingHorizontal: isMobile ? 7 : 14,
+                paddingVertical: isMobile ? 4 : 0,
                 borderRadius: 10,
                 backgroundColor: colors.accent,
               }}
             >
               {!isMobile && <Ionicons name="receipt-outline" size={17} color="#fff" />}
-              <Text style={{ fontSize: fs(isMobile ? 10 : 13), fontWeight: '700', color: '#fff' }}>
-                {isMobile ? 'Review Payments' : 'Payment Review'}
-              </Text>
+              {isMobile ? (
+                <>
+                  <Text style={{ fontSize: fs(10), fontWeight: '700', lineHeight: fs(12), color: '#fff' }}>Review</Text>
+                  <Text style={{ fontSize: fs(10), fontWeight: '700', lineHeight: fs(12), color: '#fff' }}>Payments</Text>
+                </>
+              ) : (
+                <Text style={{ fontSize: fs(13), fontWeight: '700', color: '#fff' }}>Payment Review</Text>
+              )}
             </TouchableOpacity>
           </View>
           <Text style={{ fontSize: fs(15), color: colors.textSecondary, marginTop: 4 }}>

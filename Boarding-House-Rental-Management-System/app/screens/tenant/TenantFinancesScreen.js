@@ -327,10 +327,10 @@ export default function TenantFinancesScreen({ user, onNavigateToApplication }) 
 
             {billingBreakdown.receiptNumber && (
               <View style={{ backgroundColor: colors.successBg, padding: 10, borderRadius: 8, marginTop: 14 }}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Text style={{ fontSize: fs(12), color: colors.successText }}>Last Payment Receipt</Text>
-                  <Text style={{ fontSize: fs(12), fontWeight: '600', color: colors.successText }}>{billingBreakdown.receiptNumber}</Text>
-                </View>
+                <Text style={{ fontSize: fs(12), color: colors.successText }}>Last Payment Receipt</Text>
+                <Text style={{ fontSize: fs(12), fontWeight: '600', color: colors.successText, width: '100%', flexShrink: 1, marginTop: 2 }}>
+                  {String(billingBreakdown.receiptNumber).replace(/(.{10})/g, '$1\u200B')}
+                </Text>
                 <Text style={{ fontSize: fs(11), color: colors.successText, marginTop: 2 }}>
                   Paid on {billingBreakdown.paymentDate}
                 </Text>
