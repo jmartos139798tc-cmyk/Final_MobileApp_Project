@@ -559,6 +559,7 @@ export default function BillingScreen() {
                     {[
                       ['Rent', item.rent],
                       ['Electricity', item.electricity],
+                      ['Water', 0],
                     ].map(([label, amount]) => (
                       <View key={label} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                         <Text style={{ fontSize: fs(13), color: colors.textSecondary }}>{label}</Text>

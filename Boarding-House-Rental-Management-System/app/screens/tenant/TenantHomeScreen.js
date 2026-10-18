@@ -338,6 +338,21 @@ export default function TenantHomeScreen({ user, onNavigateToNotifications, onNa
                   </Text>
                 </View>
 
+                <View style={{
+                  flexDirection: 'row',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  paddingVertical: 14,
+                  borderTopWidth: 1,
+                  borderTopColor: colors.divider,
+                }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <Ionicons name="water-outline" size={17} color={colors.textMuted} />
+                    <Text style={{ fontSize: fs(14), color: colors.textSecondary, fontWeight: '600' }}>Water</Text>
+                  </View>
+                  <Text style={{ fontSize: fs(16), color: colors.text, fontWeight: '700' }}>₱0</Text>
+                </View>
+
                 {(billing.additionalCharges || []).map((charge, index) => (
                   <View key={charge.id || `${charge.label}-${index}`} style={{
                     flexDirection: 'row',
@@ -415,22 +430,24 @@ export default function TenantHomeScreen({ user, onNavigateToNotifications, onNa
                     padding: isMobile ? 18 : 22,
                   }}
                 >
-                  <View style={{
-                    backgroundColor: colors.warningBg,
-                    alignSelf: 'flex-start',
-                    paddingHorizontal: 10,
-                    paddingVertical: 4,
-                    borderRadius: 8,
-                    marginBottom: 10,
-                  }}>
-                    <Text style={{
-                      fontSize: fs(12),
-                      fontWeight: '800',
-                      color: colors.warningText,
+                  {String(latestNotice.category || latestNotice.type || '').toLowerCase() !== 'payment_verified' && (
+                    <View style={{
+                      backgroundColor: colors.warningBg,
+                      alignSelf: 'flex-start',
+                      paddingHorizontal: 10,
+                      paddingVertical: 4,
+                      borderRadius: 8,
+                      marginBottom: 10,
                     }}>
-                      {latestNotice.category || latestNotice.type}
-                    </Text>
-                  </View>
+                      <Text style={{
+                        fontSize: fs(12),
+                        fontWeight: '800',
+                        color: colors.warningText,
+                      }}>
+                        {latestNotice.category || latestNotice.type}
+                      </Text>
+                    </View>
+                  )}
 
                   <Text style={{
                     fontSize: fs(16),

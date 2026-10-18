@@ -201,7 +201,7 @@ export default function TenantFinancesScreen({ user, onNavigateToApplication }) 
           <Text style={{ fontSize: fs(14), color: balance > 0 ? colors.orangetext : colors.successText, marginBottom: 8 }}>
             Current Balance
           </Text>
-          <Text style={{ fontSize: fs(36), fontWeight: '700', color: colors.warningText }}>
+          <Text style={{ fontSize: fs(36), fontWeight: '700', color: balance > 0 ? colors.warningText : colors.successText }}>
             ₱{balance.toLocaleString()}
           </Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12 }}>
@@ -287,6 +287,11 @@ export default function TenantFinancesScreen({ user, onNavigateToApplication }) 
               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                 <Text style={{ fontSize: fs(14), color: colors.textSecondary }}>Electricity</Text>
                 <Text style={{ fontSize: fs(14), fontWeight: '600', color: colors.text }}>₱{billingBreakdown.electricity.toLocaleString()}</Text>
+              </View>
+
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <Text style={{ fontSize: fs(14), color: colors.textSecondary }}>Water</Text>
+                <Text style={{ fontSize: fs(14), fontWeight: '600', color: colors.text }}>₱0</Text>
               </View>
 
               {(billingBreakdown.additionalCharges || []).map((charge, index) => (
