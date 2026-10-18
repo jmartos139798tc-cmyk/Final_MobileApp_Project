@@ -14,6 +14,13 @@ const getAnnouncementTime = (announcement) => {
   return Number.isNaN(dateTime) ? 0 : dateTime;
 };
 
+const formatApprovalDate = (value) => {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleDateString('en-PH', { day: 'numeric', month: 'long', year: 'numeric' });
+};
+
 export default function TenantHomeScreen({ user, onNavigateToNotifications, onNavigateToApplication }) {
   const { colors } = useTheme();
   const padding = getResponsivePadding();
@@ -161,6 +168,11 @@ export default function TenantHomeScreen({ user, onNavigateToNotifications, onNa
                 <Text style={{ fontSize: fs(13), color: colors.textSecondary, marginTop: 3, fontWeight: '500' }}>
                   {tenant.roomNumber ? `Room ${tenant.roomNumber} · ${tenant.roomType}` : 'Room assignment pending'}
                 </Text>
+                {tenant.accountStatus === 'approved' && formatApprovalDate(tenant.approvedAt) && (
+                  <Text style={{ fontSize: fs(12), color: colors.textMuted, marginTop: 3 }}>
+                    Approved on {formatApprovalDate(tenant.approvedAt)}
+                  </Text>
+                )}
               </View>
               {!!tenant.roomNumber && (
                 <View style={{ backgroundColor: colors.successBg, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 7, flexDirection: 'row', alignItems: 'center', gap: 6 }}>

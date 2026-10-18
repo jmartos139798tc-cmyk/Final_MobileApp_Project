@@ -23,7 +23,8 @@ export async function markAnnouncementsSeen(uid, announcements = []) {
   const latest = Math.max(0, ...announcements.map(getAnnouncementTime));
   if (!latest) return;
   try {
-    await AsyncStorage.setItem(keyFor(uid), String(latest));
+    const previous = await getLastSeen(uid);
+    await AsyncStorage.setItem(keyFor(uid), String(Math.max(previous, latest)));
   } catch {
     // Ignore storage errors; the badge just shows again next time.
   }

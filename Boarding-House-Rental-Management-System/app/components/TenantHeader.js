@@ -21,6 +21,7 @@ export default function TenantHeader({
   onBackPress,
   notificationCount = 0,
   notificationItems = [],
+  onNotificationRead,
   onNotificationsPress,
   onSettingsPress,
   isDark,
@@ -146,23 +147,6 @@ export default function TenantHeader({
             <Ionicons name={isDark ? 'sunny' : 'moon'} size={19} color={isDark ? '#fbbf24' : colors.accent} />
           </TouchableOpacity>
           <TouchableOpacity
-            onPress={() => setProfileMenuVisible(true)}
-            activeOpacity={0.7}
-            accessibilityRole="button"
-            accessibilityLabel="Open profile menu"
-            accessibilityState={{ expanded: profileMenuVisible }}
-            style={{
-              width: buttonSize,
-              height: buttonSize,
-              borderRadius: buttonSize / 2,
-              overflow: 'hidden',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Ionicons name="person-circle-outline" size={25} color={colors.textSecondary} />
-          </TouchableOpacity>
-          <TouchableOpacity
             onPress={() => {
               setSelectedNotification(null);
               setNotificationsVisible(true);
@@ -185,6 +169,23 @@ export default function TenantHeader({
                 <Text style={{ color: '#fff', fontSize: 9, lineHeight: 11, fontWeight: '800' }}>{notificationCount > 99 ? '99+' : notificationCount}</Text>
               </View>
             )}
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setProfileMenuVisible(true)}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Open profile menu"
+            accessibilityState={{ expanded: profileMenuVisible }}
+            style={{
+              width: buttonSize,
+              height: buttonSize,
+              borderRadius: buttonSize / 2,
+              overflow: 'hidden',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Ionicons name="person-circle-outline" size={25} color={colors.textSecondary} />
           </TouchableOpacity>
         </View>
       </View>
@@ -232,6 +233,7 @@ export default function TenantHeader({
                   key={item.id || `${item.title}-${index}`}
                   activeOpacity={0.75}
                   onPress={() => {
+                    onNotificationRead?.(item);
                     setSelectedNotification(item);
                     setNotificationsVisible(false);
                     setNotificationDetailVisible(true);

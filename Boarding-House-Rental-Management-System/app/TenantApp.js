@@ -2,8 +2,8 @@
 import { BackHandler, View, StatusBar, Platform } from 'react-native';
 import { isDesktop } from './utils/responsive';
 import { useTheme } from './utils/ThemeContext';
-import { getAnnouncements, getCurrentTenant, getTenantNotifications } from './services/dataService';
-import { getLastSeen, getAnnouncementTime } from './utils/announcementSeen';
+import { getAnnouncements, getCurrentTenant, getTenantNotifications, markNotificationAsRead } from './services/dataService';
+import { getLastSeen, getAnnouncementTime, markAnnouncementsSeen } from './utils/announcementSeen';
 import useRealtimeRefresh from './hooks/useRealtimeRefresh';
 
 // Import header component
@@ -84,6 +84,7 @@ export default function TenantApp({ user, onLogout }) {
           message: item.description || '',
           created_at: new Date(getAnnouncementTime(item)).toISOString(),
           read: getAnnouncementTime(item) <= lastSeen,
+          announcement: item,
         }));
         const latestItems = [...(notifications || []), ...announcementItems]
           .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
@@ -106,6 +107,23 @@ export default function TenantApp({ user, onLogout }) {
       active = false;
     };
   }, [activeScreen, tenantUser?.uid, tenantUser?.tenant_id, realtimeVersion]);
+
+  const handleNotificationRead = async (item) => {
+    if (!item || item.read) return;
+    setNotificationItems((current) => current.map((notification) => (
+      notification.id === item.id ? { ...notification, read: true } : notification
+    )));
+    setNotificationBadge((count) => Math.max(0, count - 1));
+    try {
+      if (item.type === 'announcement') {
+        await markAnnouncementsSeen(tenantUser?.uid || tenantUser?.tenant_id, [item.announcement || item]);
+      } else {
+        await markNotificationAsRead(item.id);
+      }
+    } catch (error) {
+      console.error('Could not save notification read state:', error);
+    }
+  };
 
   const getScreenTitle = () => {
     switch (activeScreen) {
@@ -178,6 +196,7 @@ export default function TenantApp({ user, onLogout }) {
         onBackPress={activeScreen === 'application' ? () => setActiveScreen('home') : undefined}
         notificationCount={notificationBadge}
         notificationItems={notificationItems}
+        onNotificationRead={handleNotificationRead}
         onNotificationsPress={() => setActiveScreen('notifications')}
         onSettingsPress={() => setActiveScreen('settings')}
         isDark={isDark}

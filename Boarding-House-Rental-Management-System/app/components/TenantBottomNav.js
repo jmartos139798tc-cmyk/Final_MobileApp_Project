@@ -13,7 +13,6 @@ export default function TenantBottomNav({ user, activeScreen, onNavigate, badges
     { id: 'home', label: 'Home', icon: 'home', iconOutline: 'home-outline' },
     { id: 'finances', label: 'Finances', icon: 'wallet', iconOutline: 'wallet-outline' },
     { id: 'complaints', label: 'Complaints', icon: 'chatbubble', iconOutline: 'chatbubble-outline' },
-    { id: 'updates', label: 'Updates', icon: 'megaphone', iconOutline: 'megaphone-outline' },
   ];
 
   // Desktop: sidebar

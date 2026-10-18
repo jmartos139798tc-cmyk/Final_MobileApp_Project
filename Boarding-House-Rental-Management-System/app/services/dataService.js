@@ -704,6 +704,7 @@ export async function getCurrentTenant(id = '2') {
       name: `${tenant.first_name} ${tenant.last_name}`,
       initials: tenant.initials,
       accountStatus: tenant.account_status || 'pending',
+      approvedAt: tenant.approved_at || null,
       rejectionReason: tenant.rejection_reason || '',
       registeredAt: tenant.registered_at || null,
       roomNumber: room ? parseInt(room.room_number, 10) : null,
@@ -1201,6 +1202,35 @@ export async function getTenantComplaints(tenantId) {
   }
 }
 
+/** Remove a resolved complaint from the tenant's complaint history. */
+export async function deleteResolvedTenantComplaint(complaintId, tenantId) {
+  if (!complaintId || !tenantId) throw new Error('Complaint could not be identified.');
+  try {
+    if (isSupabaseConfigured && supabase) {
+      const { data, error } = await supabase.from(COLLECTIONS.COMPLAINTS)
+        .delete()
+        .eq('id', complaintId)
+        .eq('tenant_id', tenantId)
+        .eq('status', 'resolved')
+        .select('id');
+      if (error) throw error;
+      if (!data?.length) {
+        throw new Error('Supabase did not delete this complaint. Apply the tenant resolved-complaint delete policy migration and confirm this complaint belongs to your account.');
+      }
+    } else {
+      const mockStore = getNormalizedMockDatabase();
+      const complaints = mockStore[COLLECTIONS.COMPLAINTS] || [];
+      const index = complaints.findIndex((item) => item.id === complaintId
+        && item.tenant_id === tenantId && item.status === 'resolved');
+      if (index < 0) throw new Error('Only your resolved complaints can be removed.');
+      complaints.splice(index, 1);
+    }
+  } catch (error) {
+    console.error('Error removing resolved tenant complaint:', error);
+    throw new Error(error.message || 'Could not remove this resolved complaint. Please try again.');
+  }
+}
+
 /**
  * 16. Submit Complaint (Direct to Supabase)
  */
@@ -1265,6 +1295,7 @@ export async function getRentBilling(billingPeriod = getCurrentBillingPeriod()) 
     const rooms = store[COLLECTIONS.ROOMS] || [];
     const roomTypes = store[COLLECTIONS.ROOM_TYPES] || [];
     const invoices = store[COLLECTIONS.INVOICES] || [];
+    const utilityReadings = store[COLLECTIONS.UTILITY_READINGS] || [];
 
     return tenants
       .filter((tenant) => {
@@ -1275,10 +1306,19 @@ export async function getRentBilling(billingPeriod = getCurrentBillingPeriod()) 
         const lease = leases.find((l) => l.tenant_id === tenant.id && l.status === 'active');
         const room = rooms.find((r) => r.id === lease.room_id);
         const roomType = roomTypes.find((type) => type.id === room?.type_id);
-        const invoice = invoices.find((item) => item.lease_id === lease.id && item.billing_period === billingPeriod) || null;
+        const periodInvoices = invoices.filter((item) => item.lease_id === lease.id && item.billing_period === billingPeriod);
+        const invoice = periodInvoices.find((item) => item.invoice_type !== 'initial')
+          || periodInvoices.find((item) => item.invoice_type === 'initial')
+          || null;
+        const reading = utilityReadings.find((item) => item.room_id === lease.room_id && item.billing_period === billingPeriod);
         const balance = invoice ? getInvoiceBalance(invoice.id, store) : 0;
         const paidAmount = invoice ? Math.max(0, getInvoiceTotalAmount(invoice) - balance) : 0;
         const status = !invoice ? 'unbilled' : balance === 0 ? 'paid' : paidAmount > 0 ? 'partial' : 'unpaid';
+        const rent = invoice?.rent_charge ?? lease.agreed_monthly_rent ?? roomType?.base_rent ?? 0;
+        const electricity = invoice?.utility_charge ?? calculateElectricityCharge(reading).amount;
+        const totalAmount = invoice
+          ? getInvoiceTotalAmount(invoice)
+          : Number(rent) + electricity + (billingPeriod === getCurrentBillingPeriod() ? WIFI_CHARGE.amount : 0);
 
         return {
           id: String(tenant.id).replace('tenant-', ''),
@@ -1288,8 +1328,8 @@ export async function getRentBilling(billingPeriod = getCurrentBillingPeriod()) 
           room: room ? `R${parseInt(room.room_number, 10)}` : 'R?',
           roomNumber: room?.room_number || '?',
           dueDate: invoice ? String(invoice.due_date || '') : 'Not billed',
-          amount: invoice?.rent_charge ?? lease.agreed_monthly_rent ?? roomType?.base_rent ?? 0,
-          totalAmount: invoice ? getInvoiceTotalAmount(invoice) : lease.agreed_monthly_rent ?? roomType?.base_rent ?? 0,
+          amount: rent,
+          totalAmount,
           balance,
           status,
           color: tenant.avatar_color || '#8b5cf6',

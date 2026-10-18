@@ -526,8 +526,7 @@ export default function RoomsScreen() {
           />
           <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-            style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}
-            pointerEvents="box-none"
+            style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20, pointerEvents: 'box-none' }}
           >
             <View style={{ width: '100%', maxWidth: 440, maxHeight: '88%', backgroundColor: colors.card, borderColor: colors.cardBorder, borderWidth: 1, borderRadius: 22, overflow: 'hidden' }}>
               <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 22 }}>

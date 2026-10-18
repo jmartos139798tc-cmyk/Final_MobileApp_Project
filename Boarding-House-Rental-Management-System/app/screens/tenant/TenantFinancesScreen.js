@@ -192,16 +192,16 @@ export default function TenantFinancesScreen({ user, onNavigateToApplication }) 
         <View
           style={{
             ...cardStyle,
-            backgroundColor: balance > 0 ? colors.dangerBg : colors.successBg,
+            backgroundColor: balance > 0 ? colors.warningBg : colors.successBg,
             borderColor: balance > 0 ? colors.dangerText : colors.successText,
             padding: 20,
             marginBottom: spacing.sm,
           }}
         >
-          <Text style={{ fontSize: fs(14), color: balance > 0 ? colors.dangerText : colors.successText, marginBottom: 8 }}>
+          <Text style={{ fontSize: fs(14), color: balance > 0 ? colors.orangetext : colors.successText, marginBottom: 8 }}>
             Current Balance
           </Text>
-          <Text style={{ fontSize: fs(36), fontWeight: '700', color: balance > 0 ? colors.dangerText : colors.successText }}>
+          <Text style={{ fontSize: fs(36), fontWeight: '700', color: colors.warningText }}>
             ₱{balance.toLocaleString()}
           </Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12 }}>
@@ -210,7 +210,7 @@ export default function TenantFinancesScreen({ user, onNavigateToApplication }) 
               size={18}
               color={balance > 0 ? colors.dangerText : colors.successText}
             />
-            <Text style={{ fontSize: fs(14), fontWeight: '600', color: balance > 0 ? colors.dangerText : colors.successText }}>
+            <Text style={{ fontSize: fs(14), fontWeight: '600', color: balance > 0 ? colors.warningText : colors.successText }}>
               {balance === 0 ? 'All Paid Up!' : isOverdue ? `OVERDUE - Due: ${billingBreakdown?.dueDate}` : `Due: ${billingBreakdown?.dueDate || 'TBD'}`}
             </Text>
           </View>

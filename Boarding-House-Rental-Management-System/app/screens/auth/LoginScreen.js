@@ -193,7 +193,7 @@ function PrivacyConsentModal({ visible, onClose, onAgree, onDecline, checked, on
       <View style={styles.modalBackdrop}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close privacy consent" />
         {validationMessage ? (
-          <Animated.View pointerEvents="none" style={{ position: 'absolute', top: 48, left: 24, right: 24, alignItems: 'center', zIndex: 2, opacity: validationOpacity }}>
+          <Animated.View style={{ pointerEvents: 'none', position: 'absolute', top: 48, left: 24, right: 24, alignItems: 'center', zIndex: 2, opacity: validationOpacity }}>
             <View style={{ backgroundColor: palette.dangerBg, borderColor: palette.danger, borderWidth: 1, borderRadius: 12, paddingVertical: 12, paddingHorizontal: 16, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 10, elevation: 6 }}>
               <Text style={{ color: palette.danger, fontSize: 14, fontWeight: '600', textAlign: 'center' }}>{validationMessage}</Text>
             </View>
@@ -246,7 +246,7 @@ function PrivacyConsentModal({ visible, onClose, onAgree, onDecline, checked, on
 function HeroArcs({ palette, screenWidth }) {
   const arcSize = Math.max(screenWidth * 0.9, 320);
   return (
-    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+    <View style={[StyleSheet.absoluteFill, { pointerEvents: 'none' }]}>
       {/* Large arc – upper-right */}
       <View
         style={[
@@ -737,7 +737,7 @@ export default function LoginScreen({ onLoginSuccess }) {
       </KeyboardAvoidingView>
 
       {isRegistering && message?.type === 'error' ? (
-        <Animated.View pointerEvents="none" style={{ position: 'absolute', top: safeAreaTop + 16, left: 24, right: 24, alignItems: 'center', zIndex: 10, opacity: signupToastOpacity }}>
+        <Animated.View style={{ pointerEvents: 'none', position: 'absolute', top: safeAreaTop + 16, left: 24, right: 24, alignItems: 'center', zIndex: 10, opacity: signupToastOpacity }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: palette.dangerBg, borderColor: palette.danger, borderWidth: 1, borderRadius: 12, paddingVertical: 12, paddingHorizontal: 16, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 10, elevation: 6 }}>
             <Ionicons name="alert-circle-outline" size={19} color={palette.danger} />
             <Text style={{ color: palette.text, fontSize: 13, lineHeight: 19, flexShrink: 1 }}>{message.text}</Text>

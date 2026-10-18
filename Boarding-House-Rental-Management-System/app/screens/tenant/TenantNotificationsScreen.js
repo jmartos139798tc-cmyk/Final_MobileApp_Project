@@ -4,7 +4,7 @@ import { View, Text, ScrollView, TouchableOpacity, RefreshControl, ActivityIndic
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../utils/ThemeContext';
 import { isMobile, getResponsivePadding, fs, spacing, cardStyle, safeAreaTop } from '../../utils/responsive';
-import { getTenantNotifications, markNotificationAsRead, dismissTenantNotification, getAnnouncements } from '../../services/dataService';
+import { getTenantNotifications, markNotificationAsRead, dismissTenantNotification, deleteResolvedTenantComplaint, getAnnouncements } from '../../services/dataService';
 import AnnouncementDetailsModal from '../../components/AnnouncementDetailsModal';
 import { getLastSeen, markAnnouncementsSeen, getAnnouncementTime, getDismissedAnnouncementIds, dismissAnnouncement } from '../../utils/announcementSeen';
 import useRealtimeRefresh from '../../hooks/useRealtimeRefresh';
@@ -76,6 +76,10 @@ export default function TenantNotificationsScreen({ user }) {
 
   const handleNotificationPress = async (notification) => {
     if (notification.type === 'announcement') {
+      setNotifications((prev) =>
+        prev.map((item) => (item.id === notification.id ? { ...item, read: true } : item))
+      );
+      await markAnnouncementsSeen(user?.uid || user?.tenant_id, [notification.announcement]);
       setSelectedAnnouncement(notification.announcement);
       return;
     }
@@ -98,6 +102,12 @@ export default function TenantNotificationsScreen({ user }) {
       if (notification.type === 'announcement') {
         await dismissAnnouncement(user?.uid || user?.tenant_id, notification.id);
       } else {
+        const complaintId = notification.related_complaint_id
+          || notification.complaint_id
+          || notification.data?.complaint_id;
+        if (String(notification.type || '').toLowerCase().includes('complaint') && complaintId) {
+          await deleteResolvedTenantComplaint(complaintId, tenantId);
+        }
         await dismissTenantNotification(notification.id);
       }
     } catch (err) {

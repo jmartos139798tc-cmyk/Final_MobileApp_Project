@@ -1,10 +1,10 @@
 import ScreenSkeleton from '../../components/ScreenSkeleton';
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Modal, TextInput, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Modal, TextInput, ActivityIndicator, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { isMobile, isDesktop, getResponsivePadding, fs, spacing, cardStyle, cardShadow } from '../../utils/responsive';
 import { useTheme } from '../../utils/ThemeContext';
-import { getTenantComplaints, submitComplaint } from '../../services/dataService';
+import { getTenantComplaints, submitComplaint, deleteResolvedTenantComplaint } from '../../services/dataService';
 import useRealtimeRefresh from '../../hooks/useRealtimeRefresh';
 
 export default function TenantComplaintsScreen({ user }) {
@@ -21,6 +21,9 @@ export default function TenantComplaintsScreen({ user }) {
   const [newDescription, setNewDescription] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
+  const [hoveredComplaintId, setHoveredComplaintId] = useState(null);
+  const [removingComplaintId, setRemovingComplaintId] = useState(null);
+  const [removeError, setRemoveError] = useState('');
 
   const loadComplaints = async () => {
     try {
@@ -68,6 +71,20 @@ export default function TenantComplaintsScreen({ user }) {
       setSubmitError(err.message || 'Failed to submit complaint. Please try again.');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleRemoveResolvedComplaint = async (item) => {
+    const complaintId = item.complaint_id || `comp-${item.id}`;
+    try {
+      setRemovingComplaintId(complaintId);
+      setRemoveError('');
+      await deleteResolvedTenantComplaint(complaintId, user?.tenant_id);
+      setComplaints((current) => current.filter((complaint) => complaint.complaint_id !== complaintId));
+    } catch (err) {
+      setRemoveError(err.message || 'Could not remove the resolved complaint.');
+    } finally {
+      setRemovingComplaintId(null);
     }
   };
 
@@ -133,6 +150,7 @@ export default function TenantComplaintsScreen({ user }) {
 
           {/* Complaints List */}
           <View style={{ paddingHorizontal: padding, gap: spacing.md }}>
+            {!!removeError && <Text style={{ color: colors.dangerText, fontSize: fs(13), fontWeight: '600' }}>{removeError}</Text>}
             {complaints.length === 0 ? (
               <View style={{
                 ...cardStyle,
@@ -156,6 +174,8 @@ export default function TenantComplaintsScreen({ user }) {
                 return (
                   <View
                     key={item.id || item.complaint_id}
+                    onMouseEnter={Platform.OS === 'web' && item.status === 'resolved' ? () => setHoveredComplaintId(item.complaint_id) : undefined}
+                    onMouseLeave={Platform.OS === 'web' && item.status === 'resolved' ? () => setHoveredComplaintId(null) : undefined}
                     style={{
                       ...cardStyle,
                       backgroundColor: colors.card,
@@ -166,7 +186,7 @@ export default function TenantComplaintsScreen({ user }) {
                     <View style={{
                       flexDirection: 'row',
                       justifyContent: 'space-between',
-                      alignItems: 'flex-start',
+                      alignItems: 'center',
                       gap: 12,
                     }}>
                       <Text style={{
@@ -193,6 +213,18 @@ export default function TenantComplaintsScreen({ user }) {
                           {badge.label}
                         </Text>
                       </View>
+                      {item.status === 'resolved' && (Platform.OS !== 'web' || hoveredComplaintId === item.complaint_id) && (
+                        <TouchableOpacity
+                          accessibilityRole="button"
+                          accessibilityLabel={`Remove resolved complaint: ${item.title}`}
+                          disabled={removingComplaintId === item.complaint_id}
+                          onPress={() => handleRemoveResolvedComplaint(item)}
+                          hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
+                          style={{ width: 24, height: 24, alignItems: 'center', justifyContent: 'center', opacity: removingComplaintId === item.complaint_id ? 0.5 : 1 }}
+                        >
+                          <Ionicons name="close" size={17} color={colors.textMuted} />
+                        </TouchableOpacity>
+                      )}
                     </View>
 
                     {!!item.description && <Text style={{ fontSize: fs(14), color: colors.textSecondary, marginTop: 10, lineHeight: 21 }}>{item.description}</Text>}
