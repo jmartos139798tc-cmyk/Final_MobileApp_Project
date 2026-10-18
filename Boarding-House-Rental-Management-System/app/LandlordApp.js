@@ -17,6 +17,7 @@ import LandlordReports from './screens/landlord/LandlordReports';
 import PendingApprovalsScreen from './screens/landlord/PendingApprovalsScreen';
 import TenantFinancialManagement from './screens/landlord/TenantFinancialManagement';
 import TenantDetailFinancial from './screens/landlord/TenantDetailFinancial';
+import PaymentReviewScreen from './screens/landlord/PaymentReviewScreen';
 
 // Import navigation
 import LandlordBottomNav from './components/LandlordBottomNav';
@@ -81,6 +82,8 @@ export default function LandlordApp({ user, onLogout }) {
         return 'Tenant Finances';
       case 'tenant-detail':
         return 'Tenant Financial Details';
+      case 'payment-review':
+        return 'Payment Review';
       default:
         return 'Dashboard';
     }
@@ -110,7 +113,7 @@ export default function LandlordApp({ user, onLogout }) {
         setMenuVisible(false);
         return true;
       }
-      if (activeScreen === 'tenant-detail') {
+      if (activeScreen === 'tenant-detail' || activeScreen === 'payment-review') {
         handleNavigate('finances', { filter: navigationParams?.returnFilter || 'all' });
         return true;
       }
@@ -152,6 +155,8 @@ export default function LandlordApp({ user, onLogout }) {
             initialFilter={navigationParams?.filter || 'all'}
           />
         );
+      case 'payment-review':
+        return <PaymentReviewScreen user={user} navigation={navigation} />;
       case 'tenant-detail':
         return <TenantDetailFinancial route={{ params: navigationParams }} navigation={navigation} />;
       default:
@@ -201,7 +206,9 @@ export default function LandlordApp({ user, onLogout }) {
       ) : (
         <>
           <View style={{ flex: 1 }}>{renderScreen()}</View>
-          <LandlordBottomNav activeScreen={activeScreen} onNavigate={handleNavigate} user={user} pendingApprovalsCount={pendingApprovalsCount} />
+          {activeScreen !== 'payment-review' && (
+            <LandlordBottomNav activeScreen={activeScreen} onNavigate={handleNavigate} user={user} pendingApprovalsCount={pendingApprovalsCount} />
+          )}
         </>
       )}
 

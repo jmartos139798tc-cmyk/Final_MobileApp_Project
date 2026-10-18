@@ -147,22 +147,6 @@ export default function OwnerDashboard() {
           </View>
 
           <View style={{ paddingHorizontal: padding, gap: spacing.lg }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', ...cardStyle, backgroundColor: colors.card, borderColor: colors.cardBorder, paddingHorizontal: 14, paddingVertical: 10 }}>
-              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Previous month" onPress={() => setSelectedPeriod((period) => shiftPeriod(period, -1))} style={{ width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg }}>
-                <Ionicons name="chevron-back" size={20} color={colors.text} />
-              </TouchableOpacity>
-              <View style={{ alignItems: 'center' }}>
-                <Text style={{ fontSize: fs(10), color: colors.textMuted, fontWeight: '700', letterSpacing: 1 }}>VIEWING MONTH</Text>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3 }}>
-                  <Text style={{ fontSize: fs(15), color: colors.text, fontWeight: '800' }}>{formatPeriod(selectedPeriod)}</Text>
-                  {revenueLoading && <ActivityIndicator size="small" color={colors.ownerAccent} />}
-                </View>
-              </View>
-              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Next month" onPress={() => setSelectedPeriod((period) => shiftPeriod(period, 1))} style={{ width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg }}>
-                <Ionicons name="chevron-forward" size={20} color={colors.text} />
-              </TouchableOpacity>
-            </View>
-
             {/* ── Revenue Hero Card ───────────────────── */}
             <View style={{
               borderRadius: 24,
@@ -187,16 +171,44 @@ export default function OwnerDashboard() {
                   borderBottomLeftRadius: 60,
                 }} />
 
-                <Text style={{
-                  fontSize: fs(10),
-                  fontWeight: '800',
-                  color: 'rgba(255,255,255,0.7)',
-                  letterSpacing: 1.5,
-                  textTransform: 'uppercase',
-                  marginBottom: 12,
-                }}>
-                  Cash received in {formatPeriod(selectedPeriod)}
-                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+                  <TouchableOpacity
+                    accessibilityRole="button"
+                    accessibilityLabel="Previous month"
+                    accessibilityHint="Shows the previous month's dashboard data"
+                    activeOpacity={0.75}
+                    onPress={() => setSelectedPeriod((period) => shiftPeriod(period, -1))}
+                    style={{ width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.18)' }}
+                  >
+                    <Ionicons name="chevron-back" size={20} color="#fff" />
+                  </TouchableOpacity>
+                  <Text
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.8}
+                    style={{
+                      flex: 1,
+                      textAlign: 'center',
+                      fontSize: fs(10),
+                      fontWeight: '800',
+                      color: 'rgba(255,255,255,0.7)',
+                      letterSpacing: 1,
+                      textTransform: 'uppercase',
+                    }}
+                  >
+                    Cash received in {formatPeriod(selectedPeriod)}
+                  </Text>
+                  <TouchableOpacity
+                    accessibilityRole="button"
+                    accessibilityLabel="Next month"
+                    accessibilityHint="Shows the next month's dashboard data"
+                    activeOpacity={0.75}
+                    onPress={() => setSelectedPeriod((period) => shiftPeriod(period, 1))}
+                    style={{ width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.18)' }}
+                  >
+                    <Ionicons name="chevron-forward" size={20} color="#fff" />
+                  </TouchableOpacity>
+                </View>
 
                 <Text style={{
                   fontSize: fs(36),
@@ -408,4 +420,3 @@ export default function OwnerDashboard() {
     </View>
   );
 }
-

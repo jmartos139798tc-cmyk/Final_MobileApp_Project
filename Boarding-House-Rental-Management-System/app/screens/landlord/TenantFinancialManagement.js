@@ -139,7 +139,29 @@ export default function TenantFinancialManagement({ initialFilter = 'all', navig
           >
             OWNER PORTAL
           </Text>
-          <Text style={{ fontSize: fs(32), color: colors.text, fontWeight: '700' }}>Tenant Finances</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: isMobile ? 4 : spacing.sm }}>
+            <Text style={{ fontSize: fs(32), color: colors.text, fontWeight: '700', flex: 1 }}>Tenant Finances</Text>
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Review tenant payment proofs"
+              onPress={() => navigation?.navigate('payment-review', { returnFilter: activeFilter })}
+              style={{
+                minHeight: isMobile ? 32 : 42,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: isMobile ? 3 : 7,
+                paddingHorizontal: isMobile ? 5 : 14,
+                borderRadius: 10,
+                backgroundColor: colors.accent,
+              }}
+            >
+              {!isMobile && <Ionicons name="receipt-outline" size={17} color="#fff" />}
+              <Text style={{ fontSize: fs(isMobile ? 10 : 13), fontWeight: '700', color: '#fff' }}>
+                {isMobile ? 'Review Payments' : 'Payment Review'}
+              </Text>
+            </TouchableOpacity>
+          </View>
           <Text style={{ fontSize: fs(15), color: colors.textSecondary, marginTop: 4 }}>
             Manage payments and balances
           </Text>

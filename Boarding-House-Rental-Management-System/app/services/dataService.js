@@ -2704,7 +2704,7 @@ export async function getPendingPaymentProofs() {
       .sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
   } catch (error) {
     console.error('Error fetching pending payment proofs:', error);
-    return [];
+    throw error;
   }
 }
 
