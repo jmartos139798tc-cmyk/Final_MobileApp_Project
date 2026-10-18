@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Keyboard, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, TouchableWithoutFeedback, View } from 'react-native';
 import { completePasswordRecovery } from '../../services/authService';
 import { useTheme } from '../../utils/ThemeContext';
 
@@ -28,6 +28,8 @@ export default function PasswordRecoveryScreen({ onComplete }) {
   };
 
   return (
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined} style={{ flex: 1 }}>
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
     <View style={[styles.page, { backgroundColor: colors.bg }]}>
       <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
         <Text style={[styles.title, { color: colors.text }]}>Choose a new password</Text>
@@ -61,6 +63,8 @@ export default function PasswordRecoveryScreen({ onComplete }) {
         </Pressable>
       </View>
     </View>
+    </TouchableWithoutFeedback>
+    </KeyboardAvoidingView>
   );
 }
 

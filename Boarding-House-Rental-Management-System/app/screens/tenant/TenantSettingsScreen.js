@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Keyboard, KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { getTenantSettingsProfile } from '../../services/dataService';
 import { updateTenantAccount } from '../../services/authService';
@@ -113,6 +113,8 @@ export default function TenantSettingsScreen({ user, onBack, onUserUpdated }) {
   };
 
   return (
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined} style={{ flex: 1 }}>
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
     <ScrollView
       style={{ flex: 1, backgroundColor: colors.bg }}
       contentContainerStyle={{ padding, paddingTop: 20, paddingBottom: 32, alignItems: isDesktop ? 'center' : 'stretch' }}
@@ -193,5 +195,7 @@ export default function TenantSettingsScreen({ user, onBack, onUserUpdated }) {
         </TouchableOpacity>
       </View>
     </ScrollView>
+    </TouchableWithoutFeedback>
+    </KeyboardAvoidingView>
   );
 }

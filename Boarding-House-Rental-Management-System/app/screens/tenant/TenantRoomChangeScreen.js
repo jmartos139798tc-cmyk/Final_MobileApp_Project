@@ -1,6 +1,6 @@
 import ScreenSkeleton from '../../components/ScreenSkeleton';
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, TextInput, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Keyboard, KeyboardAvoidingView, Platform, TouchableWithoutFeedback } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { isMobile, isDesktop, getResponsivePadding, fs, spacing, cardStyle } from '../../utils/responsive';
 import { useTheme } from '../../utils/ThemeContext';
@@ -91,6 +91,8 @@ export default function TenantRoomChangeScreen({ user }) {
   if (loading) return <ScreenSkeleton />;
 
   return (
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined} style={{ flex: 1 }}>
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <ScrollView contentContainerStyle={{ paddingBottom: 32, alignItems: isDesktop ? 'center' : 'stretch' }} showsVerticalScrollIndicator={false}>
         <View style={{ maxWidth: containerMaxWidth, width: '100%' }}>
@@ -208,6 +210,8 @@ export default function TenantRoomChangeScreen({ user }) {
         </View>
       </ScrollView>
     </View>
+    </TouchableWithoutFeedback>
+    </KeyboardAvoidingView>
   );
 }
 
