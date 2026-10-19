@@ -3,7 +3,7 @@ import { View, Text, Modal, TouchableOpacity, ActivityIndicator, TextInput, Scro
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../utils/ThemeContext';
 import { isMobile, fs } from '../../utils/responsive';
-import { recordPayment, getTenantFinancialSummary, getNextUnpaidInvoiceForTenant } from '../../services/dataService';
+import { recordPayment, updatePayment, getTenantFinancialSummary, getNextUnpaidInvoiceForTenant, getInvoiceWithPayments } from '../../services/dataService';
 
 function getLocalDateString(date = new Date()) {
   const year = date.getFullYear();
@@ -12,18 +12,18 @@ function getLocalDateString(date = new Date()) {
   return `${year}-${month}-${day}`;
 }
 
-export default function RecordPaymentModal({ visible, tenant, onClose, onSuccess }) {
+export default function RecordPaymentModal({ visible, tenant, paymentToEdit = null, onClose, onSuccess }) {
   const { colors } = useTheme();
 
   const [loading, setLoading] = useState(true);
   const [outstandingBalance, setOutstandingBalance] = useState(0);
   const [latestInvoiceId, setLatestInvoiceId] = useState(null);
+  const [editingPaymentId, setEditingPaymentId] = useState(null);
   const [invoiceBalance, setInvoiceBalance] = useState(0);
   
   const [amount, setAmount] = useState('');
   const [paymentDate, setPaymentDate] = useState(getLocalDateString());
   const [paymentMethod, setPaymentMethod] = useState('cash');
-  const [referenceNo, setReferenceNo] = useState('');
   const [notes, setNotes] = useState('');
   
   const [error, setError] = useState('');
@@ -34,7 +34,7 @@ export default function RecordPaymentModal({ visible, tenant, onClose, onSuccess
     if (visible && tenant) {
       loadTenantBalance();
     }
-  }, [visible, tenant]);
+  }, [visible, tenant, paymentToEdit?.id]);
 
   const loadTenantBalance = async () => {
     try {
@@ -42,22 +42,27 @@ export default function RecordPaymentModal({ visible, tenant, onClose, onSuccess
       setError('');
       setConfirming(false);
       setLatestInvoiceId(null);
+      setEditingPaymentId(paymentToEdit?.id || null);
       setInvoiceBalance(0);
       setAmount('');
-      setReferenceNo('');
       setNotes('');
       setPaymentDate(getLocalDateString());
       
       // Get tenant's outstanding balance and latest invoice
-      const [summary, invoice] = await Promise.all([
-        getTenantFinancialSummary(tenant.tenantId),
-        getNextUnpaidInvoiceForTenant(tenant.tenantId),
-      ]);
+      const summary = await getTenantFinancialSummary(tenant.tenantId);
+      const invoice = paymentToEdit
+        ? await getInvoiceWithPayments(paymentToEdit.invoiceId, paymentToEdit.id)
+        : await getNextUnpaidInvoiceForTenant(tenant.tenantId);
       setOutstandingBalance(Number(summary.outstandingBalance) || 0);
       setLatestInvoiceId(invoice?.id || null);
       setInvoiceBalance(Number(invoice?.balance) || 0);
-      setAmount(invoice ? String(Number(invoice.balance) || 0) : '');
-      if (!invoice) setError('This tenant has no unpaid invoice to record a payment against.');
+      setAmount(paymentToEdit ? String(Number(paymentToEdit.amount) || '') : invoice ? String(Number(invoice.balance) || 0) : '');
+      if (!invoice) setError(paymentToEdit ? 'The invoice for this payment could not be loaded.' : 'This tenant has no unpaid invoice to record a payment against.');
+      if (paymentToEdit) {
+        setPaymentDate(String(paymentToEdit.date || getLocalDateString()).slice(0, 10));
+        setPaymentMethod(paymentToEdit.method === 'gcash' ? 'gcash' : 'cash');
+        setNotes(paymentToEdit.notes || '');
+      }
     } catch (err) {
       console.error('Error loading balance:', err);
       setError('Failed to load balance information.');
@@ -111,8 +116,8 @@ export default function RecordPaymentModal({ visible, tenant, onClose, onSuccess
       setError('No unpaid invoice is available for this tenant.');
       return null;
     }
-    if (paymentMethod !== 'cash') {
-      setError('Please select a supported payment method.');
+    if (!['cash', 'gcash'].includes(paymentMethod)) {
+      setError('Please select Cash or GCash as the payment method.');
       return null;
     }
     return paymentAmount;
@@ -133,14 +138,25 @@ export default function RecordPaymentModal({ visible, tenant, onClose, onSuccess
     setSubmitting(true);
     setError('');
     try {
-      await recordPayment({
-        invoiceId: latestInvoiceId,
-        amountPaid: paymentAmount,
-        paymentDate,
-        paymentMethod,
-        referenceNo: referenceNo.trim(),
-        notes: notes.trim(),
-      });
+      if (editingPaymentId) {
+        await updatePayment({
+          paymentId: editingPaymentId,
+          amountPaid: paymentAmount,
+          paymentDate,
+          paymentMethod,
+          chargeType: 'unallocated',
+          notes: notes.trim(),
+        });
+      } else {
+        await recordPayment({
+          invoiceId: latestInvoiceId,
+          amountPaid: paymentAmount,
+          paymentDate,
+          paymentMethod,
+          chargeType: 'unallocated',
+          notes: notes.trim(),
+        });
+      }
       setSubmitting(false);
       setConfirming(false);
       onSuccess?.();
@@ -153,11 +169,16 @@ export default function RecordPaymentModal({ visible, tenant, onClose, onSuccess
   };
 
   const handleRecordPayment = () => {
-    handleConfirmPayment();
+    if (confirming) {
+      handleConfirmPayment();
+    } else {
+      handleReviewPayment();
+    }
   };
 
   const paymentMethods = [
     { id: 'cash', label: 'Cash', icon: 'cash-outline' },
+    { id: 'gcash', label: 'GCash', icon: 'phone-portrait-outline' },
   ];
 
   if (!tenant) return null;
@@ -176,7 +197,7 @@ export default function RecordPaymentModal({ visible, tenant, onClose, onSuccess
         >
           {/* Header */}
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-            <Text style={{ fontSize: fs(20), fontWeight: '800', color: colors.text }}>Record Payment</Text>
+            <Text style={{ fontSize: fs(20), fontWeight: '800', color: colors.text }}>{editingPaymentId ? 'Edit Payment' : 'Record Payment'}</Text>
             <TouchableOpacity onPress={onClose} disabled={submitting}>
               <Ionicons name="close" size={24} color={colors.textSecondary} />
             </TouchableOpacity>
@@ -242,9 +263,9 @@ export default function RecordPaymentModal({ visible, tenant, onClose, onSuccess
 
           {confirming && !loading && (
             <View style={{ backgroundColor: colors.accentBg, padding: 12, borderRadius: 8, marginBottom: 16 }}>
-              <Text style={{ fontSize: fs(14), color: colors.text, fontWeight: '700', marginBottom: 4 }}>Confirm payment</Text>
+              <Text style={{ fontSize: fs(14), color: colors.text, fontWeight: '700', marginBottom: 4 }}>{editingPaymentId ? 'Confirm changes' : 'Confirm payment'}</Text>
               <Text style={{ fontSize: fs(13), color: colors.textSecondary }}>
-                Record ₱{Number(amount).toLocaleString()} in cash for {tenant.name} on {paymentDate}?
+                {editingPaymentId ? 'Update' : 'Record'} ₱{Number(amount).toLocaleString()} via {paymentMethod === 'gcash' ? 'GCash' : 'cash'} for {tenant.name} on {paymentDate}?
               </Text>
             </View>
           )}
@@ -259,7 +280,7 @@ export default function RecordPaymentModal({ visible, tenant, onClose, onSuccess
               <>
                 {/* Amount */}
                 <Text style={{ fontSize: fs(14), fontWeight: '700', color: colors.text, marginBottom: 8 }}>
-                  Payment Amount <Text style={{ color: colors.dangerText }}>*</Text>
+                  Amount Paid <Text style={{ color: colors.dangerText }}>*</Text>
                 </Text>
                 <TextInput
                   value={amount}
@@ -284,6 +305,9 @@ export default function RecordPaymentModal({ visible, tenant, onClose, onSuccess
                     marginBottom: 16,
                   }}
                 />
+                <Text style={{ fontSize: fs(12), color: colors.textMuted, marginTop: -10, marginBottom: 16 }}>
+                  Invoice balance: ₱{invoiceBalance.toLocaleString()}. Partial payments are allowed.
+                </Text>
 
                 {/* Payment Date */}
                 <Text style={{ fontSize: fs(14), fontWeight: '700', color: colors.text, marginBottom: 8 }}>
@@ -357,29 +381,6 @@ export default function RecordPaymentModal({ visible, tenant, onClose, onSuccess
                   ))}
                 </View>
 
-                {/* Reference Number */}
-                <Text style={{ fontSize: fs(14), fontWeight: '700', color: colors.text, marginBottom: 8 }}>
-                  Reference Number (Optional)
-                </Text>
-                <TextInput
-                  value={referenceNo}
-                  onChangeText={setReferenceNo}
-                  placeholder="e.g., Cash receipt number (optional)"
-                  placeholderTextColor={colors.textMuted}
-                  editable={!submitting}
-                  style={{
-                    backgroundColor: colors.bg,
-                    borderWidth: 1,
-                    borderColor: colors.cardBorder,
-                    borderRadius: 8,
-                    paddingHorizontal: 12,
-                    paddingVertical: 12,
-                    fontSize: fs(15),
-                    color: colors.text,
-                    marginBottom: 16,
-                  }}
-                />
-
                 {/* Notes */}
                 <Text style={{ fontSize: fs(14), fontWeight: '700', color: colors.text, marginBottom: 8 }}>
                   Notes (Optional)
@@ -441,7 +442,7 @@ export default function RecordPaymentModal({ visible, tenant, onClose, onSuccess
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
                 <Text style={{ fontSize: fs(15), fontWeight: '700', color: '#fff' }}>
-                  {confirming ? 'Confirm Payment' : 'Confirm Payment'}
+                  {confirming ? (editingPaymentId ? 'Save Changes' : 'Confirm Payment') : (editingPaymentId ? 'Review Changes' : 'Review Payment')}
                 </Text>
               )}
             </TouchableOpacity>
@@ -451,4 +452,3 @@ export default function RecordPaymentModal({ visible, tenant, onClose, onSuccess
     </Modal>
   );
 }
-

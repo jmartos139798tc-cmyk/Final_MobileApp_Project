@@ -5,6 +5,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../utils/ThemeContext';
 import { isMobile, getResponsivePadding, fs, spacing, cardStyle, safeAreaTop } from '../../utils/responsive';
 import { getTenantFinancialSummary, getTenantPaymentHistory } from '../../services/dataService';
+import RecordPaymentModal from '../../components/landlord/RecordPaymentModal';
+import useRealtimeRefresh from '../../hooks/useRealtimeRefresh';
 
 export default function TenantDetailFinancial({ route, navigation }) {
   const { colors } = useTheme();
@@ -15,10 +17,18 @@ export default function TenantDetailFinancial({ route, navigation }) {
   const [summary, setSummary] = useState(null);
   const [paymentHistory, setPaymentHistory] = useState([]);
   const [error, setError] = useState(null);
+  const [realtimeVersion, setRealtimeVersion] = useState(0);
+  const [editingPayment, setEditingPayment] = useState(null);
+  const [paymentModalVisible, setPaymentModalVisible] = useState(false);
+
+  useRealtimeRefresh(`landlord-tenant-financial-detail-${tenantId}`, [
+    { table: 'invoices' },
+    { table: 'payments' },
+  ], () => setRealtimeVersion((version) => version + 1));
 
   useEffect(() => {
     loadTenantDetails();
-  }, [tenantId]);
+  }, [tenantId, realtimeVersion]);
 
   const loadTenantDetails = async () => {
     try {
@@ -161,6 +171,19 @@ export default function TenantDetailFinancial({ route, navigation }) {
               <Text style={{ fontSize: fs(12), color: colors.textMuted, marginTop: 4 }}>Per month</Text>
             </View>
           </View>
+
+          {/* Current Electricity Bill */}
+          <View style={{ marginTop: spacing.sm }}>
+            <View style={{ ...cardStyle, backgroundColor: colors.card, borderColor: colors.cardBorder, padding: 16 }}>
+              <Text style={{ fontSize: fs(13), color: colors.textSecondary, marginBottom: 6 }}>
+                Electricity{summary.billingPeriod ? ` · ${summary.billingPeriod}` : ''}
+              </Text>
+              <Text style={{ fontSize: fs(20), fontWeight: '700', color: colors.text }}>
+                ₱{Number(summary.electricityCharge || 0).toLocaleString()}
+              </Text>
+              <Text style={{ fontSize: fs(12), color: colors.textMuted, marginTop: 4 }}>Current bill</Text>
+            </View>
+          </View>
         </View>
 
         {/* Payment History */}
@@ -242,6 +265,18 @@ export default function TenantDetailFinancial({ route, navigation }) {
                       </View>
                     )}
                   </View>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setEditingPayment(payment);
+                      setPaymentModalVisible(true);
+                    }}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-end', marginTop: 12, paddingVertical: 6, paddingHorizontal: 10 }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Edit payment from ${formatDate(payment.date)}`}
+                  >
+                    <Ionicons name="create-outline" size={16} color={colors.accent} />
+                    <Text style={{ fontSize: fs(13), fontWeight: '700', color: colors.accent }}>Edit payment</Text>
+                  </TouchableOpacity>
                 </View>
               ))}
             </View>
@@ -290,6 +325,29 @@ export default function TenantDetailFinancial({ route, navigation }) {
           </View>
         </View>
       </ScrollView>
+      {editingPayment && (
+        <RecordPaymentModal
+          visible={paymentModalVisible}
+          tenant={{
+            tenantId,
+            name: summary.name,
+            initials: String(summary.name || 'T').split(/\s+/).map((part) => part[0]).slice(0, 2).join('').toUpperCase(),
+            color: colors.accent,
+            roomNumber: summary.roomNumber || '-',
+            balance: summary.outstandingBalance || 0,
+          }}
+          paymentToEdit={editingPayment}
+          onClose={() => {
+            setPaymentModalVisible(false);
+            setEditingPayment(null);
+          }}
+          onSuccess={() => {
+            setPaymentModalVisible(false);
+            setEditingPayment(null);
+            loadTenantDetails();
+          }}
+        />
+      )}
     </View>
   );
 }

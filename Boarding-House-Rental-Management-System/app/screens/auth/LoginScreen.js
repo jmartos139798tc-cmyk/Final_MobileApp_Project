@@ -11,7 +11,6 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
-  TouchableWithoutFeedback,
   View,
   useWindowDimensions,
 } from 'react-native';
@@ -514,15 +513,15 @@ export default function LoginScreen({ onLoginSuccess }) {
         behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}
         style={styles.formArea} 
       >
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
         <ScrollView
           style={styles.formContent}
           contentContainerStyle={styles.formContentInner}
-          scrollEnabled={isRegistering || !!confirmationEmail}
+          scrollEnabled
           keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
-          showsVerticalScrollIndicator={isRegistering}
-          bounces={isRegistering}
+          keyboardDismissMode={Platform.OS === 'ios' ? 'on-drag' : 'none'}
+          onScrollBeginDrag={Keyboard.dismiss}
+          showsVerticalScrollIndicator
+          bounces
           decelerationRate="normal"
         >
           <View style={[styles.formCard, {
@@ -733,7 +732,6 @@ export default function LoginScreen({ onLoginSuccess }) {
             )}
           </View>
         </ScrollView>
-        </TouchableWithoutFeedback>
       </KeyboardAvoidingView>
 
       {isRegistering && message?.type === 'error' ? (

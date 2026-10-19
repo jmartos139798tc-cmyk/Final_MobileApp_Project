@@ -21,6 +21,7 @@ export default function TenantFinancesScreen({ user, onNavigateToApplication }) 
   const [paymentHistory, setPaymentHistory] = useState([]);
   const [paymentProofs, setPaymentProofs] = useState([]);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showAllPayments, setShowAllPayments] = useState(false);
 
   const tenantId = user?.tenant_id;
 
@@ -59,6 +60,8 @@ export default function TenantFinancesScreen({ user, onNavigateToApplication }) 
   useRealtimeRefresh(`tenant-finances-${tenantId || 'unknown'}`, [
     { table: 'tenants', filter: `id=eq.${tenantId || ''}` },
     { table: 'invoices' },
+    { table: 'payments' },
+    { table: 'utility_readings' },
     { table: 'payment_proofs', filter: `tenant_id=eq.${tenantId || ''}` },
     { table: 'room_assignment_requests', filter: `tenant_id=eq.${tenantId || ''}` },
     { table: 'leases', filter: `tenant_id=eq.${tenantId || ''}` },
@@ -115,18 +118,6 @@ export default function TenantFinancesScreen({ user, onNavigateToApplication }) 
     return (
       <View style={{ flex: 1, backgroundColor: colors.bg, paddingTop: isMobile ? 16 : 40 }}>
         <View style={{ paddingHorizontal: padding, marginBottom: 18 }}>
-          <Text
-            style={{
-              fontSize: fs(12),
-              fontWeight: '700',
-              letterSpacing: 1.5,
-              color: colors.textSecondary,
-              marginBottom: 4,
-            }}
-          >
-            TENANT PORTAL
-          </Text>
-          <Text style={{ fontSize: fs(28), color: colors.text, fontWeight: '700' }}>My Finances</Text>
         </View>
         <View style={{ paddingHorizontal: padding }}>
           <View style={{ ...cardStyle, backgroundColor: colors.card, borderColor: colors.cardBorder, padding: 22, alignItems: 'center' }}>
@@ -145,7 +136,8 @@ export default function TenantFinancesScreen({ user, onNavigateToApplication }) 
   }
 
   const balance = Number(billingBreakdown?.totalOutstanding ?? tenantInfo.outstandingBalance ?? billingBreakdown?.outstanding ?? 0);
-  const isOverdue = balance > 0 && billingBreakdown?.dueDate && new Date(billingBreakdown.dueDate) < new Date();
+  const overdueRentBalance = Number(billingBreakdown?.overdueRentBalance || 0);
+  const isOverdue = overdueRentBalance > 0;
   
   const currentInvoice = billingBreakdown?.invoiceId ? {
     id: billingBreakdown.invoiceId,
@@ -169,17 +161,8 @@ export default function TenantFinancesScreen({ user, onNavigateToApplication }) 
         contentContainerStyle={{ paddingHorizontal: padding, paddingTop: isMobile ? 16 : 40, paddingBottom: spacing.sm }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
       >
-        {/* Header */}
         <View style={{ marginBottom: spacing.lg }}>
-          <Text
-            style={{
-              fontSize: fs(12),
-              fontWeight: '700',
-              letterSpacing: 1.5,
-              color: colors.textSecondary,
-              marginBottom: 4,
-            }}
-          >
+          <Text style={{ fontSize: fs(12), fontWeight: '700', letterSpacing: 1.5, color: colors.textSecondary, marginBottom: 4 }}>
             TENANT PORTAL
           </Text>
           <Text style={{ fontSize: fs(28), color: colors.text, fontWeight: '700' }}>My Finances</Text>
@@ -199,11 +182,17 @@ export default function TenantFinancesScreen({ user, onNavigateToApplication }) 
           }}
         >
           <Text style={{ fontSize: fs(14), color: balance > 0 ? colors.orangetext : colors.successText, marginBottom: 8 }}>
-            Current Balance
+            Outstanding Balance
           </Text>
           <Text style={{ fontSize: fs(36), fontWeight: '700', color: balance > 0 ? colors.warningText : colors.successText }}>
             ₱{balance.toLocaleString()}
           </Text>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: colors.cardBorder }}>
+            <Text style={{ fontSize: fs(13), color: colors.textSecondary }}>Overdue rent balance</Text>
+            <Text style={{ fontSize: fs(14), fontWeight: '700', color: overdueRentBalance > 0 ? colors.dangerText : colors.successText }}>
+              ₱{overdueRentBalance.toLocaleString()}
+            </Text>
+          </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12 }}>
             <Ionicons
               name={balance > 0 ? (isOverdue ? 'alert-circle' : 'time-outline') : 'checkmark-circle'}
@@ -211,7 +200,7 @@ export default function TenantFinancesScreen({ user, onNavigateToApplication }) 
               color={balance > 0 ? colors.dangerText : colors.successText}
             />
             <Text style={{ fontSize: fs(14), fontWeight: '600', color: balance > 0 ? colors.warningText : colors.successText }}>
-              {balance === 0 ? 'All Paid Up!' : isOverdue ? `OVERDUE - Due: ${billingBreakdown?.dueDate}` : `Due: ${billingBreakdown?.dueDate || 'TBD'}`}
+              {balance === 0 ? 'All Paid Up!' : isOverdue ? 'Overdue rent balance' : `Due: ${billingBreakdown?.dueDate || 'TBD'}`}
             </Text>
           </View>
         </View>
@@ -419,7 +408,7 @@ export default function TenantFinancesScreen({ user, onNavigateToApplication }) 
             </View>
           ) : (
             <View style={{ gap: spacing.sm }}>
-              {paymentHistory.map((payment) => (
+              {paymentHistory.slice(0, showAllPayments ? paymentHistory.length : 3).map((payment) => (
                 <View
                   key={payment.id}
                   style={{
@@ -459,6 +448,18 @@ export default function TenantFinancesScreen({ user, onNavigateToApplication }) 
                 </View>
               ))}
             </View>
+          )}
+          {paymentHistory.length > 3 && (
+            <TouchableOpacity
+              onPress={() => setShowAllPayments((current) => !current)}
+              accessibilityRole="button"
+              style={{ alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 12, paddingHorizontal: 16, marginTop: 8 }}
+            >
+              <Text style={{ fontSize: fs(13), color: colors.accent, fontWeight: '700' }}>
+                {showAllPayments ? 'Show less' : `View all payments (${paymentHistory.length})`}
+              </Text>
+              <Ionicons name={showAllPayments ? 'chevron-up' : 'chevron-down'} size={16} color={colors.accent} />
+            </TouchableOpacity>
           )}
         </View>
 

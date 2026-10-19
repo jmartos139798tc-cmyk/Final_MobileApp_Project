@@ -4,7 +4,7 @@ import { View, Text, ScrollView, TouchableOpacity, RefreshControl, ActivityIndic
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../utils/ThemeContext';
 import { isMobile, getResponsivePadding, fs, spacing, cardStyle, safeAreaTop } from '../../utils/responsive';
-import { getTenantsWithFinancialStatus } from '../../services/dataService';
+import { getTenantsWithFinancialStatus, getTenantPaymentHistory } from '../../services/dataService';
 import RecordPaymentModal from '../../components/landlord/RecordPaymentModal';
 import TenantListPager from '../../components/landlord/TenantListPager';
 import useRealtimeRefresh from '../../hooks/useRealtimeRefresh';
@@ -25,6 +25,7 @@ export default function TenantFinancialManagement({ initialFilter = 'all', navig
   // Modal states
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
   const [selectedTenant, setSelectedTenant] = useState(null);
+  const [selectedPayment, setSelectedPayment] = useState(null);
   const [realtimeVersion, setRealtimeVersion] = useState(0);
 
   useRealtimeRefresh('landlord-tenant-finances', [
@@ -75,13 +76,32 @@ export default function TenantFinancialManagement({ initialFilter = 'all', navig
 
   const handleRecordPayment = (tenant) => {
     if (!tenant) return;
+    setSelectedPayment(null);
     setSelectedTenant(tenant);
     setPaymentModalVisible(true);
+  };
+
+  const handleEditPayment = async (tenant) => {
+    if (!tenant) return;
+    try {
+      const history = await getTenantPaymentHistory(tenant.tenantId);
+      const latestPayment = history[0];
+      if (!latestPayment) {
+        handleRecordPayment(tenant);
+        return;
+      }
+      setSelectedPayment(latestPayment);
+      setSelectedTenant(tenant);
+      setPaymentModalVisible(true);
+    } catch (err) {
+      console.error('Could not load payment to edit:', err);
+    }
   };
 
   const handlePaymentSuccess = () => {
     setPaymentModalVisible(false);
     setSelectedTenant(null);
+    setSelectedPayment(null);
     setRefreshing(true);
     loadTenants(activeFilter);
   };
@@ -307,6 +327,14 @@ export default function TenantFinancialManagement({ initialFilter = 'all', navig
                         ₱{tenant.balance.toLocaleString()}
                       </Text>
                     </View>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+                      <Text style={{ fontSize: fs(13), color: colors.textSecondary }}>
+                        Electricity{tenant.billingPeriod ? ` (${tenant.billingPeriod})` : ''}
+                      </Text>
+                      <Text style={{ fontSize: fs(13), fontWeight: '700', color: colors.text }}>
+                        ₱{Number(tenant.electricityCharge || 0).toLocaleString()}
+                      </Text>
+                    </View>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                       <Text style={{ fontSize: fs(13), color: colors.textSecondary }}>Last Payment</Text>
                       <Text style={{ fontSize: fs(13), color: colors.textMuted }}>
@@ -341,11 +369,11 @@ export default function TenantFinancialManagement({ initialFilter = 'all', navig
                       <Text style={{ fontSize: fs(14), fontWeight: '700', color: colors.accent }}>Details</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      onPress={() => handleRecordPayment(tenant)}
-                      disabled={tenant.balance <= 0}
+                      onPress={() => tenant.balance > 0 ? handleRecordPayment(tenant) : tenant.hasRecordedPayment ? handleEditPayment(tenant) : undefined}
+                      disabled={!tenant.hasRecordedPayment && tenant.balance <= 0}
                       style={{
                         flex: 1,
-                        backgroundColor: tenant.balance > 0 ? colors.accent : colors.textMuted,
+                        backgroundColor: tenant.balance > 0 || tenant.hasRecordedPayment ? colors.accent : colors.textMuted,
                         paddingVertical: 12,
                         borderRadius: 10,
                         alignItems: 'center',
@@ -354,9 +382,9 @@ export default function TenantFinancialManagement({ initialFilter = 'all', navig
                         gap: 6,
                       }}
                     >
-                      <Ionicons name="cash-outline" size={18} color="#fff" />
+                      <Ionicons name={tenant.balance > 0 ? 'cash-outline' : tenant.hasRecordedPayment ? 'create-outline' : 'cash-outline'} size={18} color="#fff" />
                       <Text style={{ fontSize: fs(14), fontWeight: '700', color: '#fff' }}>
-                        {tenant.balance > 0 ? 'Record Payment' : 'Paid'}
+                        {tenant.balance > 0 ? 'Record Payment' : tenant.hasRecordedPayment ? 'Edit Payment' : 'Paid'}
                       </Text>
                     </TouchableOpacity>
                   </View>
@@ -373,9 +401,11 @@ export default function TenantFinancialManagement({ initialFilter = 'all', navig
         <RecordPaymentModal
           visible={paymentModalVisible}
           tenant={selectedTenant}
+          paymentToEdit={selectedPayment}
           onClose={() => {
             setPaymentModalVisible(false);
             setSelectedTenant(null);
+            setSelectedPayment(null);
           }}
           onSuccess={handlePaymentSuccess}
         />

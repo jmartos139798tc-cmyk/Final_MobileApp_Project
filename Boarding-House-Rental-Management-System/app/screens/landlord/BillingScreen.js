@@ -12,7 +12,6 @@ import {
   cardShadow
 } from '../../utils/responsive';
 import { useTheme } from '../../utils/ThemeContext';
-import RecordPaymentModal from '../../components/landlord/RecordPaymentModal';
 import {
   getRevenue,
   getRentBilling,
@@ -98,9 +97,7 @@ export default function BillingScreen() {
   const [error, setError] = useState(null);
   const [editingBill, setEditingBill] = useState(null);
   const [selectedRentItem, setSelectedRentItem] = useState(null);
-  const [paymentTenant, setPaymentTenant] = useState(null);
-  const [paymentModalVisible, setPaymentModalVisible] = useState(false);
-  const [editValues, setEditValues] = useState({ monthlyRent: '', consumedKwh: '', ratePerKwh: '' });
+  const [editValues, setEditValues] = useState({ consumedKwh: '', ratePerKwh: '' });
   const [editError, setEditError] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
 
@@ -171,7 +168,6 @@ export default function BillingScreen() {
   const openBillEditor = (bill) => {
     setEditingBill(bill);
     setEditValues({
-      monthlyRent: String(bill.rent),
       consumedKwh: bill.hasValidReading ? String(bill.usage) : '',
       ratePerKwh: String(bill.ratePerKwh ?? 12),
     });
@@ -187,7 +183,6 @@ export default function BillingScreen() {
         invoiceId: editingBill.invoiceId,
         leaseId: editingBill.leaseId,
         billingPeriod: editingBill.billingPeriod,
-        monthlyRent: editValues.monthlyRent,
         consumedKwh: editValues.consumedKwh,
         ratePerKwh: editValues.ratePerKwh,
       });
@@ -198,23 +193,6 @@ export default function BillingScreen() {
     } finally {
       setSavingEdit(false);
     }
-  };
-
-  const openRecordPayment = () => {
-    if (!selectedRentItem) return;
-    setPaymentTenant(selectedRentItem);
-    setSelectedRentItem(null);
-    setPaymentModalVisible(true);
-  };
-
-  const closeRecordPayment = () => {
-    setPaymentModalVisible(false);
-    setPaymentTenant(null);
-  };
-
-  const handlePaymentSuccess = async () => {
-    closeRecordPayment();
-    await reloadBillingData();
   };
 
   if (loading) return <ScreenSkeleton />;
@@ -611,23 +589,9 @@ export default function BillingScreen() {
             <Text style={{ fontSize: fs(13), color: colors.textSecondary, marginBottom: 18 }}>
               {editingBill ? `Room ${editingBill.roomNumber} · ${editingBill.name} · ${editingBill.billingPeriod || 'Current period'}` : ''}
             </Text>
-
-            {[
-              ['monthlyRent', 'Rent'],
-            ].map(([field, label]) => (
-              <View key={field} style={{ marginBottom: 13 }}>
-                <Text style={{ fontSize: fs(13), fontWeight: '700', color: colors.text, marginBottom: 6 }}>{label} amount (₱)</Text>
-                <TextInput
-                  value={editValues[field]}
-                  onChangeText={(value) => setEditValues((current) => ({ ...current, [field]: value }))}
-                  keyboardType="decimal-pad"
-                  placeholder="0"
-                  placeholderTextColor={colors.textMuted}
-                  editable={!savingEdit}
-                  style={{ backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 11, color: colors.text, fontSize: fs(15) }}
-                />
-              </View>
-            ))}
+            <Text style={{ fontSize: fs(12), color: colors.textMuted, lineHeight: 18, marginBottom: 16 }}>
+              This changes the electricity charge only. Rent stays at ₱{Number(editingBill?.rent || 0).toLocaleString()}, and the total bill is recalculated.
+            </Text>
 
             <View style={{ marginBottom: 14 }}>
               <Text style={{ fontSize: fs(13), fontWeight: '700', color: colors.text, marginBottom: 6 }}>Electricity calculation</Text>
@@ -726,27 +690,10 @@ export default function BillingScreen() {
                 ))}
               </ScrollView>
 
-              <View style={{ marginTop: 8 }}>
-                {selectedRentItem.balance > 0 && selectedRentItem.status !== 'unbilled' && (
-                  <TouchableOpacity onPress={openRecordPayment} style={{ minHeight: 48, justifyContent: 'center', alignItems: 'center', borderRadius: 10, backgroundColor: colors.successText }}>
-                    <Text style={{ fontSize: fs(14), fontWeight: '800', color: '#fff' }}>Edit payment</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
             </View>
           )}
         </View>
       </Modal>
-
-      {paymentTenant && (
-        <RecordPaymentModal
-          visible={paymentModalVisible}
-          tenant={paymentTenant}
-          onClose={closeRecordPayment}
-          onSuccess={handlePaymentSuccess}
-        />
-      )}
-
 
     </View>
   );

@@ -68,6 +68,7 @@ export default function RoomsScreen() {
   const [roomNumber, setRoomNumber] = useState('');
   const [occupantName, setOccupantName] = useState('');
   const [selectedTypeId, setSelectedTypeId] = useState('');
+  const [hasAirConditioning, setHasAirConditioning] = useState(false);
   const [formError, setFormError] = useState('');
   const [saving, setSaving] = useState(false);
   const occupantNameInputRef = useRef(null);
@@ -99,6 +100,7 @@ export default function RoomsScreen() {
 
   const openCreateRoom = async () => {
     setFormError('');
+    setHasAirConditioning(false);
     setCreateModalVisible(true);
     if (roomTypes.length > 0) return;
 
@@ -158,6 +160,7 @@ export default function RoomsScreen() {
         roomNumber: cleanRoomNumber,
         typeId: selectedTypeId,
         reservedForName: cleanOccupantName,
+        hasAirConditioning,
       });
       setRooms((currentRooms) => [...currentRooms, {
         id: String(newRoom.id).replace('room-', ''),
@@ -166,10 +169,12 @@ export default function RoomsScreen() {
         tenant: null,
         status: newRoom.status,
         balance: 0,
+        hasAirConditioning: Boolean(newRoom.has_air_conditioning),
         ...(newRoom.reserved_for_name ? { reservedFor: newRoom.reserved_for_name } : {}),
       }]);
       setRoomNumber('');
       setOccupantName('');
+      setHasAirConditioning(false);
       setSelectedTypeId(roomTypes[0]?.id || '');
       setFormError('');
       setCreateModalVisible(false);
@@ -416,6 +421,13 @@ export default function RoomsScreen() {
                     {room.type}
                   </Text>
 
+                  {room.hasAirConditioning && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 }}>
+                      <Ionicons name="snow-outline" size={13} color={colors.accent} />
+                      <Text style={{ fontSize: fs(11), fontWeight: '600', color: colors.accent }}>Air-conditioned</Text>
+                    </View>
+                  )}
+
                   {room.tenant ? (
                     <>
                       <Text 
@@ -575,6 +587,31 @@ export default function RoomsScreen() {
             </View>
             {loadingRoomTypes && <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10 }}><ActivityIndicator size="small" color={colors.ownerAccent} /><Text style={{ color: colors.textMuted, fontSize: fs(12) }}>Loading room types…</Text></View>}
             
+              <View style={{ marginTop: 17, padding: 13, borderRadius: 12, borderWidth: 1, borderColor: colors.cardBorder, backgroundColor: colors.bg }}>
+                <Text style={{ color: colors.text, fontSize: fs(14), fontWeight: '700' }}>Air conditioning</Text>
+                <Text style={{ color: colors.textMuted, fontSize: fs(12), marginTop: 3 }}>Does this room have an air conditioner?</Text>
+                <View style={{ flexDirection: 'row', gap: 18, marginTop: 10 }}>
+                  {[{ label: 'Yes', value: true }, { label: 'No', value: false }].map((option) => {
+                    const selected = hasAirConditioning === option.value;
+                    return (
+                      <TouchableOpacity
+                        key={option.label}
+                        accessibilityRole="radio"
+                        accessibilityState={{ selected, disabled: saving }}
+                        disabled={saving}
+                        onPress={() => setHasAirConditioning(option.value)}
+                        style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4, opacity: saving ? 0.6 : 1 }}
+                      >
+                        <View style={{ width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: selected ? colors.ownerAccent : colors.cardBorder, alignItems: 'center', justifyContent: 'center' }}>
+                          {selected && <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: colors.ownerAccent }} />}
+                        </View>
+                        <Text style={{ color: selected ? colors.text : colors.textSecondary, fontSize: fs(13), fontWeight: selected ? '700' : '500' }}>{option.label}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+
               <View>
                 <Text style={{ marginTop: 17, marginBottom: 7, color: colors.textSecondary, fontSize: fs(13), fontWeight: '700' }}>Occupant name (optional)</Text>
                 <TextInput

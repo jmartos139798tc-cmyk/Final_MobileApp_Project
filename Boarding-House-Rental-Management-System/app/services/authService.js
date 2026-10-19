@@ -202,12 +202,12 @@ export async function updateTenantAccount({
   const { data: { user }, error: userError } = await supabase.auth.getUser();
   if (userError || !user) throw new Error('Your session has expired. Sign in again and retry.');
 
-  const cleanFirstName = firstName.trim();
-  const cleanLastName = lastName.trim();
-  const cleanPhone = phone.trim();
-  const cleanEmergencyContact = emergencyContact.trim();
+  const cleanFirstName = String(firstName || '').trim();
+  const cleanLastName = String(lastName || '').trim();
+  const cleanPhone = String(phone || '').trim();
+  const cleanEmergencyContact = String(emergencyContact || '').trim();
   const cleanNewPassword = String(newPassword ?? '').trim();
-  if (!cleanFirstName || !cleanLastName) throw new Error('Enter both your first and last name.');
+  if (!cleanFirstName) throw new Error('Enter your full name.');
   if (cleanNewPassword && cleanNewPassword.length < 6) throw new Error('Your new password must have at least 6 characters.');
 
   const fullName = `${cleanFirstName} ${cleanLastName}`;
@@ -216,7 +216,7 @@ export async function updateTenantAccount({
     .update({
       first_name: cleanFirstName,
       last_name: cleanLastName,
-      initials: `${cleanFirstName[0]}${cleanLastName[0]}`.toUpperCase(),
+      initials: `${cleanFirstName[0]}${cleanLastName[0] || cleanFirstName[0]}`.toUpperCase(),
       phone: cleanPhone,
       emergency_contact: cleanEmergencyContact,
     })

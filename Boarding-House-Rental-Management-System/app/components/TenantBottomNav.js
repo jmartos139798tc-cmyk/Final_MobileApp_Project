@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { isDesktop, fs } from '../utils/responsive';
 import { useTheme } from '../utils/ThemeContext';
 
-export default function TenantBottomNav({ user, activeScreen, onNavigate, badges = {} }) {
+export default function TenantBottomNav({ user, activeScreen, onNavigate, badges = {}, showComplaints = true }) {
   const { colors } = useTheme();
   const getBadgeCount = (item) => badges[item.id] || 0;
   const getBadgeDescription = () => 'new updates';
@@ -13,7 +13,7 @@ export default function TenantBottomNav({ user, activeScreen, onNavigate, badges
     { id: 'home', label: 'Home', icon: 'home', iconOutline: 'home-outline' },
     { id: 'finances', label: 'Finances', icon: 'wallet', iconOutline: 'wallet-outline' },
     { id: 'complaints', label: 'Complaints', icon: 'chatbubble', iconOutline: 'chatbubble-outline' },
-  ];
+  ].filter((item) => item.id !== 'complaints' || showComplaints);
 
   // Desktop: sidebar
   if (isDesktop) {

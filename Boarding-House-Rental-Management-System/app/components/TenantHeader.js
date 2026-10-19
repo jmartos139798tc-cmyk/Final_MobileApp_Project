@@ -20,6 +20,9 @@ export default function TenantHeader({
   onLogout,
   onBackPress,
   notificationCount = 0,
+  showNotifications = true,
+  applicationSetupRequired = false,
+  applicationPendingReview = false,
   notificationItems = [],
   onNotificationRead,
   onNotificationsPress,
@@ -104,10 +107,10 @@ export default function TenantHeader({
         <View style={{ flex: 1, marginRight: 12 }}>
           <Text
             style={{
-              fontSize: fs(20),
-              fontWeight: '800',
+              fontSize: fs(16),
+              fontWeight: '700',
               color: colors.text,
-              lineHeight: fs(24),
+              lineHeight: fs(20),
             }}
             numberOfLines={1}
           >
@@ -116,10 +119,10 @@ export default function TenantHeader({
           {subtitle && (
             <Text
               style={{
-                fontSize: fs(12),
+                fontSize: fs(9),
                 fontWeight: '500',
                 color: colors.textMuted,
-                lineHeight: fs(16),
+                lineHeight: fs(12),
                 marginTop: 2,
               }}
               numberOfLines={1}
@@ -146,7 +149,7 @@ export default function TenantHeader({
           >
             <Ionicons name={isDark ? 'sunny' : 'moon'} size={19} color={isDark ? '#fbbf24' : colors.accent} />
           </TouchableOpacity>
-          <TouchableOpacity
+          {showNotifications && <TouchableOpacity
             onPress={() => {
               setSelectedNotification(null);
               setNotificationsVisible(true);
@@ -169,7 +172,7 @@ export default function TenantHeader({
                 <Text style={{ color: '#fff', fontSize: 9, lineHeight: 11, fontWeight: '800' }}>{notificationCount > 99 ? '99+' : notificationCount}</Text>
               </View>
             )}
-          </TouchableOpacity>
+          </TouchableOpacity>}
           <TouchableOpacity
             onPress={() => setProfileMenuVisible(true)}
             activeOpacity={0.7}
@@ -220,10 +223,16 @@ export default function TenantHeader({
           }}>
             <View style={{ paddingHorizontal: 16, paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: colors.cardBorder, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
               <Text style={{ color: colors.text, fontSize: 16, fontWeight: '800' }}>Notifications</Text>
-              {notificationCount > 0 && <Text style={{ color: colors.accent, fontSize: 12, fontWeight: '700' }}>{notificationCount} new</Text>}
+              {!applicationSetupRequired && !applicationPendingReview && notificationCount > 0 && <Text style={{ color: colors.accent, fontSize: 12, fontWeight: '700' }}>{notificationCount} new</Text>}
             </View>
             <ScrollView style={{ flexShrink: 1 }} showsVerticalScrollIndicator={false}>
-              {notificationItems.length === 0 ? (
+              {applicationSetupRequired || applicationPendingReview ? (
+                <View style={{ alignItems: 'center', paddingHorizontal: 22, paddingVertical: 24 }}>
+                  <Ionicons name={applicationPendingReview ? 'time-outline' : 'document-text-outline'} size={30} color={colors.accent} />
+                  <Text style={{ color: colors.text, fontSize: 15, fontWeight: '800', textAlign: 'center', marginTop: 10 }}>{applicationPendingReview ? 'Application under review' : 'Set up your application first'}</Text>
+                  <Text style={{ color: colors.textSecondary, fontSize: 13, lineHeight: 19, textAlign: 'center', marginTop: 6 }}>{applicationPendingReview ? 'Notifications will be available after your application is approved.' : 'Complete your room and move-in payment setup to access notifications.'}</Text>
+                </View>
+              ) : notificationItems.length === 0 ? (
                 <View style={{ alignItems: 'center', paddingHorizontal: 20, paddingVertical: 28 }}>
                   <Ionicons name="notifications-off-outline" size={28} color={colors.textMuted} />
                   <Text style={{ color: colors.textSecondary, fontSize: 13, marginTop: 8 }}>You’re all caught up</Text>

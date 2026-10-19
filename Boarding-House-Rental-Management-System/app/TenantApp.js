@@ -2,7 +2,7 @@
 import { BackHandler, View, StatusBar, Platform } from 'react-native';
 import { isDesktop } from './utils/responsive';
 import { useTheme } from './utils/ThemeContext';
-import { getAnnouncements, getCurrentTenant, getTenantNotifications, markNotificationAsRead } from './services/dataService';
+import { getAnnouncements, getCurrentTenant, getTenantNotifications, getTenantRoomAssignmentRequest, markNotificationAsRead } from './services/dataService';
 import { getLastSeen, getAnnouncementTime, markAnnouncementsSeen } from './utils/announcementSeen';
 import useRealtimeRefresh from './hooks/useRealtimeRefresh';
 
@@ -17,6 +17,7 @@ import TenantFinancesScreen from './screens/tenant/TenantFinancesScreen';
 import TenantNotificationsScreen from './screens/tenant/TenantNotificationsScreen';
 import TenantSettingsScreen from './screens/tenant/TenantSettingsScreen';
 import TenantApplicationScreen from './screens/tenant/TenantApplicationScreen';
+import TenantSetupRequiredScreen from './screens/tenant/TenantSetupRequiredScreen';
 import TenantBottomNav from './components/TenantBottomNav';
 
 export default function TenantApp({ user, onLogout }) {
@@ -27,6 +28,7 @@ export default function TenantApp({ user, onLogout }) {
   const [notificationBadge, setNotificationBadge] = useState(0);
   const [notificationItems, setNotificationItems] = useState([]);
   const [tenantAccountStatus, setTenantAccountStatus] = useState(null);
+  const [hasApplicationSetup, setHasApplicationSetup] = useState(false);
   const [realtimeVersion, setRealtimeVersion] = useState(0);
 
   useEffect(() => setTenantUser(user), [user]);
@@ -37,12 +39,22 @@ export default function TenantApp({ user, onLogout }) {
       setTenantAccountStatus(null);
       return () => { active = false; };
     }
-    getCurrentTenant(tenantUser.tenant_id)
-      .then((tenant) => {
-        if (active) setTenantAccountStatus(tenant?.accountStatus || 'pending');
+    Promise.all([
+      getCurrentTenant(tenantUser.tenant_id),
+      getTenantRoomAssignmentRequest(tenantUser.tenant_id).catch(() => null),
+    ])
+      .then(([tenant, request]) => {
+        if (active) {
+          const accountStatus = tenant?.accountStatus || 'pending';
+          setTenantAccountStatus(accountStatus);
+          setHasApplicationSetup(accountStatus === 'approved' || Boolean(request));
+        }
       })
       .catch(() => {
-        if (active) setTenantAccountStatus(null);
+        if (active) {
+          setTenantAccountStatus(null);
+          setHasApplicationSetup(false);
+        }
       });
     return () => { active = false; };
   }, [tenantUser?.tenant_id, realtimeVersion]);
@@ -60,7 +72,13 @@ export default function TenantApp({ user, onLogout }) {
   useRealtimeRefresh(`tenant-badge-${tenantUser?.tenant_id || 'unknown'}`, [
     { table: 'tenant_notifications', filter: `tenant_id=eq.${tenantUser?.tenant_id || ''}` },
     { table: 'announcements' },
+    { table: 'room_assignment_requests', filter: `tenant_id=eq.${tenantUser?.tenant_id || ''}` },
+    { table: 'tenants', filter: `id=eq.${tenantUser?.tenant_id || ''}` },
   ], () => setRealtimeVersion((version) => version + 1), Boolean(tenantUser?.tenant_id));
+
+  const navigateToScreen = (screen) => {
+    setActiveScreen(screen);
+  };
 
   useEffect(() => {
     let active = true;
@@ -148,7 +166,7 @@ export default function TenantApp({ user, onLogout }) {
 
   const getScreenSubtitle = () => {
     // Show date subtitle for Home screen
-    if (activeScreen === 'home') {
+    if (['home', 'finances', 'complaints'].includes(activeScreen)) {
       return new Date().toLocaleDateString('en-US', {
         weekday: 'long',
         month: 'long',
@@ -162,8 +180,9 @@ export default function TenantApp({ user, onLogout }) {
   const renderScreen = () => {
     switch (activeScreen) {
       case 'home':
-        return <TenantHomeScreen user={tenantUser} onNavigateToNotifications={() => setActiveScreen('notifications')} onNavigateToApplication={() => setActiveScreen('application')} />;
+        return <TenantHomeScreen user={tenantUser} onNavigateToNotifications={() => navigateToScreen('notifications')} onNavigateToApplication={() => navigateToScreen('application')} />;
       case 'complaints':
+        if (!hasApplicationSetup) return <TenantSetupRequiredScreen feature="complaints" onSetUp={() => navigateToScreen('application')} />;
         return <TenantComplaintsScreen user={tenantUser} />;
       case 'updates':
         return <TenantUpdatesScreen />;
@@ -172,6 +191,8 @@ export default function TenantApp({ user, onLogout }) {
       case 'application':
         return <TenantApplicationScreen user={tenantUser} />;
       case 'notifications':
+        if (!hasApplicationSetup) return <TenantSetupRequiredScreen feature="notifications" onSetUp={() => navigateToScreen('application')} />;
+        if (tenantAccountStatus !== 'approved') return <TenantSetupRequiredScreen feature="notifications" applicationPendingReview />;
         return <TenantNotificationsScreen user={tenantUser} />;
       case 'settings':
         return <TenantSettingsScreen
@@ -180,7 +201,7 @@ export default function TenantApp({ user, onLogout }) {
           onUserUpdated={(updates) => setTenantUser((current) => ({ ...current, ...updates }))}
         />;
       default:
-        return <TenantHomeScreen user={tenantUser} onNavigateToNotifications={() => setActiveScreen('notifications')} onNavigateToApplication={() => setActiveScreen('application')} />;
+        return <TenantHomeScreen user={tenantUser} onNavigateToNotifications={() => navigateToScreen('notifications')} onNavigateToApplication={() => navigateToScreen('application')} />;
     }
   };
 
@@ -194,10 +215,13 @@ export default function TenantApp({ user, onLogout }) {
         subtitle={getScreenSubtitle()}
         onLogout={onLogout}
         onBackPress={activeScreen === 'application' ? () => setActiveScreen('home') : undefined}
-        notificationCount={notificationBadge}
+        notificationCount={tenantAccountStatus === 'approved' ? notificationBadge : 0}
+        showNotifications
+        applicationSetupRequired={!hasApplicationSetup}
+        applicationPendingReview={hasApplicationSetup && tenantAccountStatus !== 'approved'}
         notificationItems={notificationItems}
         onNotificationRead={handleNotificationRead}
-        onNotificationsPress={() => setActiveScreen('notifications')}
+        onNotificationsPress={() => navigateToScreen('notifications')}
         onSettingsPress={() => setActiveScreen('settings')}
         isDark={isDark}
         onThemeToggle={toggleTheme}
@@ -205,13 +229,13 @@ export default function TenantApp({ user, onLogout }) {
 
       {isDesktop ? (
         <View style={{ flex: 1, flexDirection: 'row' }}>
-          {activeScreen !== 'application' && <TenantBottomNav user={tenantUser} activeScreen={activeScreen} onNavigate={setActiveScreen} />}
+          {activeScreen !== 'application' && <TenantBottomNav user={tenantUser} activeScreen={activeScreen} onNavigate={navigateToScreen} showComplaints />}
           <View style={{ flex: 1 }}>{renderScreen()}</View>
         </View>
       ) : (
         <>
           <View style={{ flex: 1 }}>{renderScreen()}</View>
-          {activeScreen !== 'application' && <TenantBottomNav user={tenantUser} activeScreen={activeScreen} onNavigate={setActiveScreen} />}
+          {activeScreen !== 'application' && <TenantBottomNav user={tenantUser} activeScreen={activeScreen} onNavigate={navigateToScreen} showComplaints />}
         </>
       )}
     </View>

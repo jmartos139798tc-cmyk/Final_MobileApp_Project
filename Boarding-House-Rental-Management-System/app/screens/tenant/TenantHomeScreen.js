@@ -42,9 +42,12 @@ export default function TenantHomeScreen({ user, onNavigateToNotifications, onNa
     { table: 'tenant_notifications', filter: `tenant_id=eq.${user?.tenant_id || ''}` },
     { table: 'announcements' },
     { table: 'invoices' },
+    { table: 'payments' },
+    { table: 'utility_readings' },
     { table: 'payment_proofs', filter: `tenant_id=eq.${user?.tenant_id || ''}` },
     { table: 'room_assignment_requests', filter: `tenant_id=eq.${user?.tenant_id || ''}` },
     { table: 'leases', filter: `tenant_id=eq.${user?.tenant_id || ''}` },
+    { table: 'rooms' },
   ], () => setRefreshKey((key) => key + 1), Boolean(user?.tenant_id));
 
   useEffect(() => {
@@ -168,6 +171,12 @@ export default function TenantHomeScreen({ user, onNavigateToNotifications, onNa
                 <Text style={{ fontSize: fs(13), color: colors.textSecondary, marginTop: 3, fontWeight: '500' }}>
                   {tenant.roomNumber ? `Room ${tenant.roomNumber} · ${tenant.roomType}` : 'Room assignment pending'}
                 </Text>
+                {tenant.roomNumber && tenant.hasAirConditioning && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 5 }}>
+                    <Ionicons name="snow-outline" size={14} color={colors.accent} />
+                    <Text style={{ fontSize: fs(12), color: colors.accent, fontWeight: '700' }}>Air conditioning included</Text>
+                  </View>
+                )}
                 {tenant.accountStatus === 'approved' && formatApprovalDate(tenant.approvedAt) && (
                   <Text style={{ fontSize: fs(12), color: colors.textMuted, marginTop: 3 }}>
                     Approved on {formatApprovalDate(tenant.approvedAt)}

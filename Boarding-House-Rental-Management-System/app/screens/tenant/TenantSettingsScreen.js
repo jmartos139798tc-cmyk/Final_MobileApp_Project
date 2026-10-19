@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Keyboard, KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { getTenantSettingsProfile } from '../../services/dataService';
 import { updateTenantAccount } from '../../services/authService';
@@ -7,26 +7,44 @@ import { useTheme } from '../../utils/ThemeContext';
 import { cardShadow, getResponsivePadding, isDesktop } from '../../utils/responsive';
 
 function SettingsField({ label, value, onChangeText, colors, ...inputProps }) {
+  const [passwordVisible, setPasswordVisible] = useState(false);
+  const isPassword = Boolean(inputProps.secureTextEntry);
+
   return (
     <View style={{ marginBottom: 16 }}>
       <Text style={{ color: colors.textSecondary, fontSize: 13, fontWeight: '600', marginBottom: 7 }}>{label}</Text>
-      <TextInput
-        value={value}
-        onChangeText={onChangeText}
-        placeholderTextColor={colors.textMuted}
-        selectionColor={colors.accent}
-        style={{
-          color: colors.text,
-          backgroundColor: colors.bg,
-          borderColor: colors.cardBorder,
-          borderWidth: 1,
-          borderRadius: 12,
-          paddingHorizontal: 13,
-          paddingVertical: 12,
-          fontSize: 15,
-        }}
-        {...inputProps}
-      />
+      <View style={{ position: 'relative' }}>
+        <TextInput
+          value={value}
+          onChangeText={onChangeText}
+          placeholderTextColor={colors.textMuted}
+          selectionColor={colors.accent}
+          secureTextEntry={isPassword && !passwordVisible}
+          style={{
+            color: colors.text,
+            backgroundColor: colors.bg,
+            borderColor: colors.cardBorder,
+            borderWidth: 1,
+            borderRadius: 12,
+            paddingHorizontal: 13,
+            paddingVertical: 12,
+            paddingRight: isPassword ? 46 : 13,
+            fontSize: 15,
+          }}
+          {...inputProps}
+          secureTextEntry={isPassword && !passwordVisible}
+        />
+        {isPassword && (
+          <TouchableOpacity
+            onPress={() => setPasswordVisible((visible) => !visible)}
+            accessibilityRole="button"
+            accessibilityLabel={passwordVisible ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}
+            style={{ position: 'absolute', right: 10, top: 0, bottom: 0, width: 34, alignItems: 'center', justifyContent: 'center' }}
+          >
+            <Ionicons name={passwordVisible ? 'eye-off-outline' : 'eye-outline'} size={19} color={colors.textMuted} />
+          </TouchableOpacity>
+        )}
+      </View>
     </View>
   );
 }
@@ -36,11 +54,9 @@ export default function TenantSettingsScreen({ user, onBack, onUserUpdated }) {
   const padding = getResponsivePadding();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
+  const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
   const [emergencyContact, setEmergencyContact] = useState('');
-  const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
@@ -52,8 +68,7 @@ export default function TenantSettingsScreen({ user, onBack, onUserUpdated }) {
       try {
         const profile = await getTenantSettingsProfile(user?.tenant_id);
         if (!active) return;
-        setFirstName(profile.firstName);
-        setLastName(profile.lastName);
+        setFullName([profile.firstName, profile.lastName].filter(Boolean).join(' '));
         setPhone(profile.phone);
         setEmergencyContact(profile.emergencyContact);
       } catch (loadError) {
@@ -69,6 +84,13 @@ export default function TenantSettingsScreen({ user, onBack, onUserUpdated }) {
   const saveChanges = async () => {
     setError('');
     setSuccess('');
+    const nameParts = fullName.trim().split(/\s+/).filter(Boolean);
+    if (nameParts.length < 1) {
+      setError('Enter your full name.');
+      return;
+    }
+    const firstName = nameParts.shift();
+    const lastName = nameParts.join(' ');
     if (newPassword && newPassword !== confirmPassword) {
       setError('The new password and confirmation do not match.');
       return;
@@ -82,15 +104,12 @@ export default function TenantSettingsScreen({ user, onBack, onUserUpdated }) {
         lastName,
         phone,
         emergencyContact,
-        currentPassword,
         newPassword,
       });
       onUserUpdated?.(updatedUser);
-      setFirstName(firstName.trim());
-      setLastName(lastName.trim());
+      setFullName(`${firstName} ${lastName}`.trim());
       setPhone(phone.trim());
       setEmergencyContact(emergencyContact.trim());
-      setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
       setSuccess('Your profile and account changes have been saved.');
@@ -101,7 +120,10 @@ export default function TenantSettingsScreen({ user, onBack, onUserUpdated }) {
     }
   };
 
-  const initials = `${firstName[0] || ''}${lastName[0] || ''}`.toUpperCase() || 'T';
+  const SettingsKeyboardWrapper = Platform.OS === 'web' ? View : KeyboardAvoidingView;
+
+  const nameParts = fullName.trim().split(/\s+/).filter(Boolean);
+  const initials = `${nameParts[0]?.[0] || ''}${nameParts.length > 1 ? nameParts[nameParts.length - 1][0] : ''}`.toUpperCase() || 'T';
   const cardStyle = {
     backgroundColor: colors.card,
     borderColor: colors.cardBorder,
@@ -113,12 +135,14 @@ export default function TenantSettingsScreen({ user, onBack, onUserUpdated }) {
   };
 
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined} style={{ flex: 1 }}>
-    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+    <SettingsKeyboardWrapper
+      {...(Platform.OS === 'web' ? {} : { behavior: Platform.OS === 'ios' ? 'padding' : 'height' })}
+      style={{ flex: 1 }}
+    >
     <ScrollView
       style={{ flex: 1, backgroundColor: colors.bg }}
       contentContainerStyle={{ padding, paddingTop: 20, paddingBottom: 32, alignItems: isDesktop ? 'center' : 'stretch' }}
-      keyboardShouldPersistTaps="handled"
+      keyboardShouldPersistTaps="always"
       showsVerticalScrollIndicator={false}
     >
       <View style={{ width: '100%', maxWidth: 760 }}>
@@ -161,8 +185,7 @@ export default function TenantSettingsScreen({ user, onBack, onUserUpdated }) {
           </View>
           {loading ? <ActivityIndicator color={colors.accent} style={{ paddingVertical: 20 }} /> : (
             <>
-              <SettingsField label="First name" value={firstName} onChangeText={setFirstName} colors={colors} autoCapitalize="words" returnKeyType="next" />
-              <SettingsField label="Last name" value={lastName} onChangeText={setLastName} colors={colors} autoCapitalize="words" returnKeyType="next" />
+              <SettingsField label="Full name" value={fullName} onChangeText={setFullName} colors={colors} autoCapitalize="words" returnKeyType="next" />
               <SettingsField label="Phone number" value={phone} onChangeText={setPhone} colors={colors} keyboardType="phone-pad" />
               <SettingsField label="Emergency contact" value={emergencyContact} onChangeText={setEmergencyContact} colors={colors} keyboardType="phone-pad" />
             </>
@@ -177,7 +200,6 @@ export default function TenantSettingsScreen({ user, onBack, onUserUpdated }) {
           <Text style={{ color: colors.textMuted, fontSize: 12, lineHeight: 18, marginBottom: 16 }}>
             Leave these fields blank if you do not want to change your password.
           </Text>
-          <SettingsField label="Current password" value={currentPassword} onChangeText={setCurrentPassword} colors={colors} secureTextEntry autoCapitalize="none" textContentType="password" />
           <SettingsField label="New password" value={newPassword} onChangeText={setNewPassword} colors={colors} secureTextEntry autoCapitalize="none" textContentType="newPassword" />
           <SettingsField label="Confirm new password" value={confirmPassword} onChangeText={setConfirmPassword} colors={colors} secureTextEntry autoCapitalize="none" textContentType="newPassword" />
         </View>
@@ -195,7 +217,6 @@ export default function TenantSettingsScreen({ user, onBack, onUserUpdated }) {
         </TouchableOpacity>
       </View>
     </ScrollView>
-    </TouchableWithoutFeedback>
-    </KeyboardAvoidingView>
+    </SettingsKeyboardWrapper>
   );
 }

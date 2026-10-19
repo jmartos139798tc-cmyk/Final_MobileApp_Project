@@ -140,8 +140,8 @@ export default function TenantComplaintsScreen({ user }) {
         <View style={{ maxWidth: containerMaxWidth, width: '100%' }}>
           {/* Header */}
           <View style={{ padding, paddingTop: isMobile ? 16 : isDesktop ? 28 : 24, paddingBottom: 20 }}>
-            <Text style={{ fontSize: fs(12), color: colors.textMuted, fontWeight: '800', letterSpacing: 1, marginBottom: 5 }}>TENANT PORTAL</Text>
-            <Text style={{ fontSize: fs(28), color: colors.text, fontWeight: '900', letterSpacing: -0.5 }}>My complaints</Text>
+            <Text style={{ fontSize: fs(12), color: colors.textSecondary, fontWeight: '700', letterSpacing: 1.5, marginBottom: 4 }}>TENANT PORTAL</Text>
+            <Text style={{ fontSize: fs(28), color: colors.text, fontWeight: '700' }}>My complaints</Text>
             <Text style={{ fontSize: fs(14), color: colors.textSecondary, lineHeight: 21, marginTop: 6, marginBottom: spacing.lg }}>
               Report a maintenance issue and follow its progress here.
             </Text>

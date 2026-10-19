@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, Modal, TouchableOpacity, TextInput, ScrollView, Alert, ActivityIndicator, Platform, Keyboard, KeyboardAvoidingView, TouchableWithoutFeedback } from 'react-native';
+import { View, Text, Modal, TouchableOpacity, TextInput, ScrollView, Alert, ActivityIndicator, Platform, KeyboardAvoidingView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '../../utils/ThemeContext';
@@ -150,12 +150,16 @@ export default function SubmitPaymentProofModal({ visible, onClose, invoice, ten
     onClose();
   };
 
+  const ModalKeyboardWrapper = Platform.OS === 'web' ? View : KeyboardAvoidingView;
+
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={handleClose}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined} style={{ flex: 1 }}>
-      <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+      <ModalKeyboardWrapper
+        {...(Platform.OS === 'web' ? {} : { behavior: Platform.OS === 'ios' ? 'padding' : 'height' })}
+        style={{ flex: 1 }}
+      >
       <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
-        <View style={{ backgroundColor: colors.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '90%' }}>
+        <View style={{ backgroundColor: colors.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '90%', flexShrink: 1 }}>
           {/* Header */}
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20, borderBottomWidth: 1, borderBottomColor: colors.cardBorder }}>
             <Text style={{ fontSize: fs(18), fontWeight: '700', color: colors.text }}>Submit Payment Proof</Text>
@@ -164,7 +168,12 @@ export default function SubmitPaymentProofModal({ visible, onClose, invoice, ten
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={{ maxHeight: 500 }} contentContainerStyle={{ padding: 20 }}>
+          <ScrollView
+            style={{ flexShrink: 1 }}
+            contentContainerStyle={{ padding: 20 }}
+            keyboardShouldPersistTaps="always"
+            showsVerticalScrollIndicator
+          >
             {/* Invoice Info */}
             {invoice && (
               <View style={{ backgroundColor: colors.accentBg, padding: 14, borderRadius: 12, marginBottom: 20 }}>
@@ -324,8 +333,7 @@ export default function SubmitPaymentProofModal({ visible, onClose, invoice, ten
           </ScrollView>
         </View>
       </View>
-      </TouchableWithoutFeedback>
-      </KeyboardAvoidingView>
+      </ModalKeyboardWrapper>
     </Modal>
   );
 }

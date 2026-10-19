@@ -77,6 +77,7 @@ export default function TenantApprovalModal({ visible, tenant, onClose, onSucces
         dueDay: day,
         dueDate,
         initialPaymentAmount: tenant.initialPaymentAmount,
+        initialPaymentMethod: tenant.paymentMethod,
         initialPaymentDate: tenant.paymentDate,
         initialPaymentReference: tenant.paymentReference,
       });
@@ -203,6 +204,9 @@ export default function TenantApprovalModal({ visible, tenant, onClose, onSucces
               <Text style={{ fontSize: fs(13), color: colors.accent, fontWeight: '800', marginBottom: 4 }}>Initial payment proof submitted</Text>
               <Text style={{ fontSize: fs(12), color: colors.textSecondary, marginBottom: 9 }}>
                 ₱{Number(tenant.initialPaymentAmount || 0).toLocaleString()} · paid {tenant.paymentDate || 'date not provided'}{tenant.paymentReference ? ` · Ref ${tenant.paymentReference}` : ''}
+              </Text>
+              <Text style={{ fontSize: fs(12), color: colors.textSecondary, marginBottom: 9 }}>
+                Payment method: {tenant.paymentMethod === 'gcash' ? 'GCash' : 'Cash'}
               </Text>
               <Image source={{ uri: tenant.paymentProofUrl }} resizeMode="contain" style={{ width: '100%', height: 150, borderRadius: 8, backgroundColor: colors.card }} />
               <Text style={{ fontSize: fs(11), color: colors.warningText, fontWeight: '700', marginTop: 7 }}>Verify the receipt before approving the application.</Text>

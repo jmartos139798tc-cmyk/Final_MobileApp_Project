@@ -47,6 +47,7 @@ export const COLLECTIONS = {
  *    - FK: house_id -> BOARDING_HOUSES.house_id
  *    - FK: type_id -> ROOM_TYPES.type_id
  *    - Fields: room_number ('01'..'17'), status ('occupied'|'vacant'|'maintenance'),
+ *      has_air_conditioning (boolean),
  *      reserved_for_name (optional; a prospective occupant shown while the room remains vacant)
  * 
  * 5. TENANTS: Tenant personal records (Independent of room assignment)
