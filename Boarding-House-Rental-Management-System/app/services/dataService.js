@@ -2743,9 +2743,10 @@ export async function createNotification({ tenantId, type, title, message, relat
  */
 export async function submitPaymentProof({ tenantId, invoiceId, amount, paymentDate, paymentMethod, referenceNo, proofImageUrl, notes }) {
   try {
-    if (paymentMethod !== 'cash') {
-      throw new Error('Only in-person cash payments can be submitted');
+    if (!['cash', 'gcash'].includes(String(paymentMethod || '').toLowerCase())) {
+      throw new Error('Choose Cash or GCash as the payment method.');
     }
+    paymentMethod = String(paymentMethod).toLowerCase();
     const store = await getStore();
     const tenants = store[COLLECTIONS.TENANTS] || [];
     const invoices = store[COLLECTIONS.INVOICES] || [];

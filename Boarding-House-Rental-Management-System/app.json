@@ -22,6 +22,7 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "com.nadsgracy.boardinghouse",
       "adaptiveIcon": {
         "backgroundColor": "#F7F5F2",
         "foregroundImage": "./assets/nads-gracy-app-icon-foreground.png"
@@ -29,6 +30,11 @@
     },
     "web": {
       "favicon": "./assets/nads-gracy-app-icon-foreground.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "390274b7-9eda-49a4-ae38-53c85557b3d8"
+      }
     }
   }
 }

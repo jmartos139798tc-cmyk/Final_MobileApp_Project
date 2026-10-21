@@ -248,7 +248,10 @@ export async function registerUser({ email, password, name, phone = '' }) {
   const { data, error } = await supabase.auth.signUp({
     email: cleanEmail,
     password: cleanPassword,
-    options: { data: { full_name: cleanName, phone: phone.trim() } },
+    options: {
+      data: { full_name: cleanName, phone: phone.trim() },
+      emailRedirectTo: 'boardinghouse://auth/confirm-email',
+    },
   });
   if (error) throw getFriendlyAuthError(error, 'create your account');
 

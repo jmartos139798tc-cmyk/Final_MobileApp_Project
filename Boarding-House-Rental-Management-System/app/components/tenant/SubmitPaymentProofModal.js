@@ -11,7 +11,7 @@ export default function SubmitPaymentProofModal({ visible, onClose, invoice, ten
   
   const [amount, setAmount] = useState(invoice?.outstanding?.toString() || '');
   const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
-  const paymentMethod = 'cash';
+  const [paymentMethod, setPaymentMethod] = useState('cash');
   const [referenceNo, setReferenceNo] = useState('');
   const [notes, setNotes] = useState('');
   const [proofImage, setProofImage] = useState(null);
@@ -22,6 +22,7 @@ export default function SubmitPaymentProofModal({ visible, onClose, invoice, ten
     if (visible) {
       setAmount(invoice?.outstanding?.toString() || '');
       setPaymentDate(new Date().toISOString().split('T')[0]);
+      setPaymentMethod('cash');
       setReferenceNo('');
       setNotes('');
       setProofImage(null);
@@ -98,7 +99,7 @@ export default function SubmitPaymentProofModal({ visible, onClose, invoice, ten
       return false;
     }
     if (!proofImage) {
-      setError('Please upload a clear photo of your cash payment receipt');
+      setError(`Please upload a clear photo of your ${paymentMethod === 'gcash' ? 'GCash' : 'cash'} receipt`);
       return false;
     }
     return true;
@@ -225,18 +226,40 @@ export default function SubmitPaymentProofModal({ visible, onClose, invoice, ten
               <Text style={{ fontSize: fs(12), color: colors.textMuted, marginTop: 4 }}>Format: YYYY-MM-DD (e.g., 2026-10-09)</Text>
             </View>
 
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-              <Ionicons name="cash-outline" size={20} color={colors.accent} />
-              <Text style={{ fontSize: fs(14), fontWeight: '600', color: colors.text }}>Payment method: Cash paid in person</Text>
+            <View style={{ marginBottom: 16 }}>
+              <Text style={{ fontSize: fs(14), fontWeight: '600', color: colors.text, marginBottom: 8 }}>Payment Method *</Text>
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                {[
+                  { value: 'gcash', label: 'GCash', icon: 'phone-portrait-outline' },
+                  { value: 'cash', label: 'Cash', icon: 'cash-outline' },
+                ].map((method) => {
+                  const selected = paymentMethod === method.value;
+                  return (
+                    <TouchableOpacity
+                      key={method.value}
+                      onPress={() => setPaymentMethod(method.value)}
+                      accessibilityRole="radio"
+                      accessibilityState={{ checked: selected }}
+                      style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 12, borderWidth: 1, borderColor: selected ? colors.accent : colors.cardBorder, borderRadius: 10, backgroundColor: selected ? colors.accentBg : colors.bg }}
+                    >
+                      <Ionicons name={method.icon} size={19} color={selected ? colors.accent : colors.textSecondary} />
+                      <Text style={{ fontSize: fs(14), fontWeight: '700', color: selected ? colors.accent : colors.text }}>{method.label}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              <Text style={{ fontSize: fs(12), color: colors.textMuted, marginTop: 6 }}>
+                {paymentMethod === 'gcash' ? 'Payment made through GCash.' : 'Cash paid in person.'}
+              </Text>
             </View>
 
             {/* Reference Number */}
             <View style={{ marginBottom: 16 }}>
-              <Text style={{ fontSize: fs(14), fontWeight: '600', color: colors.text, marginBottom: 8 }}>Cash Receipt Number (Optional)</Text>
+              <Text style={{ fontSize: fs(14), fontWeight: '600', color: colors.text, marginBottom: 8 }}>{paymentMethod === 'gcash' ? 'GCash Reference Number' : 'Cash Receipt Number'} (Optional)</Text>
               <TextInput
                 value={referenceNo}
                 onChangeText={setReferenceNo}
-                placeholder="Enter the number printed on your receipt"
+                placeholder={paymentMethod === 'gcash' ? 'Enter your GCash reference number' : 'Enter the number printed on your receipt'}
                 placeholderTextColor={colors.textMuted}
                 style={{
                   backgroundColor: colors.bg,
@@ -252,7 +275,7 @@ export default function SubmitPaymentProofModal({ visible, onClose, invoice, ten
 
             {/* Proof Image */}
             <View style={{ marginBottom: 16 }}>
-              <Text style={{ fontSize: fs(14), fontWeight: '600', color: colors.text, marginBottom: 8 }}>Photo of Cash Receipt *</Text>
+              <Text style={{ fontSize: fs(14), fontWeight: '600', color: colors.text, marginBottom: 8 }}>Photo of {paymentMethod === 'gcash' ? 'GCash' : 'Cash'} Receipt *</Text>
               {proofImage ? (
                 <View style={{ borderWidth: 1, borderColor: colors.successText, borderRadius: 10, padding: 12, backgroundColor: colors.successBg }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -265,7 +288,7 @@ export default function SubmitPaymentProofModal({ visible, onClose, invoice, ten
                 </View>
               ) : (
                 <View style={{ borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 10, padding: 14, backgroundColor: colors.bg, gap: 10 }}>
-                  <Text style={{ fontSize: fs(13), color: colors.textSecondary, textAlign: 'center' }}>Attach a clear photo of your cash receipt.</Text>
+                  <Text style={{ fontSize: fs(13), color: colors.textSecondary, textAlign: 'center' }}>Attach a clear photo of your {paymentMethod === 'gcash' ? 'GCash' : 'cash'} receipt.</Text>
                   {Platform.OS !== 'web' && (
                     <TouchableOpacity onPress={handleTakePhoto} style={{ padding: 12, borderRadius: 9, backgroundColor: colors.card, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
                       <Ionicons name="camera-outline" size={19} color={colors.text} />
