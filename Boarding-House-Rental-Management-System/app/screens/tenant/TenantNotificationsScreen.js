@@ -14,7 +14,7 @@ const timeOf = (item) => {
   return Number.isNaN(parsed) ? 0 : parsed;
 };
 
-export default function TenantNotificationsScreen({ user }) {
+export default function TenantNotificationsScreen({ user, applicationRejected = false }) {
   const { colors } = useTheme();
   const padding = getResponsivePadding();
 
@@ -35,7 +35,10 @@ export default function TenantNotificationsScreen({ user }) {
         getLastSeen(uid),
         getDismissedAnnouncementIds(uid),
       ]);
-      const announcementItems = (announcements || []).map((announcement) => {
+      const visibleNotifications = applicationRejected
+        ? (data || []).filter((notification) => notification.type === 'rejection')
+        : data || [];
+      const announcementItems = (applicationRejected ? [] : announcements || []).map((announcement) => {
         const time = getAnnouncementTime(announcement);
         return {
           id: `announcement-${announcement.announcement_id || announcement.id}`,
@@ -49,8 +52,8 @@ export default function TenantNotificationsScreen({ user }) {
         };
       });
       const visibleAnnouncements = announcementItems.filter((item) => !dismissedAnnouncementIds.includes(item.id));
-      setNotifications([...(data || []), ...visibleAnnouncements].sort((a, b) => timeOf(b) - timeOf(a)));
-      markAnnouncementsSeen(uid, announcements || []);
+      setNotifications([...visibleNotifications, ...visibleAnnouncements].sort((a, b) => timeOf(b) - timeOf(a)));
+      if (!applicationRejected) markAnnouncementsSeen(uid, announcements || []);
     } catch (err) {
       console.error('Error loading notifications:', err);
       setError('Failed to load notifications. Please try again.');
@@ -62,7 +65,7 @@ export default function TenantNotificationsScreen({ user }) {
 
   useEffect(() => {
     loadNotifications();
-  }, [user]);
+  }, [user, applicationRejected]);
 
   useRealtimeRefresh(`tenant-notifications-${tenantId}`, [
     { table: 'tenant_notifications', filter: `tenant_id=eq.${tenantId}` },
@@ -72,7 +75,7 @@ export default function TenantNotificationsScreen({ user }) {
   const onRefresh = useCallback(() => {
     setRefreshing(true);
     loadNotifications();
-  }, [user]);
+  }, [user, applicationRejected]);
 
   const handleNotificationPress = async (notification) => {
     if (notification.type === 'announcement') {

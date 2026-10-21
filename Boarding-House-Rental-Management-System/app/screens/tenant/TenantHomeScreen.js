@@ -65,14 +65,18 @@ export default function TenantHomeScreen({ user, onNavigateToNotifications, onNa
         if (isMounted) {
           setTenant(tenantData);
           setBilling(billingData);
-          const announcements = (announcementsData || []).map((announcement) => ({
+          const applicationRejected = tenantData?.accountStatus === 'rejected';
+          const visibleNotifications = applicationRejected
+            ? (notificationsData || []).filter((notification) => notification.type === 'rejection')
+            : notificationsData || [];
+          const announcements = (applicationRejected ? [] : announcementsData || []).map((announcement) => ({
             ...announcement,
             type: 'announcement',
             message: announcement.description,
             created_at: new Date(getAnnouncementTime(announcement)).toISOString(),
             announcement,
           }));
-          const notices = [...(notificationsData || []), ...announcements]
+          const notices = [...visibleNotifications, ...announcements]
             .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
           setLatestNotice(notices[0] || null);
         }

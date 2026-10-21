@@ -1791,7 +1791,7 @@ export async function getVacantRoomsForAssignment() {
 }
 
 /**
- * 27. Get all pending tenant registrations awaiting landlord approval
+ * 27. Get pending tenant registrations that submitted room and payment setup
  */
 export async function getPendingTenantRegistrations() {
   try {
@@ -1815,7 +1815,8 @@ export async function getPendingTenantRegistrations() {
     const rooms = store[COLLECTIONS.ROOMS] || [];
     
     return tenants
-      .filter((tenant) => tenant.account_status === 'pending')
+      .filter((tenant) => tenant.account_status === 'pending'
+        && roomRequests.some((request) => request.tenant_id === tenant.id && request.status === 'pending'))
       .map((tenant) => {
         const roomRequest = roomRequests.find((request) => request.tenant_id === tenant.id && request.status === 'pending');
         const preferredRoom = rooms.find((room) => room.id === roomRequest?.requested_room_id);
@@ -1858,12 +1859,24 @@ export async function getPendingTenantRegistrations() {
   }
 }
 
-/** Return the live count of tenant accounts awaiting approval without loading payment proofs. */
+/** Return the live count of submitted tenant applications without loading payment proofs. */
 export async function getPendingTenantRegistrationCount() {
-  const tenants = isSupabaseConfigured && supabase
-    ? await readCollection(COLLECTIONS.TENANTS)
-    : (await getStore())[COLLECTIONS.TENANTS] || [];
-  return tenants.filter((tenant) => tenant.account_status === 'pending').length;
+  const store = isSupabaseConfigured && supabase ? null : await getStore();
+  const [tenants, roomRequests] = supabase
+    ? await Promise.all([
+      readCollection(COLLECTIONS.TENANTS),
+      readCollection(COLLECTIONS.ROOM_ASSIGNMENT_REQUESTS),
+    ])
+    : [
+      store[COLLECTIONS.TENANTS] || [],
+      store[COLLECTIONS.ROOM_ASSIGNMENT_REQUESTS] || [],
+    ];
+  const pendingTenantIds = new Set(tenants
+    .filter((tenant) => tenant.account_status === 'pending')
+    .map((tenant) => tenant.id));
+  return new Set(roomRequests
+    .filter((request) => request.status === 'pending' && pendingTenantIds.has(request.tenant_id))
+    .map((request) => request.tenant_id)).size;
 }
 
 /** Return the live count of tenant payment receipts waiting for staff review. */

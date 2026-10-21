@@ -95,7 +95,11 @@ export default function TenantApp({ user, onLogout }) {
           getTenantNotifications(tenantId).catch(() => []),
           getLastSeen(uid),
         ]);
-        const announcementItems = (announcements || []).map((item) => ({
+        const applicationRejected = tenantAccountStatus === 'rejected';
+        const visibleNotifications = applicationRejected
+          ? (notifications || []).filter((item) => item.type === 'rejection')
+          : notifications || [];
+        const announcementItems = (applicationRejected ? [] : announcements || []).map((item) => ({
           id: `announcement-${item.announcement_id || item.id}`,
           type: 'announcement',
           title: item.title || 'Property update',
@@ -104,11 +108,11 @@ export default function TenantApp({ user, onLogout }) {
           read: getAnnouncementTime(item) <= lastSeen,
           announcement: item,
         }));
-        const latestItems = [...(notifications || []), ...announcementItems]
+        const latestItems = [...visibleNotifications, ...announcementItems]
           .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
           .slice(0, 5);
         const newAnnouncements = announcementItems.filter((a) => !a.read).length;
-        const unreadNotifications = (notifications || []).filter((n) => !n.read).length;
+        const unreadNotifications = visibleNotifications.filter((n) => !n.read).length;
         if (active) {
           setNotificationBadge(newAnnouncements + unreadNotifications);
           setNotificationItems(latestItems);
@@ -124,7 +128,7 @@ export default function TenantApp({ user, onLogout }) {
     return () => {
       active = false;
     };
-  }, [activeScreen, tenantUser?.uid, tenantUser?.tenant_id, realtimeVersion]);
+  }, [activeScreen, tenantUser?.uid, tenantUser?.tenant_id, tenantAccountStatus, realtimeVersion]);
 
   const handleNotificationRead = async (item) => {
     if (!item || item.read) return;
@@ -191,9 +195,13 @@ export default function TenantApp({ user, onLogout }) {
       case 'application':
         return <TenantApplicationScreen user={tenantUser} />;
       case 'notifications':
-        if (!hasApplicationSetup) return <TenantSetupRequiredScreen feature="notifications" onSetUp={() => navigateToScreen('application')} />;
-        if (tenantAccountStatus !== 'approved') return <TenantSetupRequiredScreen feature="notifications" applicationPendingReview />;
-        return <TenantNotificationsScreen user={tenantUser} />;
+        if (!hasApplicationSetup && tenantAccountStatus !== 'rejected') {
+          return <TenantSetupRequiredScreen feature="notifications" onSetUp={() => navigateToScreen('application')} />;
+        }
+        if (tenantAccountStatus !== 'approved' && tenantAccountStatus !== 'rejected') {
+          return <TenantSetupRequiredScreen feature="notifications" applicationPendingReview />;
+        }
+        return <TenantNotificationsScreen user={tenantUser} applicationRejected={tenantAccountStatus === 'rejected'} />;
       case 'settings':
         return <TenantSettingsScreen
           user={tenantUser}
@@ -215,10 +223,10 @@ export default function TenantApp({ user, onLogout }) {
         subtitle={getScreenSubtitle()}
         onLogout={onLogout}
         onBackPress={activeScreen === 'application' ? () => setActiveScreen('home') : undefined}
-        notificationCount={tenantAccountStatus === 'approved' ? notificationBadge : 0}
+        notificationCount={tenantAccountStatus === 'approved' || tenantAccountStatus === 'rejected' ? notificationBadge : 0}
         showNotifications
-        applicationSetupRequired={!hasApplicationSetup}
-        applicationPendingReview={hasApplicationSetup && tenantAccountStatus !== 'approved'}
+        applicationSetupRequired={!hasApplicationSetup && tenantAccountStatus !== 'rejected'}
+        applicationPendingReview={hasApplicationSetup && tenantAccountStatus !== 'approved' && tenantAccountStatus !== 'rejected'}
         notificationItems={notificationItems}
         onNotificationRead={handleNotificationRead}
         onNotificationsPress={() => navigateToScreen('notifications')}

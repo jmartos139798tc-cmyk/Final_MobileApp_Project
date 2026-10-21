@@ -38,7 +38,10 @@ export default function LandlordApp({ user, onLogout }) {
       : 0;
   const menuHeaderHeight = isMobile ? 56 : 64;
 
-  useRealtimeRefresh('landlord-pending-approvals-badge', [{ table: 'tenants' }], () => {
+  useRealtimeRefresh('landlord-pending-approvals-badge', [
+    { table: 'tenants' },
+    { table: 'room_assignment_requests' },
+  ], () => {
     setRealtimeVersion((version) => version + 1);
   });
 

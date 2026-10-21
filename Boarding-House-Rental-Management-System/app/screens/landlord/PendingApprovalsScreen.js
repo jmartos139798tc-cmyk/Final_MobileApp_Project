@@ -46,7 +46,10 @@ export default function PendingApprovalsScreen() {
     loadPendingTenants();
   }, [realtimeVersion]);
 
-  useRealtimeRefresh('landlord-pending-approvals-list', [{ table: 'tenants' }], () => {
+  useRealtimeRefresh('landlord-pending-approvals-list', [
+    { table: 'tenants' },
+    { table: 'room_assignment_requests' },
+  ], () => {
     setRealtimeVersion((version) => version + 1);
   });
 
