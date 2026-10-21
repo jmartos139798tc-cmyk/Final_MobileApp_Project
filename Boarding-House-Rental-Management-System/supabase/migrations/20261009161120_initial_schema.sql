@@ -339,7 +339,43 @@ grant execute on function public.owns_lease(text) to authenticated;
 grant execute on function public.owns_invoice(text) to authenticated;
 
 -- Explicit grants pair with RLS. No anonymous access is granted to app data.
-grant select, insert, update, delete on all tables in schema public to authenticated;
+-- Keep these in the schema-creating migration so fresh projects and db resets
+-- recreate the Data API privileges alongside the tables.
+grant select, insert, update, delete on public.profiles to authenticated;
+grant select, insert, update, delete on public.boarding_houses to authenticated;
+grant select, insert, update, delete on public.room_types to authenticated;
+grant select, insert, update, delete on public.rooms to authenticated;
+grant select, insert, update, delete on public.tenants to authenticated;
+grant select, insert, update, delete on public.staff_profiles to authenticated;
+grant select, insert, update, delete on public.leases to authenticated;
+grant select, insert, update, delete on public.utility_readings to authenticated;
+grant select, insert, update, delete on public.invoices to authenticated;
+grant select, insert, update, delete on public.payments to authenticated;
+grant select, insert, update, delete on public.complaints to authenticated;
+grant select, insert, update, delete on public.room_change_requests to authenticated;
+grant select, insert, update, delete on public.due_date_extension_requests to authenticated;
+grant select, insert, update, delete on public.announcements to authenticated;
+grant select, insert, update, delete on public.tenant_notifications to authenticated;
+grant select, insert, update, delete on public.payment_proofs to authenticated;
+grant select, insert, update, delete on public.room_assignment_requests to authenticated;
+
+grant all privileges on public.profiles to service_role;
+grant all privileges on public.boarding_houses to service_role;
+grant all privileges on public.room_types to service_role;
+grant all privileges on public.rooms to service_role;
+grant all privileges on public.tenants to service_role;
+grant all privileges on public.staff_profiles to service_role;
+grant all privileges on public.leases to service_role;
+grant all privileges on public.utility_readings to service_role;
+grant all privileges on public.invoices to service_role;
+grant all privileges on public.payments to service_role;
+grant all privileges on public.complaints to service_role;
+grant all privileges on public.room_change_requests to service_role;
+grant all privileges on public.due_date_extension_requests to service_role;
+grant all privileges on public.announcements to service_role;
+grant all privileges on public.tenant_notifications to service_role;
+grant all privileges on public.payment_proofs to service_role;
+grant all privileges on public.room_assignment_requests to service_role;
 
 alter table public.profiles enable row level security;
 alter table public.boarding_houses enable row level security;
