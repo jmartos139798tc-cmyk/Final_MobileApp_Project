@@ -19,6 +19,7 @@ export const SEED_DATA = {
       name: 'Nads & Gracy Boarding House',
       address: 'University Belt, Manila',
       default_kwh_rate: 12.0,
+      monthly_wifi_charge: 100,
       created_at: '2026-01-01',
     },
   ],

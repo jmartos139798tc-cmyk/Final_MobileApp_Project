@@ -152,6 +152,9 @@ export default function TenantHomeScreen({ user, onNavigateToNotifications, onNa
     );
   }
 
+  const latestNoticeType = String(latestNotice?.category || latestNotice?.type || '').toLowerCase();
+  const isApprovalNotice = latestNoticeType === 'approval';
+
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <ScrollView
@@ -182,8 +185,8 @@ export default function TenantHomeScreen({ user, onNavigateToNotifications, onNa
                   </View>
                 )}
                 {tenant.accountStatus === 'approved' && formatApprovalDate(tenant.approvedAt) && (
-                  <Text style={{ fontSize: fs(12), color: colors.textMuted, marginTop: 3 }}>
-                    Approved on {formatApprovalDate(tenant.approvedAt)}
+                  <Text style={{ fontSize: fs(12), color: colors.successText, marginTop: 3, fontWeight: '700' }}>
+                    Approval: {formatApprovalDate(tenant.approvedAt)}
                   </Text>
                 )}
               </View>
@@ -443,9 +446,9 @@ export default function TenantHomeScreen({ user, onNavigateToNotifications, onNa
                     padding: isMobile ? 18 : 22,
                   }}
                 >
-                  {String(latestNotice.category || latestNotice.type || '').toLowerCase() !== 'payment_verified' && (
+                  {latestNoticeType !== 'payment_verified' && (
                     <View style={{
-                      backgroundColor: colors.warningBg,
+                      backgroundColor: isApprovalNotice ? colors.successBg : colors.warningBg,
                       alignSelf: 'flex-start',
                       paddingHorizontal: 10,
                       paddingVertical: 4,
@@ -455,9 +458,9 @@ export default function TenantHomeScreen({ user, onNavigateToNotifications, onNa
                       <Text style={{
                         fontSize: fs(12),
                         fontWeight: '800',
-                        color: colors.warningText,
+                        color: isApprovalNotice ? colors.successText : colors.warningText,
                       }}>
-                        {latestNotice.category || latestNotice.type}
+                        {isApprovalNotice ? 'APPROVED' : latestNotice.category || latestNotice.type}
                       </Text>
                     </View>
                   )}

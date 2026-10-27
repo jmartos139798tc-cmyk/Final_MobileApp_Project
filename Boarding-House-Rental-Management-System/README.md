@@ -1,6 +1,6 @@
 ﻿# Boarding House Rental Management System
 
-A comprehensive mobile and web application for managing boarding house operations, built with React Native (Expo) and Firebase.
+A mobile and web application for managing boarding-house operations, built with React Native, Expo, and Supabase (Auth, Postgres, and Storage).
 
 ## 📁 Project Structure
 
@@ -48,7 +48,7 @@ boarding-house-rental-management-system/
 │   │   └── seedDatabase.js      # Database seeding
 │   │
 │   ├── utils/                   # Utility functions
-│   │   ├── firebase.js          # Firebase configuration
+│   │   ├── firebase.js          # Legacy Firebase configuration (not used by current data service)
 │   │   ├── responsive.js        # Responsive design utilities
 │   │   └── ThemeContext.js      # Theme management (light/dark)
 │   │
@@ -62,9 +62,9 @@ boarding-house-rental-management-system/
 ├── .gitignore                   # Git ignore rules
 ├── App.js                       # Root app component
 ├── app.json                     # Expo configuration
-├── firebase.json                # Firebase configuration
-├── firestore.rules              # Firestore security rules
-├── FIRESTORE_SETUP.md           # Database setup guide
+├── firebase.json                # Legacy Firebase configuration
+├── firestore.rules              # Legacy Firestore security rules
+├── FIRESTORE_SETUP.md           # Archived Firebase/Firestore guide
 ├── index.js                     # Expo entry point
 ├── metro.config.js              # Metro bundler configuration
 ├── package.json                 # Dependencies
@@ -74,9 +74,8 @@ boarding-house-rental-management-system/
 ## 🚀 Getting Started
 
 ### Prerequisites
-- Node.js 16+ and npm
-- Expo CLI: `npm install -g expo-cli`
-- Firebase account and project
+- Node.js 22.13+ and npm (required by Expo SDK 57)
+- Supabase project
 
 ### Installation
 
@@ -90,11 +89,10 @@ boarding-house-rental-management-system/
    npm install
    ```
 
-3. **Configure Firebase** (see `FIRESTORE_SETUP.md`)
-   - Create Firebase project
-   - Enable Authentication (Email/Password)
-   - Enable Firestore Database
-   - Deploy security rules: `firebase deploy --only firestore:rules`
+3. **Configure Supabase** (see [`supabase/SETUP.md`](supabase/SETUP.md))
+   - Apply the SQL migrations in `supabase/migrations`
+   - Configure Supabase email authentication
+   - Set `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY` in `.env`
 
 4. **Start the development server**
    ```bash
@@ -132,9 +130,9 @@ boarding-house-rental-management-system/
 ## 🔐 Authentication
 
 ### Demo Accounts
-Create staff accounts via Firebase Console:
-- Owner: Configure in Firebase Authentication
-- Caretaker: Configure in Firebase Authentication
+Create staff accounts through the app, then provision their roles as described in [`supabase/SETUP.md`](supabase/SETUP.md):
+- Owner: set the Supabase profile role to `landlord`
+- Caretaker: set the Supabase profile role to `caretaker`
 - Tenants: Self-register through the app
 
 ## 📊 Database Schema
@@ -155,7 +153,7 @@ The application uses a normalized relational database with collections including
 - `room_change_requests` - Room transfer requests
 - `announcements` - System notices
 
-See `FIRESTORE_SETUP.md` for detailed schema documentation.
+See [`supabase/SETUP.md`](supabase/SETUP.md) and `supabase/migrations/` for the active Postgres schema and row-level security policies. The Firestore files are legacy references and are not used by the current data service.
 
 ## 🎨 Features
 
@@ -170,7 +168,7 @@ See `FIRESTORE_SETUP.md` for detailed schema documentation.
 - Room change requests (submit, review)
 - Responsive design (mobile, tablet, desktop)
 - Dark mode support
-- Real-time Firestore integration
+- Supabase Realtime updates
 
 ### 🚧 In Progress
 - Invoice generation interface
@@ -180,7 +178,7 @@ See `FIRESTORE_SETUP.md` for detailed schema documentation.
 ## 🛠️ Technologies
 
 - **Frontend**: React Native, Expo SDK 57
-- **Backend**: Firebase (Authentication, Firestore)
+- **Backend**: Supabase (Authentication, Postgres, Storage, Realtime)
 - **State Management**: React Hooks (useState, useEffect)
 - **Styling**: React Native StyleSheet, Theme Context
 - **Navigation**: Custom navigation system
@@ -199,9 +197,9 @@ See `FIRESTORE_SETUP.md` for detailed schema documentation.
 npx expo start --clear
 ```
 
-### Deploy Firestore rules
+### Apply Supabase migrations
 ```bash
-firebase deploy --only firestore:rules --project boardinghouse-rental-mgt
+npx supabase db push
 ```
 
 ### Project scripts
@@ -210,13 +208,16 @@ npm start          # Start Expo development server
 npm run android    # Run on Android
 npm run ios        # Run on iOS
 npm run web        # Run on web
+npm test           # Run billing rule tests
+npm run check:web  # Build/export the web app
+npm run verify     # Run tests and the web build
 ```
 
 ## 📝 Documentation
 
-- `FIRESTORE_SETUP.md` - Database schema and setup instructions
-- `CARETAKER_SYSTEM.md` - Caretaker features documentation
-- `firestore.rules` - Security rules (with inline comments)
+- `supabase/SETUP.md` - Supabase project setup and migration instructions
+- `supabase/migrations/` - Database schema and row-level security policies
+- `firestore.rules` - Legacy Firestore rules; not used by the active app backend
 
 ## 🤝 Contributing
 
@@ -234,9 +235,9 @@ See LICENSE file for details.
 ## 🆘 Support
 
 For issues or questions:
-1. Check `FIRESTORE_SETUP.md` for database issues
-2. Verify Firebase configuration in `app/utils/firebase.js`
-3. Ensure Firestore rules are deployed
+1. Check `supabase/SETUP.md` for database and authentication setup
+2. Verify `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY` in `.env`
+3. Confirm the Supabase migrations have been applied with `npx supabase db push`
 4. Clear cache if needed: `npx expo start --clear`
 
 ---

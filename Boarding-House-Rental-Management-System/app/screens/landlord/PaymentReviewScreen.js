@@ -28,6 +28,7 @@ export default function PaymentReviewScreen({ user, navigation }) {
   const [error, setError] = useState('');
   const [processingProofId, setProcessingProofId] = useState(null);
   const [viewingProof, setViewingProof] = useState(null);
+  const [confirmingProof, setConfirmingProof] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
 
   const loadProofs = useCallback(async (isRefresh = false) => {
@@ -63,6 +64,7 @@ export default function PaymentReviewScreen({ user, navigation }) {
       setProcessingProofId(proof.id);
       setError('');
       await approvePaymentProof(proof.id, user?.uid);
+      setConfirmingProof(null);
       setViewingProof(null);
       await loadProofs();
     } catch (approveError) {
@@ -211,7 +213,7 @@ export default function PaymentReviewScreen({ user, navigation }) {
                   accessibilityRole="button"
                   accessibilityLabel={`Record payment for ${proof.tenantName}`}
                   disabled={processingProofId === proof.id}
-                  onPress={() => handleApprove(proof)}
+                  onPress={() => setConfirmingProof(proof)}
                   style={{
                     flex: 1,
                     minHeight: 44,
@@ -308,6 +310,44 @@ export default function PaymentReviewScreen({ user, navigation }) {
                 </>
               ) : null}
             </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={Boolean(confirmingProof)}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setConfirmingProof(null)}
+      >
+        <View style={{ flex: 1, justifyContent: 'center', padding: 22, backgroundColor: 'rgba(0,0,0,0.45)' }}>
+          <View style={{ ...cardStyle, backgroundColor: colors.card, borderColor: colors.cardBorder, padding: 22 }}>
+            <Ionicons name="alert-circle-outline" size={34} color={colors.warningText} />
+            <Text style={{ fontSize: fs(20), fontWeight: '800', color: colors.text, marginTop: 10 }}>
+              Confirm payment approval
+            </Text>
+            <Text style={{ fontSize: fs(14), lineHeight: 21, color: colors.textSecondary, marginTop: 8 }}>
+              Record {confirmingProof?.tenantName}&apos;s payment of ₱{Number(confirmingProof?.amount || 0).toLocaleString()} for Room {confirmingProof?.roomNumber}? This will approve the proof and record the payment.
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 20 }}>
+              <TouchableOpacity
+                accessibilityRole="button"
+                onPress={() => setConfirmingProof(null)}
+                disabled={Boolean(processingProofId)}
+                style={{ flex: 1, minHeight: 46, borderRadius: 10, borderWidth: 1, borderColor: colors.cardBorder, alignItems: 'center', justifyContent: 'center' }}
+              >
+                <Text style={{ color: colors.text, fontSize: fs(14), fontWeight: '700' }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel="Confirm and record payment"
+                onPress={() => confirmingProof && handleApprove(confirmingProof)}
+                disabled={!confirmingProof || Boolean(processingProofId)}
+                style={{ flex: 1, minHeight: 46, borderRadius: 10, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center', opacity: processingProofId ? 0.7 : 1 }}
+              >
+                {processingProofId ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontSize: fs(14), fontWeight: '700' }}>Confirm Approval</Text>}
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>

@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { isDesktop, fs } from '../utils/responsive';
 import { useTheme } from '../utils/ThemeContext';
 
-export default function LandlordBottomNav({ user, activeScreen, onNavigate, pendingApprovalsCount = 0 }) {
+export default function LandlordBottomNav({ user, activeScreen, onNavigate, pendingApprovalsCount = 0, pendingPaymentCount = 0 }) {
   const { colors } = useTheme();
 
   const navItems = [
@@ -44,13 +44,14 @@ export default function LandlordBottomNav({ user, activeScreen, onNavigate, pend
 
         {navItems.map((item) => {
           const isActive = activeScreen === item.id;
-          const badgeCount = item.id === 'approvals' ? pendingApprovalsCount : 0;
+          const badgeCount = item.id === 'approvals' ? pendingApprovalsCount : item.id === 'finances' ? pendingPaymentCount : 0;
+          const badgeDescription = item.id === 'finances' ? 'payment submissions awaiting review' : 'pending tenant applications';
           return (
             <TouchableOpacity
               key={item.id}
               activeOpacity={0.82}
               accessibilityRole="button"
-              accessibilityLabel={`Navigate to ${item.label}${badgeCount > 0 ? `, ${badgeCount} pending tenant applications` : ''}`}
+              accessibilityLabel={`Navigate to ${item.label}${badgeCount > 0 ? `, ${badgeCount} ${badgeDescription}` : ''}`}
               accessibilityState={{ selected: isActive }}
               style={{
                 flexDirection: 'row',
@@ -106,13 +107,14 @@ export default function LandlordBottomNav({ user, activeScreen, onNavigate, pend
     }}>
       {navItems.map((item) => {
         const isActive = activeScreen === item.id;
-        const badgeCount = item.id === 'approvals' ? pendingApprovalsCount : 0;
+        const badgeCount = item.id === 'approvals' ? pendingApprovalsCount : item.id === 'finances' ? pendingPaymentCount : 0;
+        const badgeDescription = item.id === 'finances' ? 'payment submissions awaiting review' : 'pending tenant applications';
         return (
           <TouchableOpacity
             key={item.id}
             activeOpacity={0.82}
             accessibilityRole="button"
-            accessibilityLabel={`Navigate to ${item.label}${badgeCount > 0 ? `, ${badgeCount} pending tenant applications` : ''}`}
+            accessibilityLabel={`Navigate to ${item.label}${badgeCount > 0 ? `, ${badgeCount} ${badgeDescription}` : ''}`}
             accessibilityState={{ selected: isActive }}
             style={{ flex: 1, alignItems: 'center', paddingVertical: 3, minHeight: 50, justifyContent: 'center', borderRadius: 26, overflow: 'hidden' }}
             onPress={() => onNavigate(item.id)}

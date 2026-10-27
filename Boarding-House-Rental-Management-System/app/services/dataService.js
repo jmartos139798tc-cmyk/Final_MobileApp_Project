@@ -12,6 +12,12 @@ import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { decode } from 'base64-arraybuffer';
 import { COLLECTIONS } from './databaseSchema.js';
 import { getNormalizedMockDatabase } from './seedDatabase.js';
+import {
+  findMatchingPaymentForProof,
+  getInvoiceBalance as calculateInvoiceBalance,
+  getInvoiceTotalAmount as calculateInvoiceTotal,
+  getMonthlyWifiCharge,
+} from './billingRules.mjs';
 
 // ─── Supabase Helpers ─────────────────────────────────────────
 
@@ -87,12 +93,14 @@ async function updateDocument(collectionName, docId, updates) {
 
 // ─── Store Access (Supabase or In-Memory) ─────────────────────
 
-async function getStore() {
+async function getStore(...requestedCollections) {
   if (!isSupabaseConfigured || !supabase) {
     return getNormalizedMockDatabase();
   }
 
-  const collectionNames = Object.values(COLLECTIONS);
+  const collectionNames = requestedCollections.length
+    ? [...new Set(requestedCollections)]
+    : Object.values(COLLECTIONS);
   const results = await Promise.all(collectionNames.map(async (name) => [name, await readCollection(name)]));
   return Object.fromEntries(results);
 
@@ -101,31 +109,19 @@ async function getStore() {
 // ─── Relational Join Helpers ─────────────────────────────────
 
 function getInvoiceBalance(invoiceId, store) {
-  try {
-    const invoice = (store[COLLECTIONS.INVOICES] || []).find((inv) => inv.id === invoiceId);
-    if (!invoice) return 0;
+  const invoice = (store[COLLECTIONS.INVOICES] || []).find((inv) => inv.id === invoiceId);
+  if (!invoice) return 0;
 
-    const payments = (store[COLLECTIONS.PAYMENTS] || []).filter((p) => p.invoice_id === invoiceId);
-    const totalPaid = payments.reduce((sum, p) => sum + (p.amount_paid || 0), 0);
-    const balance = toMoney(getInvoiceTotalAmount(invoice) - totalPaid);
-    return Math.max(0, balance);
-  } catch (error) {
-    console.error('Error computing invoice balance:', error);
-    return 0;
-  }
+  const payments = (store[COLLECTIONS.PAYMENTS] || []).filter((p) => p.invoice_id === invoiceId);
+  return calculateInvoiceBalance(invoice, payments);
 }
 
 // Water is free, so exclude any legacy water charge from invoice totals.
 // Legacy initial invoices may also contain a security-deposit amount.
 function getInvoiceTotalAmount(invoice) {
-  const total = Number(invoice?.total_amount) || 0;
-  const water = Number(invoice?.water_charge) || 0;
-  const securityDeposit = invoice?.invoice_type === 'initial' ? Number(invoice.security_deposit) || 0 : 0;
-  const currentPeriod = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
-  if (invoice?.billing_period === currentPeriod) {
-    return Math.max(0, (Number(invoice.rent_charge) || 0) + (Number(invoice.utility_charge) || 0) + 100 - water - securityDeposit);
-  }
-  return Math.max(0, total - water - securityDeposit);
+  // Use the amount stored on the invoice: changing a property fee should affect
+  // new invoices without silently changing balances for bills already issued.
+  return calculateInvoiceTotal(invoice);
 }
 
 function getInvoicePaymentBreakdown(invoice, payments = []) {
@@ -162,6 +158,23 @@ function getInvoicePaymentBreakdown(invoice, payments = []) {
 }
 
 const WIFI_CHARGE = { id: 'wifi', label: 'Wi-Fi', amount: 100 };
+
+function getWifiCharge(store) {
+  return {
+    ...WIFI_CHARGE,
+    amount: getMonthlyWifiCharge(store?.[COLLECTIONS.BOARDING_HOUSES]?.[0], WIFI_CHARGE.amount),
+  };
+}
+
+function getInvoiceWifiCharge(invoice, fallbackCharge) {
+  const savedCharge = Array.isArray(invoice?.additional_charges)
+    ? invoice.additional_charges.find((charge) => charge.id === WIFI_CHARGE.id)
+    : null;
+  const savedAmount = Number(savedCharge?.amount ?? invoice?.other_charges);
+  return Number.isFinite(savedAmount) && savedAmount >= 0
+    ? { ...WIFI_CHARGE, ...savedCharge, amount: savedAmount }
+    : fallbackCharge;
+}
 
 function addDaysToDate(date, days) {
   const result = new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -243,7 +256,7 @@ async function getFinancialCollections() {
     return { invoices, payments };
   }
 
-  const store = await getStore();
+  const store = await getStore(COLLECTIONS.INVOICES, COLLECTIONS.PAYMENTS);
   return {
     invoices: store[COLLECTIONS.INVOICES] || [],
     payments: store[COLLECTIONS.PAYMENTS] || [],
@@ -265,7 +278,16 @@ function getTenantOverviewInvoice(invoices, leaseId, payments) {
       .reduce((sum, payment) => toMoney(sum + (Number(payment.amount_paid) || 0)), 0);
     return toMoney(getInvoiceTotalAmount(invoice) - paid) > 0;
   });
-  return unpaidInvoices.sort((a, b) => String(a.due_date || '').localeCompare(String(b.due_date || '')))[0]
+  return unpaidInvoices.sort((a, b) => {
+    // For the same billing period, show the monthly invoice so tenants see
+    // their shared electricity charge even while an initial advance is unpaid.
+    if (a.billing_period === b.billing_period && a.invoice_type !== b.invoice_type) {
+      return a.invoice_type === 'initial' ? 1 : -1;
+    }
+    const dueDateOrder = String(a.due_date || '').localeCompare(String(b.due_date || ''));
+    if (dueDateOrder) return dueDateOrder;
+    return String(b.billing_period || '').localeCompare(String(a.billing_period || ''));
+  })[0]
     || getLatestInvoiceForLease(invoices, leaseId);
 }
 
@@ -306,7 +328,16 @@ function toRoomListItem(room, roomTypes, leases = [], tenants = [], invoices = [
 }
 
 async function getRoomsStore() {
-  if (!isSupabaseConfigured || !supabase) return getStore();
+  if (!isSupabaseConfigured || !supabase) {
+    return getStore(
+      COLLECTIONS.ROOMS,
+      COLLECTIONS.ROOM_TYPES,
+      COLLECTIONS.LEASES,
+      COLLECTIONS.TENANTS,
+      COLLECTIONS.INVOICES,
+      COLLECTIONS.PAYMENTS,
+    );
+  }
 
   const [rooms, roomTypes, leases, tenants, invoices, payments] = await Promise.all([
     readCollection(COLLECTIONS.ROOMS),
@@ -327,7 +358,7 @@ async function getRoomsStore() {
  */
 export async function getBoardingHouseConfig() {
   try {
-    const store = await getStore();
+    const store = await getStore(COLLECTIONS.BOARDING_HOUSES);
     const houseList = store[COLLECTIONS.BOARDING_HOUSES] || [];
     const house = houseList[0] || { name: 'Boarding House', address: '', default_kwh_rate: 12.0 };
     return {
@@ -335,10 +366,11 @@ export async function getBoardingHouseConfig() {
       address: house.address,
       monthlyRent: 2500,
       electricityRate: house.default_kwh_rate || 12.0,
+      monthlyWifiCharge: getWifiCharge(store).amount,
     };
   } catch (error) {
     console.error('Error fetching boarding house config:', error);
-    return { name: 'Boarding House', address: '', monthlyRent: 2500, electricityRate: 12.0 };
+    throw error;
   }
 }
 
@@ -360,7 +392,7 @@ export async function getRooms() {
 
 /** Room types available to the owner when adding a room. */
 export async function getRoomTypes() {
-  const store = isSupabaseConfigured && supabase ? null : await getStore();
+  const store = isSupabaseConfigured && supabase ? null : await getStore(COLLECTIONS.ROOM_TYPES);
   const roomTypes = isSupabaseConfigured && supabase
     ? await readCollection(COLLECTIONS.ROOM_TYPES)
     : (store[COLLECTIONS.ROOM_TYPES] || []);
@@ -390,7 +422,7 @@ export async function addRoom({ roomNumber, typeId, reservedForName = '', hasAir
   }
 
   const liveStore = isSupabaseConfigured && supabase;
-  const store = liveStore ? null : await getStore();
+  const store = liveStore ? null : await getStore(COLLECTIONS.ROOMS, COLLECTIONS.ROOM_TYPES, COLLECTIONS.BOARDING_HOUSES);
   const [rooms, roomTypes, boardingHouses] = liveStore
     ? await Promise.all([
       readCollection(COLLECTIONS.ROOMS),
@@ -439,7 +471,14 @@ export async function addRoom({ roomNumber, typeId, reservedForName = '', hasAir
  */
 export async function getTenants() {
   try {
-    const store = await getStore();
+    const store = await getStore(
+      COLLECTIONS.TENANTS,
+      COLLECTIONS.LEASES,
+      COLLECTIONS.ROOMS,
+      COLLECTIONS.ROOM_TYPES,
+      COLLECTIONS.INVOICES,
+      COLLECTIONS.PAYMENTS,
+    );
     const tenants = store[COLLECTIONS.TENANTS] || [];
     const leases = store[COLLECTIONS.LEASES] || [];
     const rooms = store[COLLECTIONS.ROOMS] || [];
@@ -453,7 +492,7 @@ export async function getTenants() {
       const invoice = activeLease ? invoices.find((inv) => inv.lease_id === activeLease.id) : null;
 
       let balance = 0;
-      let dueDate = 'Oct 5, 2026';
+      let dueDate = 'TBD';
       let status = 'paid';
 
       if (invoice) {
@@ -479,7 +518,7 @@ export async function getTenants() {
     });
   } catch (error) {
     console.error('Error fetching tenants:', error);
-    return [];
+    throw error;
   }
 }
 
@@ -492,7 +531,7 @@ export async function getUnpaidTenants() {
     return allTenants.filter((t) => t.status === 'unpaid');
   } catch (error) {
     console.error('Error fetching unpaid tenants:', error);
-    return [];
+    throw error;
   }
 }
 
@@ -580,7 +619,7 @@ export async function getMonthlyIncome(endPeriod = getCurrentBillingPeriod(), mo
  */
 export async function getIssues() {
   try {
-    const store = await getStore();
+    const store = await getStore(COLLECTIONS.COMPLAINTS, COLLECTIONS.TENANTS, COLLECTIONS.ROOMS);
     const complaints = store[COLLECTIONS.COMPLAINTS] || [];
     const tenants = store[COLLECTIONS.TENANTS] || [];
     const rooms = store[COLLECTIONS.ROOMS] || [];
@@ -604,7 +643,7 @@ export async function getIssues() {
     });
   } catch (error) {
     console.error('Error fetching issues:', error);
-    return [];
+    throw error;
   }
 }
 
@@ -613,7 +652,7 @@ export async function getIssues() {
  */
 export async function getOccupancyStats() {
   try {
-    const store = await getStore();
+    const store = await getStore(COLLECTIONS.ROOMS, COLLECTIONS.LEASES);
     const rooms = store[COLLECTIONS.ROOMS] || [];
     const leases = store[COLLECTIONS.LEASES] || [];
     const totalRooms = rooms.length;
@@ -626,7 +665,7 @@ export async function getOccupancyStats() {
     return { totalRooms, occupied, vacant, rate };
   } catch (error) {
     console.error('Error computing occupancy stats:', error);
-    return { totalRooms: 17, occupied: 14, vacant: 3, rate: 82 };
+    throw error;
   }
 }
 
@@ -635,7 +674,7 @@ export async function getOccupancyStats() {
  */
 export async function getIssueStats() {
   try {
-    const store = await getStore();
+    const store = await getStore(COLLECTIONS.COMPLAINTS);
     const complaints = store[COLLECTIONS.COMPLAINTS] || [];
     const total = complaints.length;
     const pending = complaints.filter((i) => i.status === 'pending').length;
@@ -644,7 +683,7 @@ export async function getIssueStats() {
     return { total, pending, inProgress, resolved };
   } catch (error) {
     console.error('Error computing issue stats:', error);
-    return { total: 4, pending: 2, inProgress: 1, resolved: 1 };
+    throw error;
   }
 }
 
@@ -658,7 +697,7 @@ export async function getUnpaidStats() {
     return { count: unpaidTenants.length, total: totalUnpaid };
   } catch (error) {
     console.error('Error computing unpaid stats:', error);
-    return { count: 0, total: 0 };
+    throw error;
   }
 }
 
@@ -668,7 +707,7 @@ export async function getUnpaidStats() {
 export async function getPeriodSummary(period = getCurrentBillingPeriod()) {
   try {
     const [store, revenue, occupancy] = await Promise.all([
-      getStore(),
+      getStore(COLLECTIONS.COMPLAINTS),
       getRevenue(period),
       getOccupancyStats(),
     ]);
@@ -704,7 +743,7 @@ export async function getSeptemberSummary() {
  */
 export async function getAnnouncements() {
   try {
-    const store = await getStore();
+    const store = await getStore(COLLECTIONS.ANNOUNCEMENTS);
     const announcements = store[COLLECTIONS.ANNOUNCEMENTS] || [];
     return announcements.map((ann) => ({
       id: String(ann.id).replace('ann-', ''),
@@ -718,7 +757,7 @@ export async function getAnnouncements() {
     }));
   } catch (error) {
     console.error('Error fetching announcements:', error);
-    return [];
+    throw error;
   }
 }
 
@@ -729,7 +768,14 @@ export async function getCurrentTenant(id = '2') {
   try {
     const tenantIdentifier = String(id || '2');
     const formattedId = tenantIdentifier.startsWith('tenant-') ? tenantIdentifier : `tenant-${tenantIdentifier}`;
-    const store = await getStore();
+    const store = await getStore(
+      COLLECTIONS.TENANTS,
+      COLLECTIONS.LEASES,
+      COLLECTIONS.ROOMS,
+      COLLECTIONS.ROOM_TYPES,
+      COLLECTIONS.INVOICES,
+      COLLECTIONS.PAYMENTS,
+    );
     const tenants = store[COLLECTIONS.TENANTS] || [];
     const tenant = tenants.find((t) => t.id === formattedId);
     if (!tenant) return null;
@@ -765,7 +811,7 @@ export async function getCurrentTenant(id = '2') {
     };
   } catch (error) {
     console.warn('Could not fetch current tenant:', error.message || error);
-    return null;
+    throw error;
   }
 }
 
@@ -774,7 +820,7 @@ export async function getTenantSettingsProfile(tenantId) {
   const uid = await getCurrentUserId();
   const tenants = isSupabaseConfigured && uid
     ? await readWhere(COLLECTIONS.TENANTS, 'user_id', uid)
-    : (await getStore())[COLLECTIONS.TENANTS] || [];
+    : (await getStore(COLLECTIONS.TENANTS))[COLLECTIONS.TENANTS] || [];
   const tenant = tenants.find((item) => item.id === tenantId)
     || tenants.find((item) => item.user_id === uid);
   if (!tenant) throw new Error('Your tenant profile is not available. Please contact the property administrator.');
@@ -788,27 +834,32 @@ export async function getTenantSettingsProfile(tenantId) {
   };
 }
 
-/** Return a pending tenant's available initial room options. */
+/** Return available initial room options for tenants awaiting or retrying review. */
 export async function getAvailableRoomsForInitialAssignment(tenantId) {
-  const store = await getStore();
+  const store = await getStore(COLLECTIONS.TENANTS, COLLECTIONS.LEASES, COLLECTIONS.ROOM_TYPES, COLLECTIONS.ROOMS);
   const tenantKey = String(tenantId || '');
   const tenant = (store[COLLECTIONS.TENANTS] || []).find((item) => item.id === tenantKey);
-  if (!tenant || tenant.account_status !== 'pending') return [];
+  if (!tenant || !['pending', 'rejected'].includes(tenant.account_status)) return [];
 
   const leases = store[COLLECTIONS.LEASES] || [];
   if (leases.some((lease) => lease.tenant_id === tenantKey && lease.status === 'active')) return [];
 
-  const occupiedRoomIds = new Set(leases.filter((lease) => lease.status === 'active').map((lease) => lease.room_id));
   const roomTypes = store[COLLECTIONS.ROOM_TYPES] || [];
   return (store[COLLECTIONS.ROOMS] || [])
-    .filter((room) => room.status === 'vacant' && !occupiedRoomIds.has(room.id))
+    .filter((room) => {
+      const type = roomTypes.find((item) => item.id === room.type_id);
+      const occupants = leases.filter((lease) => lease.status === 'active' && lease.room_id === room.id).length;
+      const capacity = Math.max(1, Number(type?.max_capacity) || 1);
+      return occupants < capacity && (room.status === 'vacant' || (room.status === 'occupied' && capacity > 1));
+    })
     .map((room) => {
       const type = roomTypes.find((item) => item.id === room.type_id);
       return {
         id: room.id,
         number: room.room_number,
         type: type?.name || 'Room',
-        estimatedRent: type?.base_rent || 0,
+        estimatedRent: type?.max_capacity > 1 ? toMoney(Number(type.base_rent || 0) / Number(type.max_capacity)) : (type?.base_rent || 0),
+        occupancy: `${leases.filter((lease) => lease.status === 'active' && lease.room_id === room.id).length}/${Math.max(1, Number(type?.max_capacity) || 1)}`,
       };
     })
     .sort((a, b) => String(a.number).localeCompare(String(b.number), undefined, { numeric: true }));
@@ -828,7 +879,7 @@ export async function getTenantRoomAssignmentRequest(tenantId) {
       .maybeSingle();
     if (error) throw error;
     if (!request) return null;
-    const store = await getStore();
+    const store = await getStore(COLLECTIONS.ROOMS, COLLECTIONS.ROOM_TYPES);
     const room = (store[COLLECTIONS.ROOMS] || []).find((item) => item.id === request.requested_room_id);
     const roomType = (store[COLLECTIONS.ROOM_TYPES] || []).find((item) => item.id === room?.type_id);
     const paymentProofUrl = request.payment_proof_path
@@ -853,7 +904,7 @@ export async function getTenantRoomAssignmentRequest(tenantId) {
     };
   }
 
-  const store = await getStore();
+  const store = await getStore(COLLECTIONS.ROOM_ASSIGNMENT_REQUESTS, COLLECTIONS.ROOMS, COLLECTIONS.ROOM_TYPES);
   const requests = store[COLLECTIONS.ROOM_ASSIGNMENT_REQUESTS] || [];
   const request = requests
     .filter((item) => item.tenant_id === tenantKey)
@@ -962,27 +1013,40 @@ export async function submitRoomAssignmentRequest({ tenantId, requestedRoomId, p
   if (isSupabaseConfigured && !supabase) {
     throw new Error('Supabase is required for room and payment setup. Check the Supabase project URL and publishable key.');
   }
-  const store = await getStore();
+  const store = await getStore(
+    COLLECTIONS.TENANTS,
+    COLLECTIONS.LEASES,
+    COLLECTIONS.ROOMS,
+    COLLECTIONS.ROOM_TYPES,
+    COLLECTIONS.ROOM_ASSIGNMENT_REQUESTS,
+  );
   const tenant = (store[COLLECTIONS.TENANTS] || []).find((item) => item.id === tenantKey);
   if (!tenant) throw new Error('Your tenant profile is not available. Please sign in again.');
-  if (tenant.account_status !== 'pending') throw new Error('Room preferences are available while your application is awaiting approval.');
+  if (!['pending', 'rejected'].includes(tenant.account_status)) {
+    throw new Error('Room preferences are available while your application is awaiting review or needs resubmission.');
+  }
   if ((store[COLLECTIONS.LEASES] || []).some((lease) => lease.tenant_id === tenantKey && lease.status === 'active')) {
     throw new Error('You already have an active room assignment.');
   }
 
-  const room = (store[COLLECTIONS.ROOMS] || []).find((item) => item.id === requestedRoomId && item.status === 'vacant');
+  const room = (store[COLLECTIONS.ROOMS] || []).find((item) => item.id === requestedRoomId);
   if (!room) throw new Error('That room is no longer available. Refresh the list and choose another room.');
-  const occupiedRoomIds = new Set((store[COLLECTIONS.LEASES] || []).filter((lease) => lease.status === 'active').map((lease) => lease.room_id));
-  if (occupiedRoomIds.has(room.id)) throw new Error('That room is already assigned. Choose another room.');
   const roomType = (store[COLLECTIONS.ROOM_TYPES] || []).find((item) => item.id === room.type_id);
-  const expectedAmount = Number(roomType?.base_rent || 0);
+  const occupants = (store[COLLECTIONS.LEASES] || []).filter((lease) => lease.status === 'active' && lease.room_id === room.id).length;
+  const capacity = Math.max(1, Number(roomType?.max_capacity) || 1);
+  if (occupants >= capacity || (room.status !== 'vacant' && !(room.status === 'occupied' && capacity > 1))) {
+    throw new Error('That room is full or unavailable. Refresh the list and choose another room.');
+  }
+  const expectedAmount = toMoney(Number(roomType?.base_rent || 0) / capacity);
   const normalizedPaymentMethod = String(paymentMethod || '').toLowerCase();
   if (!['cash', 'gcash'].includes(normalizedPaymentMethod)) throw new Error('Choose Cash or GCash as your payment method.');
-  if (!paymentProofPath) throw new Error('Attach proof of your one month advance.');
+  if (normalizedPaymentMethod === 'gcash' && !paymentProofPath) {
+    throw new Error('Attach proof of your GCash one month advance.');
+  }
   if (!paymentDate) throw new Error('Enter the date you paid.');
   if (!Number.isFinite(Number(paymentAmount)) || Number(paymentAmount) <= 0) throw new Error('Enter a valid payment amount.');
-  if (expectedAmount > 0 && Number(paymentAmount) !== expectedAmount) {
-    throw new Error(`The amount for this room should be ₱${expectedAmount.toLocaleString()} (one month advance).`);
+  if (expectedAmount > 0 && Number(paymentAmount) > expectedAmount) {
+    throw new Error(`The payment cannot be more than one month of rent (₱${expectedAmount.toLocaleString()}).`);
   }
 
   const requestId = `assignment-${tenantKey}`;
@@ -1005,7 +1069,7 @@ export async function submitRoomAssignmentRequest({ tenantId, requestedRoomId, p
     payment_method: normalizedPaymentMethod,
     payment_date: paymentDate,
     payment_reference: paymentReference || '',
-    payment_proof_path: paymentProofPath,
+    payment_proof_path: paymentProofPath || null,
     payment_proof_status: 'pending',
     status: 'pending',
     requested_at: existing?.requested_at || now,
@@ -1019,6 +1083,12 @@ export async function submitRoomAssignmentRequest({ tenantId, requestedRoomId, p
     const { error } = await supabase.from(COLLECTIONS.ROOM_ASSIGNMENT_REQUESTS)
       .upsert(request, { onConflict: 'id' });
     if (error) throw new Error(error.message || 'Could not save the room and payment setup to Supabase.');
+    if (tenant.account_status === 'rejected') {
+      const { error: resubmitError } = await supabase.rpc('resubmit_rejected_tenant_application', {
+        p_tenant_id: tenantKey,
+      });
+      if (resubmitError) throw new Error(resubmitError.message || 'Your room request was saved, but your application could not be resubmitted. Please retry.');
+    }
   } else {
     const mockStore = getNormalizedMockDatabase();
     const requests = mockStore[COLLECTIONS.ROOM_ASSIGNMENT_REQUESTS] ||
@@ -1026,6 +1096,11 @@ export async function submitRoomAssignmentRequest({ tenantId, requestedRoomId, p
     const index = requests.findIndex((item) => item.id === requestId);
     if (index >= 0) requests[index] = request;
     else requests.unshift(request);
+    if (tenant.account_status === 'rejected') {
+      tenant.account_status = 'pending';
+      tenant.rejection_reason = null;
+      tenant.rejected_at = null;
+    }
   }
 
   return {
@@ -1054,7 +1129,13 @@ export async function getTenantBillingBreakdown(id = '2') {
   try {
     const tenantIdentifier = String(id || '2');
     const formattedId = tenantIdentifier.startsWith('tenant-') ? tenantIdentifier : `tenant-${tenantIdentifier}`;
-    const store = await getStore();
+    const store = await getStore(
+      COLLECTIONS.BOARDING_HOUSES,
+      COLLECTIONS.LEASES,
+      COLLECTIONS.INVOICES,
+      COLLECTIONS.PAYMENTS,
+    );
+    const wifiCharge = getWifiCharge(store);
     const leases = store[COLLECTIONS.LEASES] || [];
     const invoices = store[COLLECTIONS.INVOICES] || [];
     const payments = store[COLLECTIONS.PAYMENTS] || [];
@@ -1102,7 +1183,7 @@ export async function getTenantBillingBreakdown(id = '2') {
         invoiceType: invoice.invoice_type || 'monthly',
         water: 0,
         additionalCharges: invoice.billing_period === `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`
-          ? [WIFI_CHARGE]
+          ? [getInvoiceWifiCharge(invoice, wifiCharge)]
           : Array.isArray(invoice.additional_charges)
             ? invoice.additional_charges
             : Number(invoice.other_charges || 0) > 0
@@ -1137,7 +1218,7 @@ export async function getTenantBillingBreakdown(id = '2') {
     };
   } catch (error) {
     console.warn('Could not fetch billing breakdown:', error.message || error);
-    return { invoiceId: null, month: '', monthlyRent: 0, electricity: 0, securityDeposit: 0, invoiceType: null, water: 0, additionalCharges: [], totalDue: 0, dueDate: 'Pending room assignment', paidAmount: 0, outstanding: 0, totalOutstanding: 0, overdueRentBalance: 0 };
+    throw error;
   }
 }
 
@@ -1145,7 +1226,7 @@ export async function getTenantBillingBreakdown(id = '2') {
  * Room-change requests for a tenant.
  */
 export async function getAvailableRoomsForChange(tenantId) {
-  const store = await getStore();
+  const store = await getStore(COLLECTIONS.LEASES, COLLECTIONS.ROOMS, COLLECTIONS.ROOM_TYPES);
   const tenantKey = String(tenantId || '');
   const leases = store[COLLECTIONS.LEASES] || [];
   const lease = leases.find((item) => item.tenant_id === tenantKey && item.status === 'active');
@@ -1168,7 +1249,7 @@ export async function getAvailableRoomsForChange(tenantId) {
 }
 
 export async function getTenantRoomChangeRequests(tenantId) {
-  const store = await getStore();
+  const store = await getStore(COLLECTIONS.ROOM_CHANGE_REQUESTS, COLLECTIONS.ROOMS, COLLECTIONS.ROOM_TYPES);
   const tenantKey = String(tenantId || '');
   const requests = store[COLLECTIONS.ROOM_CHANGE_REQUESTS] || [];
   const rooms = store[COLLECTIONS.ROOMS] || [];
@@ -1191,7 +1272,13 @@ export async function getTenantRoomChangeRequests(tenantId) {
 }
 
 export async function submitRoomChangeRequest({ requestedRoomId, reason, tenantId }) {
-  const store = await getStore();
+  const store = await getStore(
+    COLLECTIONS.TENANTS,
+    COLLECTIONS.LEASES,
+    COLLECTIONS.ROOMS,
+    COLLECTIONS.ROOM_TYPES,
+    COLLECTIONS.ROOM_CHANGE_REQUESTS,
+  );
   const tenantKey = String(tenantId || '');
   const tenant = (store[COLLECTIONS.TENANTS] || []).find((item) => item.id === tenantKey);
   if (!tenant) throw new Error('Your tenant profile is not available. Please sign in again.');
@@ -1246,7 +1333,7 @@ export async function submitRoomChangeRequest({ requestedRoomId, reason, tenantI
  */
 export async function getTenantComplaints(tenantId) {
   try {
-    const store = await getStore();
+    const store = await getStore(COLLECTIONS.COMPLAINTS, COLLECTIONS.TENANTS);
     const complaints = store[COLLECTIONS.COMPLAINTS] || [];
     const tenants = store[COLLECTIONS.TENANTS] || [];
     const tenant = tenants.find((t) => t.id === tenantId);
@@ -1307,7 +1394,7 @@ export async function deleteResolvedTenantComplaint(complaintId, tenantId) {
  */
 export async function submitComplaint({ title, description = '', tenantId }) {
   try {
-    const store = await getStore();
+    const store = await getStore(COLLECTIONS.TENANTS, COLLECTIONS.ROOMS, COLLECTIONS.LEASES, COLLECTIONS.COMPLAINTS);
     const tenants = store[COLLECTIONS.TENANTS] || [];
     const rooms = store[COLLECTIONS.ROOMS] || [];
 
@@ -1360,7 +1447,17 @@ export async function submitComplaint({ title, description = '', tenantId }) {
  */
 export async function getRentBilling(billingPeriod = getCurrentBillingPeriod()) {
   try {
-    const store = await getStore();
+    const store = await getStore(
+      COLLECTIONS.BOARDING_HOUSES,
+      COLLECTIONS.TENANTS,
+      COLLECTIONS.LEASES,
+      COLLECTIONS.ROOMS,
+      COLLECTIONS.ROOM_TYPES,
+      COLLECTIONS.INVOICES,
+      COLLECTIONS.PAYMENTS,
+      COLLECTIONS.UTILITY_READINGS,
+    );
+    const wifiCharge = getWifiCharge(store);
     const tenants = store[COLLECTIONS.TENANTS] || [];
     const leases = store[COLLECTIONS.LEASES] || [];
     const rooms = store[COLLECTIONS.ROOMS] || [];
@@ -1386,10 +1483,11 @@ export async function getRentBilling(billingPeriod = getCurrentBillingPeriod()) 
         const paidAmount = invoice ? Math.max(0, getInvoiceTotalAmount(invoice) - balance) : 0;
         const status = !invoice ? 'unbilled' : balance === 0 ? 'paid' : paidAmount > 0 ? 'partial' : 'unpaid';
         const rent = invoice?.rent_charge ?? lease.agreed_monthly_rent ?? roomType?.base_rent ?? 0;
-        const electricity = invoice?.utility_charge ?? calculateElectricityCharge(reading).amount;
+        const occupantCount = Math.max(1, leases.filter((item) => item.status === 'active' && item.room_id === lease.room_id).length);
+        const electricity = invoice?.utility_charge ?? toMoney(calculateElectricityCharge(reading).amount / occupantCount);
         const totalAmount = invoice
           ? getInvoiceTotalAmount(invoice)
-          : Number(rent) + electricity + (billingPeriod === getCurrentBillingPeriod() ? WIFI_CHARGE.amount : 0);
+          : Number(rent) + electricity + (billingPeriod === getCurrentBillingPeriod() ? wifiCharge.amount : 0);
 
         return {
           id: String(tenant.id).replace('tenant-', ''),
@@ -1408,7 +1506,7 @@ export async function getRentBilling(billingPeriod = getCurrentBillingPeriod()) 
       });
   } catch (error) {
     console.error('Error fetching rent billing:', error);
-    return [];
+    throw error;
   }
 }
 
@@ -1435,7 +1533,17 @@ function calculateElectricityCharge(reading) {
  */
 export async function getUtilityBills() {
   try {
-    const store = await getStore();
+    const store = await getStore(
+      COLLECTIONS.BOARDING_HOUSES,
+      COLLECTIONS.UTILITY_READINGS,
+      COLLECTIONS.TENANTS,
+      COLLECTIONS.LEASES,
+      COLLECTIONS.ROOMS,
+      COLLECTIONS.ROOM_TYPES,
+      COLLECTIONS.INVOICES,
+      COLLECTIONS.PAYMENTS,
+    );
+    const wifiCharge = getWifiCharge(store);
     const utility_readings = store[COLLECTIONS.UTILITY_READINGS] || [];
     const tenants = store[COLLECTIONS.TENANTS] || [];
     const leases = store[COLLECTIONS.LEASES] || [];
@@ -1471,11 +1579,12 @@ export async function getUtilityBills() {
       const tenant = tenants.find((item) => item.id === lease.tenant_id);
       const electricityResult = calculateElectricityCharge(reading);
       const usage = electricityResult.usage;
-      const electricity = invoice?.utility_charge ?? electricityResult.amount;
+      const occupantCount = Math.max(1, activeLeases.filter((item) => item.room_id === lease.room_id).length);
+      const electricity = invoice?.utility_charge ?? toMoney(electricityResult.amount / occupantCount);
       const water = 0;
       const rent = invoice?.rent_charge ?? lease.agreed_monthly_rent ?? roomType?.base_rent ?? 0;
       const isCurrentBillingPeriod = (invoice?.billing_period || reading?.billing_period || billingPeriod) === currentPeriod;
-      const additionalCharges = isCurrentBillingPeriod ? [WIFI_CHARGE] : [];
+      const additionalCharges = isCurrentBillingPeriod ? [wifiCharge] : [];
       const additionalTotal = additionalCharges.reduce((sum, charge) => sum + Number(charge.amount || 0), 0);
       const invoiceTotal = invoice ? getInvoiceTotalAmount(invoice) : rent + electricity + additionalTotal;
       const invoicePaid = invoice
@@ -1510,7 +1619,7 @@ export async function getUtilityBills() {
     }).sort((a, b) => String(b.billingPeriod).localeCompare(String(a.billingPeriod)) || String(a.roomNumber).localeCompare(String(b.roomNumber)));
   } catch (error) {
     console.error('Error fetching utility bills:', error);
-    return [];
+    throw error;
   }
 }
 
@@ -1526,7 +1635,14 @@ export async function updateUtilityBill({ invoiceId, leaseId, billingPeriod, con
   }
   const [usage, rate] = values;
   const electricityCharge = Math.round(usage * rate);
-  const store = await getStore();
+  const store = await getStore(
+    COLLECTIONS.BOARDING_HOUSES,
+    COLLECTIONS.INVOICES,
+    COLLECTIONS.LEASES,
+    COLLECTIONS.UTILITY_READINGS,
+    COLLECTIONS.PAYMENTS,
+  );
+  const wifiCharge = getWifiCharge(store);
   let invoice = (store[COLLECTIONS.INVOICES] || []).find((item) => item.id === invoiceId);
   if (invoiceId && !invoice) throw new Error('The bill could not be found. Refresh and try again.');
   const lease = invoice
@@ -1534,6 +1650,7 @@ export async function updateUtilityBill({ invoiceId, leaseId, billingPeriod, con
     : (store[COLLECTIONS.LEASES] || []).find((item) => item.id === leaseId && item.status === 'active');
   if (!lease) throw new Error('This room has no lease available for billing. Refresh and try again.');
   const period = billingPeriod || invoice?.billing_period || `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+  const periodWifiCharge = period === getCurrentBillingPeriod() ? wifiCharge : { ...wifiCharge, amount: 0 };
   const readings = store[COLLECTIONS.UTILITY_READINGS] || [];
   const reading = readings.find((item) => item.room_id === lease.room_id && item.billing_period === period);
   const previousKwh = Number(reading?.prev_kwh) || 0;
@@ -1555,61 +1672,63 @@ export async function updateUtilityBill({ invoiceId, leaseId, billingPeriod, con
     readings.push({ id: readingId, ...readingUpdates });
     store[COLLECTIONS.UTILITY_READINGS] = readings;
   }
-  if (!invoice) {
-    const rentCharge = Number(lease.agreed_monthly_rent) || 0;
-    const [year, month] = period.split('-').map(Number);
-    const dueDate = new Date(year, month, 1);
-    const dueDay = Math.max(1, Number(lease.due_day_of_month) || 5);
-    dueDate.setDate(Math.min(dueDay, new Date(year, month + 1, 0).getDate()));
-    const newId = `invoice-${Date.now()}`;
-    invoice = {
-      id: newId,
-      lease_id: lease.id,
-      billing_period: period,
-      invoice_type: 'monthly',
-      rent_charge: rentCharge,
-      utility_charge: electricityCharge,
-      water_charge: 0,
-      security_deposit: 0,
-      other_charges: WIFI_CHARGE.amount,
-      additional_charges: [WIFI_CHARGE],
-      total_amount: rentCharge + electricityCharge + WIFI_CHARGE.amount,
-      due_date: dueDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-      status: 'unpaid',
-      created_at: new Date().toISOString(),
-      notes: `${period} billing: Rent and electricity`,
-    };
-    if (isSupabaseConfigured && supabase) {
-      await writeDocument(COLLECTIONS.INVOICES, newId, invoice);
+  const occupants = (store[COLLECTIONS.LEASES] || []).filter((item) => item.status === 'active' && item.room_id === lease.room_id);
+  const shares = occupants.map((_, index) => index === occupants.length - 1
+    ? toMoney(electricityCharge - toMoney(electricityCharge / occupants.length) * (occupants.length - 1))
+    : toMoney(electricityCharge / occupants.length));
+  const invoices = store[COLLECTIONS.INVOICES] || [];
+  const nowIso = new Date().toISOString();
+  const [year, month] = period.split('-').map(Number);
+  const dueDate = new Date(year, month, 1);
+  const results = [];
+  for (let index = 0; index < occupants.length; index += 1) {
+    const occupantLease = occupants[index];
+    let occupantInvoice = invoices.find((item) => item.lease_id === occupantLease.id && item.billing_period === period && item.invoice_type !== 'initial');
+    const rentCharge = Number(occupantLease.agreed_monthly_rent) || 0;
+    const occupantWifi = periodWifiCharge.amount;
+    if (!occupantInvoice) {
+      const dueDay = Math.max(1, Number(occupantLease.due_day_of_month) || 5);
+      dueDate.setDate(Math.min(dueDay, new Date(year, month + 1, 0).getDate()));
+      const newId = `invoice-${Date.now()}-${index}`;
+      occupantInvoice = {
+        id: newId,
+        lease_id: occupantLease.id,
+        billing_period: period,
+        invoice_type: 'monthly',
+        rent_charge: rentCharge,
+        utility_charge: shares[index],
+        water_charge: 0,
+        security_deposit: 0,
+        other_charges: occupantWifi,
+        additional_charges: occupantWifi > 0 ? [periodWifiCharge] : [],
+        total_amount: toMoney(rentCharge + shares[index] + occupantWifi),
+        due_date: dueDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+        status: 'unpaid',
+        created_at: nowIso,
+        notes: `${period} billing: Rent and shared electricity`,
+      };
+      if (isSupabaseConfigured && supabase) await writeDocument(COLLECTIONS.INVOICES, newId, occupantInvoice);
+      else invoices.push(occupantInvoice);
     } else {
-      store[COLLECTIONS.INVOICES].push(invoice);
+      const oldRent = Number(occupantInvoice.rent_charge) || 0;
+      const otherCharges = Math.max(0, toMoney(getInvoiceTotalAmount(occupantInvoice) - oldRent - (Number(occupantInvoice.utility_charge) || 0)));
+      const totalAmount = toMoney(rentCharge + shares[index] + otherCharges);
+      const totalPaid = (store[COLLECTIONS.PAYMENTS] || [])
+        .filter((payment) => payment.invoice_id === occupantInvoice.id)
+        .reduce((sum, payment) => sum + Number(payment.amount_paid || 0), 0);
+      const updates = {
+        rent_charge: rentCharge,
+        utility_charge: shares[index],
+        total_amount: totalAmount,
+        status: totalAmount > 0 && totalPaid >= totalAmount ? 'paid' : totalPaid > 0 ? 'partial' : 'unpaid',
+      };
+      if (isSupabaseConfigured && supabase) await updateDocument(COLLECTIONS.INVOICES, occupantInvoice.id, updates);
+      else Object.assign(occupantInvoice, updates);
+      occupantInvoice = { ...occupantInvoice, ...updates };
     }
-    return invoice;
+    results.push(occupantInvoice);
   }
-  const rentCharge = invoice.rent_charge === null || invoice.rent_charge === undefined
-    ? Number(lease.agreed_monthly_rent) || 0
-    : Number(invoice.rent_charge) || 0;
-  const otherCharges = Math.max(0, toMoney(getInvoiceTotalAmount(invoice)
-    - (Number(invoice.rent_charge) || 0)
-    - (Number(invoice.utility_charge) || 0)));
-  const totalAmount = toMoney(rentCharge + electricityCharge + otherCharges);
-  const totalPaid = (store[COLLECTIONS.PAYMENTS] || [])
-    .filter((payment) => payment.invoice_id === invoiceId)
-    .reduce((sum, payment) => sum + Number(payment.amount_paid || 0), 0);
-
-  const updates = {
-    utility_charge: electricityCharge,
-    total_amount: totalAmount,
-    status: totalAmount > 0 && totalPaid >= totalAmount ? 'paid' : totalPaid > 0 ? 'partial' : 'unpaid',
-  };
-
-  if (isSupabaseConfigured && supabase) {
-    await updateDocument(COLLECTIONS.INVOICES, invoiceId, updates);
-  } else {
-    Object.assign(invoice, updates);
-  }
-
-  return { ...invoice, ...updates };
+  return results.find((item) => item.lease_id === lease.id) || null;
 }
 
 /**
@@ -1617,7 +1736,13 @@ export async function updateUtilityBill({ invoiceId, leaseId, billingPeriod, con
  */
 export async function getCaretakerDashboardData() {
   try {
-    const store = await getStore();
+    const store = await getStore(
+      COLLECTIONS.ROOMS,
+      COLLECTIONS.LEASES,
+      COLLECTIONS.COMPLAINTS,
+      COLLECTIONS.ANNOUNCEMENTS,
+      COLLECTIONS.TENANTS,
+    );
     const rooms = store[COLLECTIONS.ROOMS] || [];
     const leases = store[COLLECTIONS.LEASES] || [];
     const complaints = store[COLLECTIONS.COMPLAINTS] || [];
@@ -1664,19 +1789,7 @@ export async function getCaretakerDashboardData() {
     };
   } catch (error) {
     console.error('Error fetching caretaker dashboard data:', error);
-    return {
-      totalRooms: 17,
-      singleRooms: 12,
-      doubleRooms: 5,
-      occupied: 14,
-      vacant: 3,
-      rate: 82,
-      unpaidCount: 6,
-      totalUnpaid: 11500,
-      pendingIssueCount: 2,
-      pendingIssues: [],
-      latestAnnouncement: null,
-    };
+    throw error;
   }
 }
 
@@ -1766,12 +1879,18 @@ export async function updateComplaintStatus(complaintId, newStatus) {
  */
 export async function getVacantRoomsForAssignment() {
   try {
-    const store = await getStore();
+    const store = await getStore(COLLECTIONS.ROOMS, COLLECTIONS.ROOM_TYPES, COLLECTIONS.LEASES);
     const rooms = store[COLLECTIONS.ROOMS] || [];
     const roomTypes = store[COLLECTIONS.ROOM_TYPES] || [];
+    const activeLeases = (store[COLLECTIONS.LEASES] || []).filter((lease) => lease.status === 'active');
     
     return rooms
-      .filter((room) => room.status === 'vacant')
+      .filter((room) => {
+        const type = roomTypes.find((rt) => rt.id === room.type_id);
+        const capacity = Math.max(1, Number(type?.max_capacity) || 1);
+        return activeLeases.filter((lease) => lease.room_id === room.id).length < capacity
+          && (room.status === 'vacant' || (room.status === 'occupied' && capacity > 1));
+      })
       .map((room) => {
         const type = roomTypes.find((rt) => rt.id === room.type_id);
         return {
@@ -1779,8 +1898,9 @@ export async function getVacantRoomsForAssignment() {
           roomNumber: room.room_number,
           displayNumber: parseInt(room.room_number, 10),
           type: type ? type.name : 'Room',
-          baseRent: type ? type.base_rent : 2500,
+          baseRent: type ? toMoney(Number(type.base_rent || 0) / Math.max(1, Number(type.max_capacity) || 1)) : 2500,
           maxCapacity: type ? type.max_capacity : 1,
+          occupancy: activeLeases.filter((lease) => lease.room_id === room.id).length,
         };
       })
       .sort((a, b) => a.displayNumber - b.displayNumber);
@@ -1798,7 +1918,7 @@ export async function getPendingTenantRegistrations() {
     if (isSupabaseConfigured && !supabase) {
       throw new Error('Supabase is required to review initial room and payment submissions.');
     }
-    const store = await getStore();
+    const store = await getStore(COLLECTIONS.TENANTS, COLLECTIONS.ROOMS, COLLECTIONS.ROOM_ASSIGNMENT_REQUESTS);
     const tenants = store[COLLECTIONS.TENANTS] || [];
     let roomRequests = !isSupabaseConfigured ? (store[COLLECTIONS.ROOM_ASSIGNMENT_REQUESTS] || []) : [];
     if (supabase) {
@@ -1861,7 +1981,9 @@ export async function getPendingTenantRegistrations() {
 
 /** Return the live count of submitted tenant applications without loading payment proofs. */
 export async function getPendingTenantRegistrationCount() {
-  const store = isSupabaseConfigured && supabase ? null : await getStore();
+  const store = isSupabaseConfigured && supabase
+    ? null
+    : await getStore(COLLECTIONS.TENANTS, COLLECTIONS.ROOM_ASSIGNMENT_REQUESTS);
   const [tenants, roomRequests] = supabase
     ? await Promise.all([
       readCollection(COLLECTIONS.TENANTS),
@@ -1881,23 +2003,19 @@ export async function getPendingTenantRegistrationCount() {
 
 /** Return the live count of tenant payment receipts waiting for staff review. */
 export async function getPendingPaymentProofCount() {
-  if (!isSupabaseConfigured || !supabase) {
-    return getPendingPaymentProofs().then((proofs) => proofs.length);
-  }
-
-  const [pendingProofs, approvedProofs] = await Promise.all([
-    readWhere(COLLECTIONS.PAYMENT_PROOFS, 'status', 'pending'),
-    readWhere(COLLECTIONS.PAYMENT_PROOFS, 'status', 'approved'),
-  ]);
-  const invoiceIds = [...new Set(approvedProofs.map((proof) => proof.invoice_id).filter(Boolean))];
-  const paymentsByInvoice = await Promise.all(invoiceIds.map((invoiceId) => readWhere(COLLECTIONS.PAYMENTS, 'invoice_id', invoiceId)));
-  const payments = paymentsByInvoice.flat();
-  const recoverableCount = approvedProofs.filter((proof) => {
-    const reference = String(proof.reference_no || '').trim() || `PROOF-${proof.id}`;
-    return !payments.some((payment) => payment.invoice_id === proof.invoice_id && payment.reference_no === reference);
-  }).length;
-
-  return pendingProofs.length + recoverableCount;
+  const store = isSupabaseConfigured && supabase
+    ? null
+    : await getStore(COLLECTIONS.PAYMENT_PROOFS, COLLECTIONS.PAYMENTS);
+  const [proofs, payments] = supabase
+    ? await Promise.all([
+      readCollection(COLLECTIONS.PAYMENT_PROOFS),
+      readCollection(COLLECTIONS.PAYMENTS),
+    ])
+    : [store[COLLECTIONS.PAYMENT_PROOFS] || [], store[COLLECTIONS.PAYMENTS] || []];
+  const pendingCount = proofs.filter((proof) => proof.status === 'pending').length;
+  const recoverableCount = proofs.filter((proof) => proof.status === 'approved'
+    && !findMatchingPaymentForProof(proof, payments, String(proof.reference_no || '').trim() || `PROOF-${proof.id}`)).length;
+  return pendingCount + recoverableCount;
 }
 
 /**
@@ -1922,7 +2040,14 @@ export async function approveTenant({
   initialPaymentReference = '',
 }) {
   try {
-    const store = await getStore();
+    const store = await getStore(
+      COLLECTIONS.BOARDING_HOUSES,
+      COLLECTIONS.TENANTS,
+      COLLECTIONS.ROOMS,
+      COLLECTIONS.LEASES,
+      COLLECTIONS.ROOM_TYPES,
+    );
+    const wifiCharge = getWifiCharge(store);
     const tenants = store[COLLECTIONS.TENANTS] || [];
     const rooms = store[COLLECTIONS.ROOMS] || [];
     const leases = store[COLLECTIONS.LEASES] || [];
@@ -1934,12 +2059,17 @@ export async function approveTenant({
     
     const room = rooms.find((r) => r.id === roomId);
     if (!room) throw new Error('Room not found');
-    if (room.status !== 'vacant') throw new Error('Room is not available');
+    const roomType = (store[COLLECTIONS.ROOM_TYPES] || []).find((item) => item.id === room.type_id);
+    const roomCapacity = Math.max(1, Number(roomType?.max_capacity) || 1);
+    const currentOccupants = leases.filter((lease) => lease.status === 'active' && lease.room_id === roomId).length;
+    if (currentOccupants >= roomCapacity || (room.status !== 'vacant' && !(room.status === 'occupied' && roomCapacity > 1))) {
+      throw new Error('Room is full or unavailable and cannot accept another tenant');
+    }
     
     const existingLease = leases.find((l) => l.tenant_id === tenantId && l.status === 'active');
     if (existingLease) throw new Error('Tenant already has an active lease');
     
-    const rent = parseFloat(monthlyRent);
+    const rent = toMoney(monthlyRent);
     if (isNaN(rent) || rent <= 0) throw new Error('Invalid monthly rent amount');
 
     const verifiedInitialPayment = Number(initialPaymentAmount) || 0;
@@ -2021,11 +2151,11 @@ export async function approveTenant({
       utility_charge: 0,
       water_charge: 0,
       security_deposit: 0,
-      other_charges: WIFI_CHARGE.amount,
-      additional_charges: [WIFI_CHARGE],
-      total_amount: rent + WIFI_CHARGE.amount,
+      other_charges: wifiCharge.amount,
+      additional_charges: [wifiCharge],
+      total_amount: rent + wifiCharge.amount,
       due_date: dueDateStr,
-      status: verifiedInitialPayment >= rent + WIFI_CHARGE.amount ? 'paid' : verifiedInitialPayment > 0 ? 'partial' : 'unpaid',
+      status: verifiedInitialPayment >= rent + wifiCharge.amount ? 'paid' : verifiedInitialPayment > 0 ? 'partial' : 'unpaid',
       created_at: approvedAtStr,
       notes: 'Initial payment: 1 month advance',
     };
@@ -2078,6 +2208,33 @@ export async function approveTenant({
         mockTenant.approved_at = approvedAtStr;
         mockTenant.approved_by = updatedTenant.approved_by;
       }
+
+      if (currentOccupants > 0) {
+        const currentPeriodInvoices = mockStore[COLLECTIONS.INVOICES] || [];
+        const roomReading = (mockStore[COLLECTIONS.UTILITY_READINGS] || []).find(
+          (item) => item.room_id === roomId && item.billing_period === newInvoice.billing_period
+        );
+        const roomElectricity = calculateElectricityCharge(roomReading).amount;
+        const oldTenantElectricity = toMoney(roomElectricity / roomCapacity);
+        leases.filter((item) => item.status === 'active' && item.room_id === roomId).forEach((occupantLease) => {
+          occupantLease.agreed_monthly_rent = rent;
+          const currentInvoice = currentPeriodInvoices.find((item) => item.lease_id === occupantLease.id
+            && item.billing_period === newInvoice.billing_period && item.invoice_type === 'monthly');
+          if (!currentInvoice) return;
+          const previousTotal = getInvoiceTotalAmount(currentInvoice);
+          const previousRent = Number(currentInvoice.rent_charge) || 0;
+          const previousElectricity = Number(currentInvoice.utility_charge) || 0;
+          const newTotal = toMoney(previousTotal - previousRent - previousElectricity + rent + oldTenantElectricity);
+          const paidTotal = (mockStore[COLLECTIONS.PAYMENTS] || []).filter((payment) => payment.invoice_id === currentInvoice.id)
+            .reduce((sum, payment) => sum + (Number(payment.amount_paid) || 0), 0);
+          Object.assign(currentInvoice, {
+            rent_charge: rent,
+            utility_charge: oldTenantElectricity,
+            total_amount: newTotal,
+            status: paidTotal >= newTotal ? 'paid' : paidTotal > 0 ? 'partial' : 'unpaid',
+          });
+        });
+      }
       
       mockStore[COLLECTIONS.LEASES].push(newLease);
       mockStore[COLLECTIONS.INVOICES].push(newInvoice);
@@ -2088,6 +2245,22 @@ export async function approveTenant({
       
       if (!mockStore[COLLECTIONS.TENANT_NOTIFICATIONS]) {
         mockStore[COLLECTIONS.TENANT_NOTIFICATIONS] = [];
+      }
+      if (currentOccupants > 0) {
+        const newTenantName = `${tenant.first_name} ${tenant.last_name}`.trim();
+        leases.filter((item) => item.status === 'active' && item.room_id === roomId && item.tenant_id !== tenantId)
+          .forEach((occupantLease) => {
+            mockStore[COLLECTIONS.TENANT_NOTIFICATIONS].unshift({
+              id: `notif-shared-${tenantId}-${occupantLease.tenant_id}`,
+              tenant_id: occupantLease.tenant_id,
+              type: 'approval',
+              title: 'A tenant has joined your room',
+              message: `A new tenant, ${newTenantName}, has been assigned to Room ${room.room_number}. Monthly rent and electricity will be shared between the room occupants.`,
+              read: false,
+              dismissed: false,
+              created_at: approvedAtStr,
+            });
+          });
       }
       mockStore[COLLECTIONS.TENANT_NOTIFICATIONS].unshift(notification);
     }
@@ -2117,7 +2290,7 @@ export async function approveTenant({
  */
 export async function rejectTenant({ tenantId, rejectionReason, rejectedBy }) {
   try {
-    const store = await getStore();
+    const store = await getStore(COLLECTIONS.TENANTS);
     const tenants = store[COLLECTIONS.TENANTS] || [];
     
     const tenant = tenants.find((t) => t.id === tenantId);
@@ -2186,7 +2359,14 @@ export async function rejectTenant({ tenantId, rejectionReason, rejectedBy }) {
  */
 export async function getTenantFinancialSummary(tenantId) {
   try {
-    const store = await getStore();
+    const store = await getStore(
+      COLLECTIONS.TENANTS,
+      COLLECTIONS.LEASES,
+      COLLECTIONS.ROOMS,
+      COLLECTIONS.INVOICES,
+      COLLECTIONS.PAYMENTS,
+      COLLECTIONS.ROOM_TYPES,
+    );
     const tenants = store[COLLECTIONS.TENANTS] || [];
     const leases = store[COLLECTIONS.LEASES] || [];
     const rooms = store[COLLECTIONS.ROOMS] || [];
@@ -2251,7 +2431,7 @@ export async function getTenantFinancialSummary(tenantId) {
 
 /** Return the oldest unpaid invoice for a tenant's active lease. */
 export async function getNextUnpaidInvoiceForTenant(tenantId) {
-  const store = await getStore();
+  const store = await getStore(COLLECTIONS.LEASES, COLLECTIONS.INVOICES, COLLECTIONS.PAYMENTS);
   const activeLease = (store[COLLECTIONS.LEASES] || []).find(
     (lease) => lease.tenant_id === tenantId && lease.status === 'active'
   );
@@ -2288,7 +2468,7 @@ export async function calculateTenantBalance(tenantId) {
     return summary.outstandingBalance || 0;
   } catch (error) {
     console.error('Error calculating tenant balance:', error);
-    return 0;
+    throw error;
   }
 }
 
@@ -2298,7 +2478,14 @@ export async function calculateTenantBalance(tenantId) {
  */
 export async function getTenantsWithFinancialStatus(filter = 'all') {
   try {
-    const store = await getStore();
+    const store = await getStore(
+      COLLECTIONS.TENANTS,
+      COLLECTIONS.LEASES,
+      COLLECTIONS.ROOMS,
+      COLLECTIONS.ROOM_TYPES,
+      COLLECTIONS.INVOICES,
+      COLLECTIONS.PAYMENTS,
+    );
     const tenants = store[COLLECTIONS.TENANTS] || [];
     const leases = store[COLLECTIONS.LEASES] || [];
     const rooms = store[COLLECTIONS.ROOMS] || [];
@@ -2399,7 +2586,7 @@ export async function getTenantsWithFinancialStatus(filter = 'all') {
  */
 export async function getTenantPaymentHistory(tenantId) {
   try {
-    const store = await getStore();
+    const store = await getStore(COLLECTIONS.LEASES, COLLECTIONS.INVOICES, COLLECTIONS.PAYMENTS);
     const leases = store[COLLECTIONS.LEASES] || [];
     const invoices = store[COLLECTIONS.INVOICES] || [];
     const payments = store[COLLECTIONS.PAYMENTS] || [];
@@ -2433,7 +2620,7 @@ export async function getTenantPaymentHistory(tenantId) {
       .sort((a, b) => (getDateTimestamp(b.date) ?? 0) - (getDateTimestamp(a.date) ?? 0));
   } catch (error) {
     console.error('Error fetching payment history:', error);
-    return [];
+    throw error;
   }
 }
 
@@ -2442,7 +2629,13 @@ export async function getTenantPaymentHistory(tenantId) {
  */
 export async function getInvoiceWithPayments(invoiceId, excludePaymentId = null) {
   try {
-    const store = await getStore();
+    const store = await getStore(
+      COLLECTIONS.INVOICES,
+      COLLECTIONS.PAYMENTS,
+      COLLECTIONS.LEASES,
+      COLLECTIONS.TENANTS,
+      COLLECTIONS.ROOMS,
+    );
     const invoices = store[COLLECTIONS.INVOICES] || [];
     const payments = store[COLLECTIONS.PAYMENTS] || [];
     const leases = store[COLLECTIONS.LEASES] || [];
@@ -2486,7 +2679,7 @@ export async function getInvoiceWithPayments(invoiceId, excludePaymentId = null)
 
 /** Update a landlord-recorded payment and keep its invoice status in sync. */
 export async function updatePayment({ paymentId, amountPaid, paymentDate, paymentMethod, chargeType, notes = '' }) {
-  const store = await getStore();
+  const store = await getStore(COLLECTIONS.PAYMENTS, COLLECTIONS.INVOICES);
   const payments = store[COLLECTIONS.PAYMENTS] || [];
   const payment = payments.find((item) => item.id === paymentId);
   if (!payment) throw new Error('Payment not found. Refresh the page and try again.');
@@ -2538,7 +2731,7 @@ export async function updatePayment({ paymentId, amountPaid, paymentDate, paymen
  */
 export async function recordPayment({ invoiceId, amountPaid, paymentDate, paymentMethod, chargeType, referenceNo = '', receivedBy, notes = '' }) {
   try {
-    const store = await getStore();
+    const store = await getStore(COLLECTIONS.INVOICES, COLLECTIONS.PAYMENTS, COLLECTIONS.LEASES);
     const invoices = store[COLLECTIONS.INVOICES] || [];
     const payments = store[COLLECTIONS.PAYMENTS] || [];
     const leases = store[COLLECTIONS.LEASES] || [];
@@ -2668,7 +2861,7 @@ export async function recordPayment({ invoiceId, amountPaid, paymentDate, paymen
  */
 export async function getTenantNotifications(tenantId) {
   try {
-    const store = await getStore();
+    const store = await getStore(COLLECTIONS.TENANT_NOTIFICATIONS);
     const notifications = store[COLLECTIONS.TENANT_NOTIFICATIONS] || [];
     
     return notifications
@@ -2676,7 +2869,7 @@ export async function getTenantNotifications(tenantId) {
       .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
   } catch (error) {
     console.error('Error fetching tenant notifications:', error);
-    return [];
+    throw error;
   }
 }
 
@@ -2760,7 +2953,13 @@ export async function submitPaymentProof({ tenantId, invoiceId, amount, paymentD
       throw new Error('Choose Cash or GCash as the payment method.');
     }
     paymentMethod = String(paymentMethod).toLowerCase();
-    const store = await getStore();
+    const store = await getStore(
+      COLLECTIONS.TENANTS,
+      COLLECTIONS.INVOICES,
+      COLLECTIONS.LEASES,
+      COLLECTIONS.PAYMENTS,
+      COLLECTIONS.PAYMENT_PROOFS,
+    );
     const tenants = store[COLLECTIONS.TENANTS] || [];
     const invoices = store[COLLECTIONS.INVOICES] || [];
     
@@ -2777,7 +2976,7 @@ export async function submitPaymentProof({ tenantId, invoiceId, amount, paymentD
     const paymentAmount = Number(amount);
     if (!Number.isFinite(paymentAmount) || paymentAmount <= 0) throw new Error('Enter a valid payment amount.');
     if (!paymentDate || Number.isNaN(new Date(`${paymentDate}T00:00:00`).getTime())) throw new Error('Enter a valid payment date.');
-    if (!proofImageUrl) throw new Error('Upload a photo of your receipt.');
+    if (paymentMethod === 'gcash' && !proofImageUrl) throw new Error('Upload a photo of your GCash receipt.');
     const outstanding = getInvoiceBalance(invoice.id, store);
     if (paymentAmount > outstanding) throw new Error(`The payment cannot exceed the invoice balance of PHP ${outstanding.toLocaleString()}.`);
     if ((store[COLLECTIONS.PAYMENT_PROOFS] || []).some((proof) => proof.invoice_id === invoiceId && proof.status === 'pending')) {
@@ -2826,7 +3025,14 @@ export async function submitPaymentProof({ tenantId, invoiceId, amount, paymentD
  */
 export async function getPendingPaymentProofs() {
   try {
-    const store = await getStore();
+    const store = await getStore(
+      COLLECTIONS.PAYMENT_PROOFS,
+      COLLECTIONS.PAYMENTS,
+      COLLECTIONS.TENANTS,
+      COLLECTIONS.INVOICES,
+      COLLECTIONS.LEASES,
+      COLLECTIONS.ROOMS,
+    );
     const proofs = store[COLLECTIONS.PAYMENT_PROOFS] || [];
     const payments = store[COLLECTIONS.PAYMENTS] || [];
     const tenants = store[COLLECTIONS.TENANTS] || [];
@@ -2839,7 +3045,7 @@ export async function getPendingPaymentProofs() {
         if (proof.status === 'pending') return true;
         if (proof.status !== 'approved') return false;
         const stableReference = String(proof.reference_no || '').trim() || `PROOF-${proof.id}`;
-        return !payments.some((payment) => payment.invoice_id === proof.invoice_id && payment.reference_no === stableReference);
+        return !findMatchingPaymentForProof(proof, payments, stableReference);
       })
       .map(async (proof) => {
         const tenant = tenants.find((t) => t.id === proof.tenant_id);
@@ -2879,7 +3085,7 @@ export async function getPendingPaymentProofs() {
  */
 export async function getTenantPaymentProofs(tenantId) {
   try {
-    const store = await getStore();
+    const store = await getStore(COLLECTIONS.PAYMENT_PROOFS, COLLECTIONS.INVOICES);
     const proofs = store[COLLECTIONS.PAYMENT_PROOFS] || [];
     const invoices = store[COLLECTIONS.INVOICES] || [];
     
@@ -2908,7 +3114,7 @@ export async function getTenantPaymentProofs(tenantId) {
       .sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
   } catch (error) {
     console.error('Error fetching tenant payment proofs:', error);
-    return [];
+    throw error;
   }
 }
 
@@ -2917,7 +3123,13 @@ export async function getTenantPaymentProofs(tenantId) {
  */
 export async function approvePaymentProof(proofId, reviewerUserId) {
   try {
-    const store = await getStore();
+    const store = await getStore(
+      COLLECTIONS.PAYMENT_PROOFS,
+      COLLECTIONS.PAYMENTS,
+      COLLECTIONS.INVOICES,
+      COLLECTIONS.LEASES,
+      COLLECTIONS.TENANTS,
+    );
     const proofs = store[COLLECTIONS.PAYMENT_PROOFS] || [];
     
     const proof = proofs.find((p) => p.id === proofId);
@@ -2927,21 +3139,7 @@ export async function approvePaymentProof(proofId, reviewerUserId) {
     const now = new Date().toISOString();
     const stableReference = String(proof.reference_no || '').trim() || `PROOF-${proof.id}`;
     const recordedPayments = store[COLLECTIONS.PAYMENTS] || [];
-    let existingPayment = recordedPayments.find(
-      (payment) => payment.invoice_id === proof.invoice_id && payment.reference_no === stableReference
-    );
-    // A tenant may submit a proof for a payment that staff already entered manually.
-    // When no reference was supplied, match the same invoice, amount, date, and method
-    // so approval does not try to charge an already-paid invoice a second time.
-    if (!existingPayment && !String(proof.reference_no || '').trim()) {
-      const proofDate = String(proof.payment_date || '').slice(0, 10);
-      existingPayment = recordedPayments.find((payment) =>
-        payment.invoice_id === proof.invoice_id
-        && toMoney(Number(payment.amount_paid) || 0) === toMoney(Number(proof.amount) || 0)
-        && String(payment.payment_date || '').slice(0, 10) === proofDate
-        && String(payment.payment_method || '').toLowerCase() === String(proof.payment_method || '').toLowerCase()
-      );
-    }
+    const existingPayment = findMatchingPaymentForProof(proof, recordedPayments, stableReference);
 
     // Record first so an invalid payment never leaves the proof marked approved.
     // The stable reference also makes retries safe if the status update fails.
@@ -2992,7 +3190,7 @@ export async function approvePaymentProof(proofId, reviewerUserId) {
  */
 export async function rejectPaymentProof(proofId, reviewerUserId, reason) {
   try {
-    const store = await getStore();
+    const store = await getStore(COLLECTIONS.PAYMENT_PROOFS);
     const proofs = store[COLLECTIONS.PAYMENT_PROOFS] || [];
     
     const proof = proofs.find((p) => p.id === proofId);

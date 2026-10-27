@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, Image, Modal, Pressable, TouchableOpacity, ActivityIndicator, TextInput, ScrollView, Alert, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../utils/ThemeContext';
@@ -15,14 +15,21 @@ export default function TenantApprovalModal({ visible, tenant, onClose, onSucces
   const [monthlyRent, setMonthlyRent] = useState('');
   const [dueDay, setDueDay] = useState('5');
   const [dueDate, setDueDate] = useState(() => {
-    const date = new Date();
-    date.setMonth(date.getMonth() + 1);
-    date.setDate(5);
-    return date.toISOString().slice(0, 10);
+    const today = new Date();
+    const date = new Date(today.getFullYear(), today.getMonth() + 1, 5);
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  });
+  const [dueCalendarVisible, setDueCalendarVisible] = useState(false);
+  const [calendarMonth, setCalendarMonth] = useState(() => {
+    const today = new Date();
+    return new Date(today.getFullYear(), today.getMonth() + 1, 1);
   });
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
+  const [receiptViewerVisible, setReceiptViewerVisible] = useState(false);
+  const [receiptZoom, setReceiptZoom] = useState(1);
+  const pinchDistance = useRef(null);
 
   useEffect(() => {
     if (visible) {
@@ -44,7 +51,7 @@ export default function TenantApprovalModal({ visible, tenant, onClose, onSucces
         setSelectedRoomId(initialRoom.id);
         setMonthlyRent(String(initialRoom.baseRent));
       } else {
-        setError('No vacant rooms available for assignment.');
+        setError('No available rooms for assignment.');
       }
     } catch (err) {
       console.error('Error loading vacant rooms:', err);
@@ -132,6 +139,41 @@ export default function TenantApprovalModal({ visible, tenant, onClose, onSucces
   };
 
   const preferredRoomAvailable = vacantRooms.some((room) => room.id === tenant?.preferredRoomId);
+  const calendarYear = calendarMonth.getFullYear();
+  const calendarMonthIndex = calendarMonth.getMonth();
+  const calendarDays = [
+    ...Array(new Date(calendarYear, calendarMonthIndex, 1).getDay()).fill(null),
+    ...Array.from({ length: new Date(calendarYear, calendarMonthIndex + 1, 0).getDate() }, (_, index) => index + 1),
+  ];
+
+  const formatLocalDate = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  const parseLocalDate = (value) => {
+    const [year, month, day] = String(value || '').split('-').map(Number);
+    return year && month && day ? new Date(year, month - 1, day) : new Date();
+  };
+
+  const getTouchDistance = (touches) => {
+    if (!touches || touches.length < 2) return null;
+    const [first, second] = touches;
+    return Math.hypot(second.pageX - first.pageX, second.pageY - first.pageY);
+  };
+
+  const handleReceiptTouchStart = (event) => {
+    pinchDistance.current = getTouchDistance(event.nativeEvent.touches);
+  };
+
+  const handleReceiptTouchMove = (event) => {
+    const distance = getTouchDistance(event.nativeEvent.touches);
+    if (!distance || !pinchDistance.current) return;
+    const ratio = distance / pinchDistance.current;
+    pinchDistance.current = distance;
+    setReceiptZoom((zoom) => Math.max(1, Math.min(4, zoom * ratio)));
+  };
+
+  const openReceiptViewer = () => {
+    setReceiptZoom(1);
+    setReceiptViewerVisible(true);
+  };
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={() => !submitting && onClose()}>
@@ -160,6 +202,13 @@ export default function TenantApprovalModal({ visible, tenant, onClose, onSucces
               <Ionicons name="close" size={24} color={colors.textSecondary} />
             </TouchableOpacity>
           </View>
+
+          <ScrollView
+            style={{ flex: 1 }}
+            contentContainerStyle={{ paddingBottom: 8 }}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator
+          >
 
           {/* Tenant Info */}
           <View
@@ -194,22 +243,42 @@ export default function TenantApprovalModal({ visible, tenant, onClose, onSucces
           {!!tenant.preferredRoomNumber && (
             <View style={{ backgroundColor: colors.accentBg, padding: 11, borderRadius: 10, marginTop: -8, marginBottom: 14 }}>
               <Text style={{ fontSize: fs(13), color: colors.accent, fontWeight: '700' }}>
-                Tenant preference: Room {tenant.preferredRoomNumber}. {preferredRoomAvailable ? 'It is selected by default; confirm it or choose another vacant room.' : 'It is no longer vacant; choose another vacant room.'}
+                Tenant preference: Room {tenant.preferredRoomNumber}. {preferredRoomAvailable ? 'It is selected by default; confirm it or choose another available room.' : 'It is full or unavailable; choose another available room.'}
               </Text>
             </View>
           )}
 
-          {!!tenant.paymentProofUrl && (
+          {!!tenant.initialPaymentAmount && (
             <View style={{ backgroundColor: colors.accentBg, padding: 12, borderRadius: 10, marginBottom: 14 }}>
-              <Text style={{ fontSize: fs(13), color: colors.accent, fontWeight: '800', marginBottom: 4 }}>Initial payment proof submitted</Text>
+              <Text style={{ fontSize: fs(13), color: colors.accent, fontWeight: '800', marginBottom: 4 }}>
+                {tenant.paymentProofUrl ? 'Initial payment proof submitted' : 'Initial cash payment reported'}
+              </Text>
               <Text style={{ fontSize: fs(12), color: colors.textSecondary, marginBottom: 9 }}>
                 ₱{Number(tenant.initialPaymentAmount || 0).toLocaleString()} · paid {tenant.paymentDate || 'date not provided'}{tenant.paymentReference ? ` · Ref ${tenant.paymentReference}` : ''}
               </Text>
               <Text style={{ fontSize: fs(12), color: colors.textSecondary, marginBottom: 9 }}>
                 Payment method: {tenant.paymentMethod === 'gcash' ? 'GCash' : 'Cash'}
               </Text>
-              <Image source={{ uri: tenant.paymentProofUrl }} resizeMode="contain" style={{ width: '100%', height: 150, borderRadius: 8, backgroundColor: colors.card }} />
-              <Text style={{ fontSize: fs(11), color: colors.warningText, fontWeight: '700', marginTop: 7 }}>Verify the receipt before approving the application.</Text>
+              {tenant.paymentProofUrl ? (
+                <>
+                  <TouchableOpacity
+                    accessibilityRole="button"
+                    accessibilityLabel="Open payment proof image to zoom"
+                    onPress={openReceiptViewer}
+                    style={{ height: 150, borderRadius: 8, backgroundColor: colors.card, overflow: 'hidden' }}
+                  >
+                    <Image source={{ uri: tenant.paymentProofUrl }} resizeMode="contain" style={{ width: '100%', height: '100%' }} />
+                    <View style={{ position: 'absolute', right: 8, bottom: 8, backgroundColor: 'rgba(0,0,0,0.62)', borderRadius: 16, padding: 7 }}>
+                      <Ionicons name="expand-outline" size={17} color="#fff" />
+                    </View>
+                  </TouchableOpacity>
+                  <Text style={{ fontSize: fs(11), color: colors.warningText, fontWeight: '700', marginTop: 7 }}>Verify the receipt before approving the application.</Text>
+                </>
+              ) : (
+                <Text style={{ fontSize: fs(11), color: colors.warningText, fontWeight: '700', marginTop: 3 }}>
+                  Confirm that the cash was received before approving the application.
+                </Text>
+              )}
             </View>
           )}
 
@@ -220,12 +289,6 @@ export default function TenantApprovalModal({ visible, tenant, onClose, onSucces
             </View>
           )}
 
-          <ScrollView
-            style={{ flex: 1 }}
-            contentContainerStyle={{ paddingBottom: 8 }}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator
-          >
             {/* Room Selection */}
             <Text style={{ fontSize: fs(14), fontWeight: '700', color: colors.text, marginBottom: 8 }}>
               Select Room <Text style={{ color: colors.dangerText }}>*</Text>
@@ -248,7 +311,7 @@ export default function TenantApprovalModal({ visible, tenant, onClose, onSucces
               >
                 <Ionicons name="bed-outline" size={32} color={colors.textMuted} />
                 <Text style={{ fontSize: fs(14), color: colors.textMuted, marginTop: 8, textAlign: 'center' }}>
-                  {roomLoadFailed ? 'Could not load vacant rooms.' : 'No vacant rooms available.'}
+                  {roomLoadFailed ? 'Could not load available rooms.' : 'No available rooms.'}
                 </Text>
                 {roomLoadFailed && (
                   <TouchableOpacity
@@ -286,7 +349,7 @@ export default function TenantApprovalModal({ visible, tenant, onClose, onSucces
                         Room {room.displayNumber}
                       </Text>
                       <Text style={{ fontSize: fs(13), color: colors.textSecondary, marginTop: 2 }}>
-                        {room.type} - ₱{room.baseRent.toLocaleString()}/month
+                        {room.type} · {room.occupancy}/{room.maxCapacity} occupants · ₱{room.baseRent.toLocaleString()}/tenant/month
                       </Text>
                     </View>
 
@@ -340,30 +403,72 @@ export default function TenantApprovalModal({ visible, tenant, onClose, onSucces
             <Text style={{ fontSize: fs(14), fontWeight: '700', color: colors.text, marginBottom: 8 }}>
               Initial Payment Due Date <Text style={{ color: colors.dangerText }}>*</Text>
             </Text>
-            <TextInput
-              value={dueDate}
-              onChangeText={(value) => {
-                setDueDate(value);
-                setDueDay(String(new Date(`${value}T00:00:00`).getDate()));
-                setError('');
-              }}
-              placeholder="YYYY-MM-DD"
-              {...(Platform.OS === 'web' ? { type: 'date' } : {})}
-              placeholderTextColor={colors.textMuted}
-              keyboardType="default"
-              editable={!submitting}
-              style={{
-                backgroundColor: colors.bg,
-                borderWidth: 1,
-                borderColor: colors.cardBorder,
-                borderRadius: 8,
-                paddingHorizontal: 12,
-                paddingVertical: 12,
-                fontSize: fs(15),
-                color: colors.text,
-                marginBottom: 20,
-              }}
-            />
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel={`Due date: ${parseLocalDate(dueDate).toLocaleDateString()}. Choose date`}
+              onPress={() => setDueCalendarVisible((isVisible) => !isVisible)}
+              disabled={submitting}
+              style={{ backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 12, marginBottom: dueCalendarVisible ? 8 : 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+            >
+              <Text style={{ color: colors.text, fontSize: fs(15) }}>{parseLocalDate(dueDate).toLocaleDateString()}</Text>
+              <Ionicons name="calendar-outline" size={19} color={colors.accent} />
+            </TouchableOpacity>
+            {dueCalendarVisible && (
+              <View style={{ backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 10, padding: 10, marginBottom: 18 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <TouchableOpacity
+                    accessibilityRole="button"
+                    accessibilityLabel="Previous month"
+                    onPress={() => setCalendarMonth(new Date(calendarYear, calendarMonthIndex - 1, 1))}
+                    style={{ padding: 6 }}
+                  >
+                    <Ionicons name="chevron-back" size={18} color={colors.accent} />
+                  </TouchableOpacity>
+                  <Text style={{ color: colors.text, fontSize: fs(13), fontWeight: '700' }}>
+                    {calendarMonth.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
+                  </Text>
+                  <TouchableOpacity
+                    accessibilityRole="button"
+                    accessibilityLabel="Next month"
+                    onPress={() => setCalendarMonth(new Date(calendarYear, calendarMonthIndex + 1, 1))}
+                    style={{ padding: 6 }}
+                  >
+                    <Ionicons name="chevron-forward" size={18} color={colors.accent} />
+                  </TouchableOpacity>
+                </View>
+                <View style={{ flexDirection: 'row' }}>
+                  {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
+                    <Text key={day} style={{ flex: 1, textAlign: 'center', color: colors.textMuted, fontSize: fs(10), fontWeight: '700', paddingVertical: 5 }}>{day}</Text>
+                  ))}
+                </View>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+                  {calendarDays.map((day, index) => {
+                    if (!day) return <View key={`empty-${index}`} style={{ width: '14.2857%', height: 38 }} />;
+                    const date = new Date(calendarYear, calendarMonthIndex, day);
+                    const selected = dueDate === formatLocalDate(date);
+                    return (
+                      <TouchableOpacity
+                        key={day}
+                        accessibilityRole="button"
+                        accessibilityLabel={date.toLocaleDateString()}
+                        accessibilityState={{ selected }}
+                        onPress={() => {
+                          setDueDate(formatLocalDate(date));
+                          setDueDay(String(day));
+                          setDueCalendarVisible(false);
+                          setError('');
+                        }}
+                        style={{ width: '14.2857%', height: 38, alignItems: 'center', justifyContent: 'center' }}
+                      >
+                        <View style={{ width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: selected ? colors.accent : 'transparent' }}>
+                          <Text style={{ color: selected ? '#fff' : colors.text, fontSize: fs(12), fontWeight: selected ? '800' : '500' }}>{day}</Text>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+            )}
 
             {/* Payment Summary */}
             {parseFloat(monthlyRent) > 0 && (
@@ -380,9 +485,21 @@ export default function TenantApprovalModal({ visible, tenant, onClose, onSucces
                 </Text>
                 <View style={{ gap: 8 }}>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                    <Text style={{ fontSize: fs(14), color: colors.text }}>1 Month Advance</Text>
+                    <Text style={{ fontSize: fs(14), color: colors.text }}>One month rent</Text>
                     <Text style={{ fontSize: fs(14), fontWeight: '600', color: colors.text }}>
                       ₱{parseFloat(monthlyRent).toLocaleString()}
+                    </Text>
+                  </View>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                    <Text style={{ fontSize: fs(14), color: colors.text }}>Tenant payment submitted</Text>
+                    <Text style={{ fontSize: fs(14), fontWeight: '600', color: colors.text }}>
+                      ₱{Number(tenant.initialPaymentAmount || 0).toLocaleString()}
+                    </Text>
+                  </View>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                    <Text style={{ flex: 1, marginRight: 8, fontSize: fs(14), color: colors.text }}>Remaining rent if approved</Text>
+                    <Text style={{ fontSize: fs(14), fontWeight: '600', color: colors.text }}>
+                      ₱{Math.max(0, parseFloat(monthlyRent) - Number(tenant.initialPaymentAmount || 0)).toLocaleString()}
                     </Text>
                   </View>
                   <View
@@ -399,6 +516,9 @@ export default function TenantApprovalModal({ visible, tenant, onClose, onSucces
                     </Text>
                   </View>
                 </View>
+                <Text style={{ fontSize: fs(11), color: colors.textSecondary, lineHeight: 16, marginTop: 10 }}>
+                  If approved, the payment is credited to the initial invoice. Any remaining rent, Wi-Fi, and other initial charges stay in the tenant&apos;s balance.
+                </Text>
               </View>
             )}
           </ScrollView>
@@ -442,13 +562,69 @@ export default function TenantApprovalModal({ visible, tenant, onClose, onSucces
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
                 <Text numberOfLines={2} style={{ fontSize: fs(15), fontWeight: '700', color: '#fff', textAlign: 'center' }}>
-                  Approve & Create Lease
+                  Approve
                 </Text>
               )}
             </TouchableOpacity>
           </View>
         </View>
       </View>
+
+      <Modal
+        visible={receiptViewerVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setReceiptViewerVisible(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.96)' }}>
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Close payment proof viewer"
+            onPress={() => setReceiptViewerVisible(false)}
+            style={{ position: 'absolute', top: 42, right: 18, zIndex: 2, width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center' }}
+          >
+            <Ionicons name="close" size={25} color="#fff" />
+          </TouchableOpacity>
+          <View
+            style={{ flex: 1, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}
+            onTouchStart={handleReceiptTouchStart}
+            onTouchMove={handleReceiptTouchMove}
+            onTouchEnd={() => { pinchDistance.current = null; }}
+          >
+            <Image
+              source={{ uri: tenant.paymentProofUrl }}
+              resizeMode="contain"
+              style={{ width: '100%', height: '82%', transform: [{ scale: receiptZoom }] }}
+            />
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 16, paddingBottom: 32 }}>
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Zoom out"
+              onPress={() => setReceiptZoom((zoom) => Math.max(1, zoom - 0.5))}
+              style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center' }}
+            >
+              <Ionicons name="remove" size={25} color="#fff" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Reset zoom"
+              onPress={() => setReceiptZoom(1)}
+              style={{ minWidth: 72, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 }}
+            >
+              <Text style={{ color: '#fff', fontSize: fs(13), fontWeight: '700' }}>{Math.round(receiptZoom * 100)}%</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Zoom in"
+              onPress={() => setReceiptZoom((zoom) => Math.min(4, zoom + 0.5))}
+              style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center' }}
+            >
+              <Ionicons name="add" size={25} color="#fff" />
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       <Modal
         visible={showConfirmation}

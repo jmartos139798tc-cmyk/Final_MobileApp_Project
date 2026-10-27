@@ -36,7 +36,7 @@ export const COLLECTIONS = {
  * 
  * 2. BOARDING_HOUSES: Property details
  *    - PK: house_id
- *    - Fields: name, address, default_kwh_rate
+ *    - Fields: name, address, default_kwh_rate, monthly_wifi_charge
  * 
  * 3. ROOM_TYPES: Category & pricing defaults (Eliminates transitive dependency from rooms)
  *    - PK: type_id

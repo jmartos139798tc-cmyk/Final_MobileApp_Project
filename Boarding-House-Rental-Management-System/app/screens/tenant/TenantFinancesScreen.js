@@ -1,6 +1,6 @@
 import ScreenSkeleton from '../../components/ScreenSkeleton';
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, RefreshControl, ActivityIndicator, Linking } from 'react-native';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, RefreshControl, ActivityIndicator, Linking, Animated, Easing } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../utils/ThemeContext';
 import { isMobile, getResponsivePadding, fs, spacing, cardStyle, safeAreaTop } from '../../utils/responsive';
@@ -22,8 +22,14 @@ export default function TenantFinancesScreen({ user, onNavigateToApplication }) 
   const [paymentProofs, setPaymentProofs] = useState([]);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showAllPayments, setShowAllPayments] = useState(false);
+  const [showFireworks, setShowFireworks] = useState(false);
+  const fireworksProgress = useRef(new Animated.Value(0)).current;
+  const previousBalance = useRef(null);
 
   const tenantId = user?.tenant_id;
+  const balance = Number(billingBreakdown?.totalOutstanding ?? tenantInfo?.outstandingBalance ?? billingBreakdown?.outstanding ?? 0);
+  const overdueRentBalance = Number(billingBreakdown?.overdueRentBalance || 0);
+  const isOverdue = overdueRentBalance > 0;
 
   const loadFinancialData = useCallback(async () => {
     if (!tenantId) {
@@ -76,6 +82,21 @@ export default function TenantFinancesScreen({ user, onNavigateToApplication }) 
     setRefreshing(true);
     loadFinancialData();
   }, [loadFinancialData]);
+
+  useEffect(() => {
+    if (previousBalance.current !== null && previousBalance.current > 0 && balance === 0) {
+      setShowFireworks(true);
+      fireworksProgress.setValue(0);
+      Animated.sequence([
+        Animated.timing(fireworksProgress, { toValue: 1, duration: 500, easing: Easing.out(Easing.back(1.5)), useNativeDriver: true }),
+        Animated.delay(2000),
+        Animated.timing(fireworksProgress, { toValue: 0, duration: 500, useNativeDriver: true }),
+      ]).start(({ finished }) => {
+        if (finished) setShowFireworks(false);
+      });
+    }
+    previousBalance.current = balance;
+  }, [balance, fireworksProgress]);
 
   const formatDate = (dateStr) => {
     if (!dateStr) return '-';
@@ -135,10 +156,6 @@ export default function TenantFinancesScreen({ user, onNavigateToApplication }) 
     );
   }
 
-  const balance = Number(billingBreakdown?.totalOutstanding ?? tenantInfo.outstandingBalance ?? billingBreakdown?.outstanding ?? 0);
-  const overdueRentBalance = Number(billingBreakdown?.overdueRentBalance || 0);
-  const isOverdue = overdueRentBalance > 0;
-  
   const currentInvoice = billingBreakdown?.invoiceId ? {
     id: billingBreakdown.invoiceId,
     period: billingBreakdown.month,
@@ -181,18 +198,35 @@ export default function TenantFinancesScreen({ user, onNavigateToApplication }) 
             marginBottom: spacing.sm,
           }}
         >
+          {showFireworks && (
+            <Animated.View
+              pointerEvents="none"
+              style={{
+                position: 'absolute',
+                top: 26,
+                right: 24,
+                zIndex: 2,
+                opacity: fireworksProgress,
+                transform: [{ scale: fireworksProgress }],
+              }}
+            >
+              <Text style={{ fontSize: 36 }}>{'\u{1F929}'}</Text>
+            </Animated.View>
+          )}
           <Text style={{ fontSize: fs(14), color: balance > 0 ? colors.orangetext : colors.successText, marginBottom: 8 }}>
             Outstanding Balance
           </Text>
           <Text style={{ fontSize: fs(36), fontWeight: '700', color: balance > 0 ? colors.warningText : colors.successText }}>
             ₱{balance.toLocaleString()}
           </Text>
+          {overdueRentBalance > 0 && (
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: colors.cardBorder }}>
             <Text style={{ fontSize: fs(13), color: colors.textSecondary }}>Overdue rent balance</Text>
-            <Text style={{ fontSize: fs(14), fontWeight: '700', color: overdueRentBalance > 0 ? colors.dangerText : colors.successText }}>
+            <Text style={{ fontSize: fs(14), fontWeight: '700', color: colors.dangerText }}>
               ₱{overdueRentBalance.toLocaleString()}
             </Text>
           </View>
+          )}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12 }}>
             <Ionicons
               name={balance > 0 ? (isOverdue ? 'alert-circle' : 'time-outline') : 'checkmark-circle'}
@@ -200,7 +234,7 @@ export default function TenantFinancesScreen({ user, onNavigateToApplication }) 
               color={balance > 0 ? colors.dangerText : colors.successText}
             />
             <Text style={{ fontSize: fs(14), fontWeight: '600', color: balance > 0 ? colors.warningText : colors.successText }}>
-              {balance === 0 ? 'All Paid Up!' : isOverdue ? 'Overdue rent balance' : `Due: ${billingBreakdown?.dueDate || 'TBD'}`}
+              {balance === 0 ? 'All paid out!' : isOverdue ? 'Overdue rent balance' : `Due: ${billingBreakdown?.dueDate || 'TBD'}`}
             </Text>
           </View>
         </View>

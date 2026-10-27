@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, Text, Modal, Pressable, TouchableOpacity, ActivityIndicator, TextInput } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, Modal, Pressable, ScrollView, TouchableOpacity, ActivityIndicator, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../utils/ThemeContext';
 import { isMobile, fs } from '../../utils/responsive';
@@ -8,10 +8,27 @@ import { rejectTenant } from '../../services/dataService';
 export default function TenantRejectionModal({ visible, tenant, onClose, onSuccess }) {
   const { colors } = useTheme();
 
-  const [rejectionReason, setRejectionReason] = useState('');
+  const [selectedReason, setSelectedReason] = useState('');
+  const [customReason, setCustomReason] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [confirmationVisible, setConfirmationVisible] = useState(false);
+
+  const presetReasons = {
+    no_rooms: 'No More Room Available',
+    maintenance: 'Under Maintenance',
+  };
+  const rejectionReason = selectedReason === 'custom'
+    ? customReason
+    : presetReasons[selectedReason] || '';
+
+  useEffect(() => {
+    if (!visible) return;
+    setSelectedReason('');
+    setCustomReason('');
+    setError('');
+    setConfirmationVisible(false);
+  }, [visible, tenant?.tenantId]);
 
   const handleReject = async () => {
     try {
@@ -43,7 +60,8 @@ export default function TenantRejectionModal({ visible, tenant, onClose, onSucce
         tenantId: tenant.tenantId,
         rejectionReason: rejectionReason.trim(),
       });
-      setRejectionReason('');
+      setSelectedReason('');
+      setCustomReason('');
       setConfirmationVisible(false);
       onSuccess?.();
     } catch (err) {
@@ -166,13 +184,37 @@ export default function TenantRejectionModal({ visible, tenant, onClose, onSucce
               <Text style={{ fontSize: fs(14), fontWeight: '700', color: colors.text, marginBottom: 8 }}>
                 Reason for Rejection <Text style={{ color: colors.dangerText }}>*</Text>
               </Text>
+              <ScrollView style={{ maxHeight: 145, marginBottom: 10 }} nestedScrollEnabled keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator>
+                {[
+                  { value: 'no_rooms', label: 'No More Room Available', icon: 'bed-outline' },
+                  { value: 'maintenance', label: 'Under Maintenance', icon: 'construct-outline' },
+                  { value: 'custom', label: 'Other reason', icon: 'create-outline' },
+                ].map((option) => {
+                  const selected = selectedReason === option.value;
+                  return (
+                    <TouchableOpacity
+                      key={option.value}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected }}
+                      onPress={() => { setSelectedReason(option.value); setError(''); }}
+                      disabled={submitting}
+                      style={{ minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, marginBottom: 7, backgroundColor: selected ? colors.accentBg : colors.bg, borderColor: selected ? colors.accent : colors.cardBorder, borderWidth: 1, borderRadius: 9 }}
+                    >
+                      <Ionicons name={option.icon} size={18} color={selected ? colors.accent : colors.textSecondary} />
+                      <Text style={{ flex: 1, color: colors.text, fontSize: fs(14), fontWeight: selected ? '700' : '500' }}>{option.label}</Text>
+                      <Ionicons name={selected ? 'radio-button-on' : 'radio-button-off'} size={19} color={selected ? colors.accent : colors.textMuted} />
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+              {selectedReason === 'custom' && (
               <TextInput
-                value={rejectionReason}
+                value={customReason}
                 onChangeText={(value) => {
-                  setRejectionReason(value);
+                  setCustomReason(value);
                   setError('');
                 }}
-                placeholder="e.g., No available rooms at this time, incomplete documentation, etc."
+                placeholder="Type the reason for rejection"
                 placeholderTextColor={colors.textMuted}
                 multiline
                 numberOfLines={4}
@@ -192,6 +234,7 @@ export default function TenantRejectionModal({ visible, tenant, onClose, onSucce
                   minHeight: 100,
                 }}
               />
+              )}
               <Text style={{ fontSize: fs(12), color: colors.textMuted, marginBottom: 20 }}>
                 {rejectionReason.length}/500 characters · at least 10 required
               </Text>
@@ -208,9 +251,9 @@ export default function TenantRejectionModal({ visible, tenant, onClose, onSucce
                   accessibilityRole="button"
                   onPress={handleReject}
                   disabled={submitting || !rejectionReason.trim()}
-                  style={{ flex: 1, backgroundColor: !rejectionReason.trim() ? colors.textMuted : colors.dangerText, paddingVertical: 14, borderRadius: 12, alignItems: 'center' }}
+                  style={{ flex: 1, backgroundColor: !rejectionReason.trim() ? colors.textMuted : colors.successText, paddingVertical: 14, borderRadius: 12, alignItems: 'center' }}
                 >
-                  <Text style={{ fontSize: fs(15), fontWeight: '700', color: '#fff' }}>Review rejection</Text>
+                  <Text style={{ fontSize: fs(15), fontWeight: '700', color: '#fff' }}>Rejected</Text>
                 </TouchableOpacity>
               </View>
             </>

@@ -16,7 +16,8 @@
           "imageWidth": 220,
           "resizeMode": "contain"
         }
-      ]
+      ],
+      "expo-status-bar"
     ],
     "ios": {
       "supportsTablet": true

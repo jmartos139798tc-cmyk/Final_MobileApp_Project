@@ -11,7 +11,7 @@ import useRealtimeRefresh from '../../hooks/useRealtimeRefresh';
 
 const TENANTS_PER_PAGE = 5;
 
-export default function TenantFinancialManagement({ initialFilter = 'all', navigation }) {
+export default function TenantFinancialManagement({ initialFilter = 'all', navigation, pendingPaymentCount = 0 }) {
   const { colors } = useTheme();
   const padding = getResponsivePadding();
 
@@ -163,11 +163,12 @@ export default function TenantFinancialManagement({ initialFilter = 'all', navig
             <Text style={{ fontSize: fs(32), color: colors.text, fontWeight: '700', flex: 1 }}>Tenant Finances</Text>
             <TouchableOpacity
               accessibilityRole="button"
-              accessibilityLabel="Review tenant payment proofs"
+              accessibilityLabel={`Review tenant payment proofs${pendingPaymentCount > 0 ? `, ${pendingPaymentCount} awaiting review` : ''}`}
               onPress={() => navigation?.navigate('payment-review', { returnFilter: activeFilter })}
               style={{
                 minWidth: isMobile ? 58 : undefined,
                 minHeight: isMobile ? 46 : 42,
+                position: 'relative',
                 flexDirection: isMobile ? 'column' : 'row',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -186,6 +187,11 @@ export default function TenantFinancialManagement({ initialFilter = 'all', navig
                 </>
               ) : (
                 <Text style={{ fontSize: fs(13), fontWeight: '700', color: '#fff' }}>Payment Review</Text>
+              )}
+              {pendingPaymentCount > 0 && (
+                <View style={{ position: 'absolute', top: -7, right: -7, minWidth: 20, height: 20, paddingHorizontal: 5, borderRadius: 10, backgroundColor: colors.dangerText, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.bg }}>
+                  <Text style={{ color: '#fff', fontSize: 10, lineHeight: 12, fontWeight: '800' }}>{pendingPaymentCount > 99 ? '99+' : pendingPaymentCount}</Text>
+                </View>
               )}
             </TouchableOpacity>
           </View>

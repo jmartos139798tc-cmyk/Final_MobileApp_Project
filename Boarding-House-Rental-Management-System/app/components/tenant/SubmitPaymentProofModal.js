@@ -6,12 +6,32 @@ import { useTheme } from '../../utils/ThemeContext';
 import { fs } from '../../utils/responsive';
 import { submitPaymentProof, uploadPaymentProof } from '../../services/dataService';
 
+const toLocalDateString = (date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const parseLocalDate = (value) => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value || '');
+  if (!match) return new Date();
+  const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  return date.getFullYear() === Number(match[1])
+    && date.getMonth() === Number(match[2]) - 1
+    && date.getDate() === Number(match[3])
+    ? date
+    : new Date();
+};
+
 export default function SubmitPaymentProofModal({ visible, onClose, invoice, tenantId, onSuccess }) {
   const { colors } = useTheme();
   
   const [amount, setAmount] = useState(invoice?.outstanding?.toString() || '');
-  const [paymentDate, setPaymentDate] = useState(new Date().toISOString().split('T')[0]);
+  const [paymentDate, setPaymentDate] = useState(toLocalDateString(new Date()));
   const [paymentMethod, setPaymentMethod] = useState('cash');
+  const [calendarMonth, setCalendarMonth] = useState(new Date());
+  const [calendarVisible, setCalendarVisible] = useState(false);
   const [referenceNo, setReferenceNo] = useState('');
   const [notes, setNotes] = useState('');
   const [proofImage, setProofImage] = useState(null);
@@ -21,7 +41,9 @@ export default function SubmitPaymentProofModal({ visible, onClose, invoice, ten
   useEffect(() => {
     if (visible) {
       setAmount(invoice?.outstanding?.toString() || '');
-      setPaymentDate(new Date().toISOString().split('T')[0]);
+      setPaymentDate(toLocalDateString(new Date()));
+      setCalendarMonth(new Date());
+      setCalendarVisible(false);
       setPaymentMethod('cash');
       setReferenceNo('');
       setNotes('');
@@ -98,8 +120,8 @@ export default function SubmitPaymentProofModal({ visible, onClose, invoice, ten
       setError('The payment amount cannot be greater than the current balance.');
       return false;
     }
-    if (!proofImage) {
-      setError(`Please upload a clear photo of your ${paymentMethod === 'gcash' ? 'GCash' : 'cash'} receipt`);
+    if (paymentMethod === 'gcash' && !proofImage) {
+      setError('Please upload a clear photo of your GCash receipt');
       return false;
     }
     return true;
@@ -112,7 +134,9 @@ export default function SubmitPaymentProofModal({ visible, onClose, invoice, ten
       setSubmitting(true);
       setError('');
 
-      const imagePath = await uploadPaymentProof({ tenantId, asset: proofImage });
+      const imagePath = paymentMethod === 'gcash' && proofImage
+        ? await uploadPaymentProof({ tenantId, asset: proofImage })
+        : null;
 
       await submitPaymentProof({
         tenantId,
@@ -143,7 +167,9 @@ export default function SubmitPaymentProofModal({ visible, onClose, invoice, ten
 
   const handleClose = () => {
     setAmount(invoice?.outstanding?.toString() || '');
-    setPaymentDate(new Date().toISOString().split('T')[0]);
+    setPaymentDate(toLocalDateString(new Date()));
+    setCalendarMonth(new Date());
+    setCalendarVisible(false);
     setReferenceNo('');
     setNotes('');
     setProofImage(null);
@@ -152,6 +178,12 @@ export default function SubmitPaymentProofModal({ visible, onClose, invoice, ten
   };
 
   const ModalKeyboardWrapper = Platform.OS === 'web' ? View : KeyboardAvoidingView;
+  const calendarYear = calendarMonth.getFullYear();
+  const calendarMonthIndex = calendarMonth.getMonth();
+  const calendarDays = [
+    ...Array(new Date(calendarYear, calendarMonthIndex, 1).getDay()).fill(null),
+    ...Array.from({ length: new Date(calendarYear, calendarMonthIndex + 1, 0).getDate() }, (_, index) => index + 1),
+  ];
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={handleClose}>
@@ -208,22 +240,58 @@ export default function SubmitPaymentProofModal({ visible, onClose, invoice, ten
             {/* Payment Date */}
             <View style={{ marginBottom: 16 }}>
               <Text style={{ fontSize: fs(14), fontWeight: '600', color: colors.text, marginBottom: 8 }}>Payment Date *</Text>
-              <TextInput
-                value={paymentDate}
-                onChangeText={setPaymentDate}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor={colors.textMuted}
-                style={{
-                  backgroundColor: colors.bg,
-                  borderWidth: 1,
-                  borderColor: colors.cardBorder,
-                  borderRadius: 10,
-                  padding: 12,
-                  fontSize: fs(15),
-                  color: colors.text,
-                }}
-              />
-              <Text style={{ fontSize: fs(12), color: colors.textMuted, marginTop: 4 }}>Format: YYYY-MM-DD (e.g., 2026-10-09)</Text>
+              <TouchableOpacity
+                onPress={() => setCalendarVisible((current) => !current)}
+                accessibilityRole="button"
+                accessibilityLabel={`Payment date: ${parseLocalDate(paymentDate).toLocaleDateString()}. Choose date`}
+                style={{ backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 10, padding: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+              >
+                <Text style={{ fontSize: fs(15), color: colors.text }}>{parseLocalDate(paymentDate).toLocaleDateString()}</Text>
+                <Ionicons name="calendar-outline" size={19} color={colors.accent} />
+              </TouchableOpacity>
+              {calendarVisible && (
+                <View style={{ backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 10, padding: 10, marginTop: 8 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                    <TouchableOpacity onPress={() => setCalendarMonth(new Date(calendarYear, calendarMonthIndex - 1, 1))} accessibilityRole="button" accessibilityLabel="Previous month" style={{ padding: 6 }}>
+                      <Ionicons name="chevron-back" size={18} color={colors.accent} />
+                    </TouchableOpacity>
+                    <Text style={{ color: colors.text, fontSize: fs(13), fontWeight: '700' }}>{calendarMonth.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</Text>
+                    <TouchableOpacity onPress={() => setCalendarMonth(new Date(calendarYear, calendarMonthIndex + 1, 1))} accessibilityRole="button" accessibilityLabel="Next month" style={{ padding: 6 }}>
+                      <Ionicons name="chevron-forward" size={18} color={colors.accent} />
+                    </TouchableOpacity>
+                  </View>
+                  <View style={{ flexDirection: 'row' }}>
+                    {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
+                      <Text key={day} style={{ flex: 1, textAlign: 'center', color: colors.textMuted, fontSize: fs(10), fontWeight: '700', paddingVertical: 5 }}>{day}</Text>
+                    ))}
+                  </View>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+                    {calendarDays.map((day, index) => {
+                      if (!day) return <View key={`empty-${index}`} style={{ width: '14.2857%', height: 38 }} />;
+                      const date = new Date(calendarYear, calendarMonthIndex, day);
+                      const selected = paymentDate === toLocalDateString(date);
+                      return (
+                        <TouchableOpacity
+                          key={day}
+                          onPress={() => {
+                            setPaymentDate(toLocalDateString(date));
+                            setCalendarVisible(false);
+                            setError('');
+                          }}
+                          accessibilityRole="button"
+                          accessibilityLabel={date.toLocaleDateString()}
+                          accessibilityState={{ selected }}
+                          style={{ width: '14.2857%', height: 38, alignItems: 'center', justifyContent: 'center' }}
+                        >
+                          <View style={{ width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: selected ? colors.accent : 'transparent' }}>
+                            <Text style={{ color: selected ? '#fff' : colors.text, fontSize: fs(12), fontWeight: selected ? '800' : '500' }}>{day}</Text>
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+              )}
             </View>
 
             <View style={{ marginBottom: 16 }}>
@@ -237,7 +305,10 @@ export default function SubmitPaymentProofModal({ visible, onClose, invoice, ten
                   return (
                     <TouchableOpacity
                       key={method.value}
-                      onPress={() => setPaymentMethod(method.value)}
+                      onPress={() => {
+                        setPaymentMethod(method.value);
+                        if (method.value === 'cash') setProofImage(null);
+                      }}
                       accessibilityRole="radio"
                       accessibilityState={{ checked: selected }}
                       style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 12, borderWidth: 1, borderColor: selected ? colors.accent : colors.cardBorder, borderRadius: 10, backgroundColor: selected ? colors.accentBg : colors.bg }}
@@ -273,9 +344,9 @@ export default function SubmitPaymentProofModal({ visible, onClose, invoice, ten
               />
             </View>
 
-            {/* Proof Image */}
-            <View style={{ marginBottom: 16 }}>
-              <Text style={{ fontSize: fs(14), fontWeight: '600', color: colors.text, marginBottom: 8 }}>Photo of {paymentMethod === 'gcash' ? 'GCash' : 'Cash'} Receipt *</Text>
+            {/* GCash receipt photo */}
+            {paymentMethod === 'gcash' && <View style={{ marginBottom: 16 }}>
+              <Text style={{ fontSize: fs(14), fontWeight: '600', color: colors.text, marginBottom: 8 }}>Photo of GCash Receipt *</Text>
               {proofImage ? (
                 <View style={{ borderWidth: 1, borderColor: colors.successText, borderRadius: 10, padding: 12, backgroundColor: colors.successBg }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -288,7 +359,7 @@ export default function SubmitPaymentProofModal({ visible, onClose, invoice, ten
                 </View>
               ) : (
                 <View style={{ borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 10, padding: 14, backgroundColor: colors.bg, gap: 10 }}>
-                  <Text style={{ fontSize: fs(13), color: colors.textSecondary, textAlign: 'center' }}>Attach a clear photo of your {paymentMethod === 'gcash' ? 'GCash' : 'cash'} receipt.</Text>
+                  <Text style={{ fontSize: fs(13), color: colors.textSecondary, textAlign: 'center' }}>Attach a clear photo of your GCash receipt.</Text>
                   {Platform.OS !== 'web' && (
                     <TouchableOpacity onPress={handleTakePhoto} style={{ padding: 12, borderRadius: 9, backgroundColor: colors.card, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
                       <Ionicons name="camera-outline" size={19} color={colors.text} />
@@ -301,7 +372,7 @@ export default function SubmitPaymentProofModal({ visible, onClose, invoice, ten
                   </TouchableOpacity>
                 </View>
               )}
-            </View>
+            </View>}
 
             {/* Notes */}
             <View style={{ marginBottom: 16 }}>

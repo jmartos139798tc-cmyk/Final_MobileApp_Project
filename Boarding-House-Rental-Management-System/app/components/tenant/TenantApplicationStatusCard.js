@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Image, Modal, Pressable, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '../../utils/ThemeContext';
@@ -41,7 +41,6 @@ export default function TenantApplicationStatusCard({ tenant, tenantId, refreshK
   const [availableRooms, setAvailableRooms] = useState([]);
   const [selectedRoomId, setSelectedRoomId] = useState('');
   const [modalVisible, setModalVisible] = useState(false);
-  const [showRoomSetupHint, setShowRoomSetupHint] = useState(false);
   const [loadingRooms, setLoadingRooms] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submittingStage, setSubmittingStage] = useState('');
@@ -54,7 +53,7 @@ export default function TenantApplicationStatusCard({ tenant, tenantId, refreshK
   const [proofImage, setProofImage] = useState(null);
 
   const loadRequest = async () => {
-    if (tenant?.accountStatus !== 'pending') {
+    if (!['pending', 'rejected'].includes(tenant?.accountStatus)) {
       setRequest(null);
       return;
     }
@@ -67,7 +66,6 @@ export default function TenantApplicationStatusCard({ tenant, tenantId, refreshK
   };
 
   const openRoomPicker = async () => {
-    setShowRoomSetupHint(false);
     setModalVisible(true);
     setCalendarVisible(false);
     setLoadingRooms(true);
@@ -84,8 +82,10 @@ export default function TenantApplicationStatusCard({ tenant, tenantId, refreshK
       const initialPaymentDate = request?.paymentDate || toLocalDateString(new Date());
       setPaymentDate(initialPaymentDate);
       setCalendarMonth(parseLocalDate(initialPaymentDate));
-      setProofImage(request?.paymentProofUrl ? { uri: request.paymentProofUrl, existingPath: request.paymentProofPath } : null);
-      if (rooms.length === 0) setError('There are no vacant rooms available right now. Please check again later.');
+      setProofImage(request?.paymentMethod === 'gcash' && request?.paymentProofUrl
+        ? { uri: request.paymentProofUrl, existingPath: request.paymentProofPath }
+        : null);
+      if (rooms.length === 0) setError('There are no available rooms right now. Please check again later.');
     } catch (loadError) {
       setError(loadError.message || 'Could not load available rooms. Please try again.');
     } finally {
@@ -120,7 +120,7 @@ export default function TenantApplicationStatusCard({ tenant, tenantId, refreshK
 
   const saveRoomPreference = async () => {
     if (!selectedRoomId) {
-      setError('Choose a vacant room to continue.');
+      setError('Choose an available room to continue. Double rooms can be shared by up to two tenants.');
       return;
     }
     const selected = availableRooms.find((room) => room.id === selectedRoomId);
@@ -129,19 +129,23 @@ export default function TenantApplicationStatusCard({ tenant, tenantId, refreshK
       setError('Enter the amount paid for one month advance.');
       return;
     }
-    if (expectedAmount > 0 && Number(paymentAmount) !== expectedAmount) {
-      setError(`The amount for this room should be ₱${expectedAmount.toLocaleString()} (one month advance).`);
+    if (expectedAmount > 0 && Number(paymentAmount) > expectedAmount) {
+      setError(`The payment cannot be more than one month of rent (₱${expectedAmount.toLocaleString()}).`);
       return;
     }
-    if (!paymentDate.trim() || !proofImage?.uri) {
-      setError('Enter the payment date and attach your payment proof.');
+    if (!paymentDate.trim() || (paymentMethod === 'gcash' && !proofImage?.uri)) {
+      setError(paymentMethod === 'gcash'
+        ? 'Enter the payment date and attach your GCash payment proof.'
+        : 'Enter the payment date.');
       return;
     }
     setSubmitting(true);
-    setSubmittingStage('Compressing receipt photo…');
+    setSubmittingStage(paymentMethod === 'gcash' ? 'Compressing receipt photo…' : 'Saving your room and payment setup…');
     setError('');
     try {
-      const paymentProofPath = proofImage.existingPath || await uploadInitialPaymentProof({ tenantId, asset: proofImage });
+      const paymentProofPath = paymentMethod === 'gcash'
+        ? proofImage.existingPath || await uploadInitialPaymentProof({ tenantId, asset: proofImage })
+        : '';
       setSubmittingStage('Saving your room and payment setup…');
       const savedRequest = await submitRoomAssignmentRequest({
         tenantId,
@@ -163,9 +167,12 @@ export default function TenantApplicationStatusCard({ tenant, tenantId, refreshK
     }
   };
 
-  const status = statusPresentation(tenant.accountStatus, colors);
   const isPending = tenant.accountStatus === 'pending';
   const isRejected = tenant.accountStatus === 'rejected';
+  const hasSelectedRoom = Boolean(request?.requestedRoomId);
+  const status = isPending && !hasSelectedRoom
+    ? { label: 'Room not selected', color: colors.textMuted, background: colors.bg, icon: 'bed-outline' }
+    : statusPresentation(tenant.accountStatus, colors);
   const selectedRoom = availableRooms.find((room) => room.id === selectedRoomId);
   const calendarYear = calendarMonth.getFullYear();
   const calendarMonthIndex = calendarMonth.getMonth();
@@ -176,9 +183,7 @@ export default function TenantApplicationStatusCard({ tenant, tenantId, refreshK
 
   return (
     <>
-      <Pressable
-        onPress={() => isPending && setShowRoomSetupHint(true)}
-        accessible={false}
+      <View
         style={{ ...cardStyle, backgroundColor: colors.card, borderColor: colors.cardBorder, padding: 18, marginHorizontal: 16, marginBottom: 18 }}
       >
         {isRejected ? (
@@ -208,7 +213,9 @@ export default function TenantApplicationStatusCard({ tenant, tenantId, refreshK
                 Application status
               </Text>
               <Text style={{ color: colors.text, fontSize: fs(17), fontWeight: '800', marginTop: 5 }}>
-                {isPending ? 'Your registration is being reviewed' : 'Your tenant application is approved'}
+                {isPending
+                  ? hasSelectedRoom ? 'Your room request is being reviewed' : 'Complete your room setup to submit your request'
+                  : 'Your tenant application is approved'}
               </Text>
             </View>
             <View style={{ backgroundColor: status.background, borderRadius: 999, paddingHorizontal: 11, paddingVertical: 7, flexDirection: 'row', alignItems: 'center', gap: 5 }}>
@@ -218,10 +225,12 @@ export default function TenantApplicationStatusCard({ tenant, tenantId, refreshK
           </View>
         )}
 
-        {isPending ? (
+        {isPending || isRejected ? (
           <>
             <Text style={{ color: colors.textSecondary, fontSize: fs(13), lineHeight: 20, marginTop: 10 }}>
-              Choose a room and submit proof of one month advance. Staff will review your room request and payment proof.
+              {isRejected
+                ? 'Choose another available room and resubmit your advance payment details. Double rooms may have one current tenant. Staff will review your application again.'
+                : 'Choose a room and enter the amount you have paid toward one month advance. Staff will review your application and payment details.'}
             </Text>
             <View style={{ flexDirection: 'row', gap: 12, marginTop: 14, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: colors.cardBorder }}>
               <View style={{ flex: 1, paddingVertical: 4, paddingRight: 10, borderRightWidth: 1, borderRightColor: colors.cardBorder }}>
@@ -252,31 +261,28 @@ export default function TenantApplicationStatusCard({ tenant, tenantId, refreshK
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 11, paddingHorizontal: 2 }}>
               <Ionicons name={request?.paymentProofUrl ? 'document-text-outline' : 'information-circle-outline'} size={16} color={request?.paymentProofUrl ? colors.warningText : colors.textMuted} />
               <Text style={{ flex: 1, color: request?.paymentProofUrl ? colors.warningText : colors.textSecondary, fontSize: fs(12), fontWeight: '600' }}>
-                {request?.paymentProofUrl ? `Payment proof ${request.paymentProofStatus || 'pending review'} · sent to staff` : 'Room and payment setup has not been submitted'}
+                {request?.paymentMethod === 'cash'
+                  ? 'Cash payment details submitted · staff will verify at approval'
+                  : request?.paymentProofUrl
+                    ? `GCash payment proof ${request.paymentProofStatus || 'pending review'} · sent to staff`
+                    : request
+                      ? 'GCash payment proof has not been submitted'
+                      : 'Room and payment setup has not been submitted'}
               </Text>
             </View>
             {request?.paymentDate ? <Text style={{ color: colors.textMuted, fontSize: fs(11), marginTop: 4, marginLeft: 24 }}>Payment method: {request.paymentMethod === 'gcash' ? 'GCash' : 'Cash'} · {request.paymentDate}{request.paymentReference ? ` · Ref ${request.paymentReference}` : ''}</Text> : null}
             <Text style={{ color: colors.textMuted, fontSize: fs(11), marginTop: 8 }}>Your room request does not reserve the room until staff confirms it.</Text>
-            {showRoomSetupHint && (
-              <View accessibilityLiveRegion="polite" style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 10, backgroundColor: colors.dangerBg, borderWidth: 1, borderColor: colors.danger }}>
-                <Ionicons name="information-circle-outline" size={17} color={colors.dangerText} />
-                <Text style={{ flex: 1, color: colors.dangerText, fontSize: fs(12), fontWeight: '800' }}>
-                  {request
-                    ? 'Kindly click the button below to update room & payment setup.'
-                    : 'Kindly click the button below to set up your room and payment.'}
-                </Text>
-              </View>
-            )}
             <TouchableOpacity
               onPress={(event) => {
-                event.stopPropagation();
                 openRoomPicker();
               }}
               accessibilityRole="button"
               style={{ backgroundColor: colors.accent, borderRadius: 11, paddingVertical: 12, paddingHorizontal: 15, marginTop: 14, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8 }}
             >
               <Ionicons name="bed-outline" size={18} color="#fff" />
-              <Text style={{ color: '#fff', fontSize: fs(14), fontWeight: '800' }}>{request ? 'Update room & payment setup' : 'Set up room & payment'}</Text>
+              <Text style={{ color: '#fff', fontSize: fs(14), fontWeight: '800' }}>
+                {isRejected ? 'Choose another room and resubmit' : request ? 'Update room & payment setup' : 'Set up room & payment'}
+              </Text>
             </TouchableOpacity>
           </>
         ) : tenant.accountStatus === 'approved' ? (
@@ -294,10 +300,9 @@ export default function TenantApplicationStatusCard({ tenant, tenantId, refreshK
             </View>
           </View>
         )}
-        {isPending && (
+        {(isPending || isRejected) && (
           <TouchableOpacity
             onPress={async (event) => {
-              event.stopPropagation();
               await loadRequest();
               onChanged?.();
             }}
@@ -308,7 +313,7 @@ export default function TenantApplicationStatusCard({ tenant, tenantId, refreshK
             <Text style={{ color: colors.accent, fontSize: fs(12), fontWeight: '700' }}>Refresh application status</Text>
           </TouchableOpacity>
         )}
-      </Pressable>
+      </View>
 
       <Modal visible={modalVisible} transparent animationType="slide" onRequestClose={() => !submitting && setModalVisible(false)}>
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'center', padding: 18 }}>
@@ -319,9 +324,7 @@ export default function TenantApplicationStatusCard({ tenant, tenantId, refreshK
                 <Ionicons name="close" size={24} color={colors.dangerText} />
               </TouchableOpacity>
             </View>
-            <Text style={{ color: colors.textSecondary, fontSize: fs(13), lineHeight: 19, marginBottom: 14 }}>
-              Select a vacant room, then submit your receipt for one month advance. Staff will confirm your room and payment. This request does not reserve the room.
-            </Text>
+            
             {loadingRooms ? (
               <View style={{ paddingVertical: 8, gap: 10 }}>
                 {[0, 1, 2].map((item) => (
@@ -335,7 +338,7 @@ export default function TenantApplicationStatusCard({ tenant, tenantId, refreshK
               <ScrollView style={{ flexShrink: 1 }} keyboardShouldPersistTaps="handled">
                 {selectedRoom && (
                   <View style={{ backgroundColor: colors.accentBg, padding: 11, borderRadius: 10, marginBottom: 10 }}>
-                    <Text style={{ color: colors.text, fontSize: fs(12), fontWeight: '700' }}>1 month advance</Text>
+                    <Text style={{ color: colors.text, fontSize: fs(12), fontWeight: '700' }}>One month rent</Text>
                     <Text style={{ color: colors.textSecondary, fontSize: fs(12), marginBottom: 5 }}>₱{selectedRoom.estimatedRent.toLocaleString()}</Text>
                   </View>
                 )}
@@ -351,7 +354,7 @@ export default function TenantApplicationStatusCard({ tenant, tenantId, refreshK
                     >
                       <View style={{ flex: 1 }}>
                         <Text style={{ color: colors.text, fontSize: fs(14), fontWeight: '800' }}>Room {room.number}</Text>
-                        <Text style={{ color: colors.textSecondary, fontSize: fs(12), marginTop: 3 }}>{room.type} · estimated rent ₱{room.estimatedRent.toLocaleString()}/month</Text>
+                        <Text style={{ color: colors.textSecondary, fontSize: fs(12), marginTop: 3 }}>{room.type} · {room.occupancy} occupants · estimated rent ₱{room.estimatedRent.toLocaleString()}/month</Text>
                       </View>
                       <Ionicons name={selected ? 'radio-button-on' : 'radio-button-off'} size={21} color={selected ? colors.accent : colors.textMuted} />
                     </TouchableOpacity>
@@ -359,8 +362,9 @@ export default function TenantApplicationStatusCard({ tenant, tenantId, refreshK
                 })}
                 {availableRooms.length > 0 && (
                   <>
-                <Text style={{ color: colors.text, fontSize: fs(13), fontWeight: '700', marginTop: 12, marginBottom: 6 }}>1 month advance *</Text>
-                <TextInput value={paymentAmount} onChangeText={setPaymentAmount} keyboardType="decimal-pad" placeholder="Total amount paid" placeholderTextColor={colors.textMuted} style={{ backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 10, padding: 11, color: colors.text, marginBottom: 9 }} />
+                <Text style={{ color: colors.text, fontSize: fs(13), fontWeight: '700', marginTop: 12, marginBottom: 6 }}>Amount paid toward one month advance *</Text>
+                <TextInput value={paymentAmount} onChangeText={setPaymentAmount} keyboardType="decimal-pad" placeholder="Enter amount paid" placeholderTextColor={colors.textMuted} style={{ backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 10, padding: 11, color: colors.text, marginBottom: 5 }} />
+                {selectedRoom ? <Text style={{ color: colors.textSecondary, fontSize: fs(11), marginBottom: 9 }}>Enter a partial or full payment up to the room&apos;s one month rent of ₱{selectedRoom.estimatedRent.toLocaleString()}. Any unpaid rent will be due with your initial invoice if your application is approved.</Text> : null}
                 <Text style={{ color: colors.textSecondary, fontSize: fs(12), marginBottom: 6 }}>Payment method *</Text>
                 <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
                   {[
@@ -371,7 +375,11 @@ export default function TenantApplicationStatusCard({ tenant, tenantId, refreshK
                     return (
                       <TouchableOpacity
                         key={method.value}
-                        onPress={() => setPaymentMethod(method.value)}
+                      onPress={() => {
+                        setPaymentMethod(method.value);
+                        if (method.value === 'cash') setProofImage(null);
+                        setError('');
+                      }}
                         accessibilityRole="radio"
                         accessibilityState={{ selected }}
                         style={{ flex: 1, minHeight: 42, borderRadius: 10, borderWidth: 1, borderColor: selected ? colors.accent : colors.cardBorder, backgroundColor: selected ? colors.accentBg : colors.bg, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 }}
@@ -447,11 +455,19 @@ export default function TenantApplicationStatusCard({ tenant, tenantId, refreshK
                     </View>
                   </View>
                 )}
-                <TouchableOpacity onPress={pickProofImage} style={{ borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 10, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                  <Ionicons name="cloud-upload-outline" size={18} color={colors.accent} />
-                  <Text style={{ color: colors.accent, fontSize: fs(13), fontWeight: '700' }}>{proofImage ? 'Replace payment proof photo' : 'Attach payment proof photo *'}</Text>
-                </TouchableOpacity>
-                {proofImage?.uri ? <Image source={{ uri: proofImage.uri }} style={{ width: '100%', height: 110, borderRadius: 9, marginBottom: 8 }} resizeMode="cover" /> : null}
+                {paymentMethod === 'gcash' ? (
+                  <>
+                    <TouchableOpacity onPress={pickProofImage} style={{ borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 10, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                      <Ionicons name="cloud-upload-outline" size={18} color={colors.accent} />
+                      <Text style={{ color: colors.accent, fontSize: fs(13), fontWeight: '700' }}>{proofImage ? 'Replace GCash payment proof photo' : 'Attach GCash payment proof photo *'}</Text>
+                    </TouchableOpacity>
+                    {proofImage?.uri ? <Image source={{ uri: proofImage.uri }} style={{ width: '100%', height: 110, borderRadius: 9, marginBottom: 8 }} resizeMode="cover" /> : null}
+                  </>
+                ) : (
+                  <Text style={{ color: colors.textSecondary, fontSize: fs(12), lineHeight: 18, marginVertical: 6 }}>
+                    A receipt image is not required for cash. Staff will verify the payment before approval.
+                  </Text>
+                )}
                   </>
                 )}
               </ScrollView>

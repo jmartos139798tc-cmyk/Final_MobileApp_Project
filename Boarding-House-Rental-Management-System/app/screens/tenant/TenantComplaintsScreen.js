@@ -18,6 +18,7 @@ export default function TenantComplaintsScreen({ user }) {
 
   const [modalVisible, setModalVisible] = useState(false);
   const [newTitle, setNewTitle] = useState('');
+  const [customConcern, setCustomConcern] = useState('');
   const [newDescription, setNewDescription] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
@@ -46,8 +47,9 @@ export default function TenantComplaintsScreen({ user }) {
   ], loadComplaints, Boolean(user?.tenant_id));
 
   const handleCreateComplaint = async () => {
-    if (!newTitle.trim()) {
-      setSubmitError('Please enter an issue title.');
+    const title = newTitle === 'Other' ? customConcern.trim() : newTitle.trim();
+    if (!title) {
+      setSubmitError('Please select a concern or enter a specific concern.');
       return;
     }
     if (!newDescription.trim()) {
@@ -59,12 +61,13 @@ export default function TenantComplaintsScreen({ user }) {
       setSubmitting(true);
       setSubmitError('');
       const added = await submitComplaint({
-        title: newTitle.trim(),
+        title,
         description: newDescription.trim(),
         tenantId: user?.tenant_id,
       });
       setComplaints((prev) => [added, ...prev]);
       setNewTitle('');
+      setCustomConcern('');
       setNewDescription('');
       setModalVisible(false);
     } catch (err) {
@@ -94,20 +97,20 @@ export default function TenantComplaintsScreen({ user }) {
         return {
           bg: colors.successBg,
           text: colors.successText,
-          label: '● resolved',
+          label: 'Resolved',
         };
       case 'in-progress':
         return {
           bg: colors.infoBg,
           text: colors.infoText,
-          label: '● in progress',
+          label: 'In Progress',
         };
       case 'pending':
       default:
         return {
           bg: colors.warningBg,
           text: colors.warningText,
-          label: '● pending',
+          label: 'Pending',
         };
     }
   };
@@ -295,50 +298,96 @@ export default function TenantComplaintsScreen({ user }) {
               Filing under: {user?.name || user?.email}
             </Text>
 
-            <Text style={{ fontSize: fs(14), fontWeight: '700', color: colors.textSecondary, marginBottom: 6 }}>
-              Issue Title *
+            <Text style={{ fontSize: fs(14), fontWeight: '700', color: colors.textSecondary, marginBottom: 8 }}>
+              Choose a concern *
             </Text>
-            <TextInput
-              style={{
-                backgroundColor: colors.searchBg,
-                borderColor: colors.searchBorder,
-                borderWidth: 1,
-                borderRadius: 12,
-                paddingHorizontal: 14,
-                paddingVertical: 12,
-                fontSize: fs(15),
-                color: colors.text,
-                marginBottom: 14,
-              }}
-              placeholder="e.g. Leaking faucet, broken lightbulb..."
-              placeholderTextColor={colors.textMuted}
-              value={newTitle}
-              onChangeText={setNewTitle}
-            />
+            <ScrollView style={{ maxHeight: 174, marginBottom: 12 }} nestedScrollEnabled showsVerticalScrollIndicator>
+              <View style={{ gap: 8 }}>
+                {['Leaking Faucet', 'Broken Light Bulb', 'Bathroom Leaking', 'Other'].map((concern) => {
+                  const selected = newTitle === concern;
+                  return (
+                    <TouchableOpacity
+                      key={concern}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected }}
+                      onPress={() => {
+                        setNewTitle(concern);
+                        setCustomConcern('');
+                        setSubmitError('');
+                      }}
+                      style={{
+                        paddingHorizontal: 14,
+                        paddingVertical: 11,
+                        borderRadius: 10,
+                        borderWidth: 1,
+                        borderColor: selected ? colors.primary : colors.searchBorder,
+                        backgroundColor: selected ? colors.primary : colors.searchBg,
+                      }}
+                    >
+                      <Text style={{ fontSize: fs(14), fontWeight: '600', color: selected ? colors.onPrimary : colors.text }}>
+                        {concern === 'Other' ? 'Other (type a specific concern)' : concern}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </ScrollView>
 
-            <Text style={{ fontSize: fs(14), fontWeight: '700', color: colors.textSecondary, marginBottom: 6 }}>
-              Message *
-            </Text>
-            <TextInput
-              style={{
-                backgroundColor: colors.searchBg,
-                borderColor: colors.searchBorder,
-                borderWidth: 1,
-                borderRadius: 12,
-                paddingHorizontal: 14,
-                paddingVertical: 12,
-                fontSize: fs(15),
-                color: colors.text,
-                minHeight: 80,
-                textAlignVertical: 'top',
-                marginBottom: 14,
-              }}
-              placeholder="Describe your complaint and any details the caretaker should know..."
-              placeholderTextColor={colors.textMuted}
-              multiline
-              value={newDescription}
-              onChangeText={setNewDescription}
-            />
+            {newTitle === 'Other' && (
+              <>
+                <Text style={{ fontSize: fs(14), fontWeight: '700', color: colors.textSecondary, marginBottom: 6 }}>
+                  Specific concern *
+                </Text>
+                <TextInput
+                  style={{
+                    backgroundColor: colors.searchBg,
+                    borderColor: colors.searchBorder,
+                    borderWidth: 1,
+                    borderRadius: 12,
+                    paddingHorizontal: 14,
+                    paddingVertical: 12,
+                    fontSize: fs(15),
+                    color: colors.text,
+                    marginBottom: 14,
+                  }}
+                  placeholder="Type your specific concern"
+                  placeholderTextColor={colors.textMuted}
+                  value={customConcern}
+                  onChangeText={(value) => {
+                    setCustomConcern(value);
+                    setSubmitError('');
+                  }}
+                />
+              </>
+            )}
+
+            {!!newTitle && (
+              <>
+                <Text style={{ fontSize: fs(14), fontWeight: '700', color: colors.textSecondary, marginBottom: 6 }}>
+                  Message *
+                </Text>
+                <TextInput
+                  style={{
+                    backgroundColor: colors.searchBg,
+                    borderColor: colors.searchBorder,
+                    borderWidth: 1,
+                    borderRadius: 12,
+                    paddingHorizontal: 14,
+                    paddingVertical: 12,
+                    fontSize: fs(15),
+                    color: colors.text,
+                    minHeight: 80,
+                    textAlignVertical: 'top',
+                    marginBottom: 14,
+                  }}
+                  placeholder="Describe your complaint and any details the caretaker should know..."
+                  placeholderTextColor={colors.textMuted}
+                  multiline
+                  value={newDescription}
+                  onChangeText={setNewDescription}
+                />
+              </>
+            )}
 
             {!!submitError && (
               <Text style={{ fontSize: fs(13), color: colors.danger, marginBottom: 12, fontWeight: '600' }}>

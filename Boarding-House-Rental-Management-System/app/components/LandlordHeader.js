@@ -22,6 +22,7 @@ export default function LandlordHeader({
   isDark,
   onThemeToggle,
   user,
+  complaintsCount = 0,
 }) {
   const { colors } = useTheme();
   const [profileVisible, setProfileVisible] = useState(false);
@@ -75,17 +76,23 @@ export default function LandlordHeader({
           onPress={onMenuPress}
           activeOpacity={0.7}
           accessibilityRole="button"
-          accessibilityLabel="Open menu"
+          accessibilityLabel={`Open menu${complaintsCount > 0 ? `, ${complaintsCount} complaints` : ''}`}
           style={{
             width: buttonSize,
             height: buttonSize,
             borderRadius: buttonSize / 2,
-            overflow: 'hidden',
             alignItems: 'center',
             justifyContent: 'center',
           }}
         >
-          <Ionicons name="menu" size={iconSize} color={colors.text} />
+          <View style={{ position: 'relative' }}>
+            <Ionicons name="menu" size={iconSize} color={colors.text} />
+            {complaintsCount > 0 && (
+              <View style={{ position: 'absolute', top: -9, right: -13, minWidth: 18, height: 18, paddingHorizontal: 4, borderRadius: 9, backgroundColor: colors.dangerText, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.card }}>
+                <Text style={{ color: '#fff', fontSize: 10, lineHeight: 12, fontWeight: '800' }}>{complaintsCount > 99 ? '99+' : complaintsCount}</Text>
+              </View>
+            )}
+          </View>
         </TouchableOpacity>
 
         {/* Center Section: Title and Subtitle */}

@@ -1,8 +1,8 @@
 -- Starter property data for a fresh Supabase database.
 -- Review the property details and rents before running this in the Dashboard.
 
-insert into public.boarding_houses (id, name, address, default_kwh_rate)
-values ('bh-1', 'Nads & Gracy Boarding House', 'University Belt, Manila', 12.00)
+insert into public.boarding_houses (id, name, address, default_kwh_rate, monthly_wifi_charge)
+values ('bh-1', 'Nads & Gracy Boarding House', 'University Belt, Manila', 12.00, 100.00)
 on conflict (id) do nothing;
 
 insert into public.room_types (id, name, base_rent, max_capacity, description)

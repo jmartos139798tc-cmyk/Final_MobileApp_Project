@@ -1,4 +1,6 @@
-# Firebase accounts and Firestore schema
+# Archived Firebase and Firestore setup guide
+
+> This document describes the legacy backend and is not used by the current app. The active app uses Supabase Auth, Postgres, and Storage. Follow [`supabase/SETUP.md`](supabase/SETUP.md) for current setup instructions.
 
 ## Staff accounts
 

@@ -72,6 +72,12 @@ Sign out and back in so the app reloads the landlord profile. Provision addition
 
 ## 4. Add your property and rooms
 
-For a fresh project, review `supabase/seed.sql`, change the property name, address, electricity rate, and rents to your actual values, then run it once in the SQL Editor. It adds one house, two room types, and five vacant starter rooms. The inserts do nothing to rows with those IDs that already exist.
+For a fresh project, review `supabase/seed.sql`, change the property name, address, electricity rate, monthly Wi-Fi charge, and rents to your actual values, then run it once in the SQL Editor. It adds one house, two room types, and five vacant starter rooms. The inserts do nothing to rows with those IDs that already exist. The Wi-Fi amount is stored in `boarding_houses.monthly_wifi_charge`; the app uses ₱100 if an older property row has no value. It applies to new initial invoices and newly generated invoices for the current billing period. Backdated bills and invoices already issued keep their stored totals. To change the fee later, update the property row in Supabase SQL Editor, for example:
+
+```sql
+update public.boarding_houses
+set monthly_wifi_charge = 75
+where id = 'bh-1';
+```
 
 After setup, use the landlord account to manage rooms and test tenant signup, approval, billing, receipt upload, and password recovery. A new native build is needed for the `boardinghouse` deep-link scheme to open the password-reset screen. Keep the Firebase project intact as a backup until the Supabase version is confirmed working.

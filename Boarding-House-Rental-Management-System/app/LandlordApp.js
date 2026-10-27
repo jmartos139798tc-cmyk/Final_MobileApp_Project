@@ -21,7 +21,7 @@ import PaymentReviewScreen from './screens/landlord/PaymentReviewScreen';
 
 // Import navigation
 import LandlordBottomNav from './components/LandlordBottomNav';
-import { getPendingTenantRegistrationCount } from './services/dataService';
+import { getPendingTenantRegistrationCount, getPendingPaymentProofCount, getIssues } from './services/dataService';
 import useRealtimeRefresh from './hooks/useRealtimeRefresh';
 
 export default function LandlordApp({ user, onLogout }) {
@@ -29,6 +29,8 @@ export default function LandlordApp({ user, onLogout }) {
   const [menuVisible, setMenuVisible] = useState(false);
   const [navigationParams, setNavigationParams] = useState(null);
   const [pendingApprovalsCount, setPendingApprovalsCount] = useState(0);
+  const [pendingPaymentCount, setPendingPaymentCount] = useState(0);
+  const [complaintsCount, setComplaintsCount] = useState(0);
   const [realtimeVersion, setRealtimeVersion] = useState(0);
   const { isDark, toggleTheme, colors } = useTheme();
   const menuTopInset = Platform.OS === 'ios'
@@ -41,6 +43,9 @@ export default function LandlordApp({ user, onLogout }) {
   useRealtimeRefresh('landlord-pending-approvals-badge', [
     { table: 'tenants' },
     { table: 'room_assignment_requests' },
+    { table: 'complaints' },
+    { table: 'payment_proofs' },
+    { table: 'payments' },
   ], () => {
     setRealtimeVersion((version) => version + 1);
   });
@@ -50,12 +55,18 @@ export default function LandlordApp({ user, onLogout }) {
 
     const refreshSignupCount = async () => {
       try {
-        const approvalCount = await getPendingTenantRegistrationCount();
+        const [approvalCount, complaints, paymentCount] = await Promise.all([
+          getPendingTenantRegistrationCount(),
+          getIssues(),
+          getPendingPaymentProofCount(),
+        ]);
         if (isMounted) {
           setPendingApprovalsCount(approvalCount);
+          setComplaintsCount(complaints.length);
+          setPendingPaymentCount(paymentCount);
         }
       } catch (error) {
-        console.warn('Could not refresh tenant sign-up badge:', error.message || error);
+        console.warn('Could not refresh landlord navigation badges:', error.message || error);
       }
     };
 
@@ -155,6 +166,7 @@ export default function LandlordApp({ user, onLogout }) {
         return (
           <TenantFinancialManagement
             navigation={navigation}
+            pendingPaymentCount={pendingPaymentCount}
             initialFilter={navigationParams?.filter || 'all'}
           />
         );
@@ -199,18 +211,19 @@ export default function LandlordApp({ user, onLogout }) {
         isDark={isDark}
         onThemeToggle={toggleTheme}
         user={user}
+        complaintsCount={complaintsCount}
       />
 
       {isDesktop ? (
         <View style={{ flex: 1, flexDirection: 'row' }}>
-          <LandlordBottomNav activeScreen={activeScreen} onNavigate={handleNavigate} user={user} pendingApprovalsCount={pendingApprovalsCount} />
+          <LandlordBottomNav activeScreen={activeScreen} onNavigate={handleNavigate} user={user} pendingApprovalsCount={pendingApprovalsCount} pendingPaymentCount={pendingPaymentCount} />
           <View style={{ flex: 1 }}>{renderScreen()}</View>
         </View>
       ) : (
         <>
           <View style={{ flex: 1 }}>{renderScreen()}</View>
           {activeScreen !== 'payment-review' && (
-            <LandlordBottomNav activeScreen={activeScreen} onNavigate={handleNavigate} user={user} pendingApprovalsCount={pendingApprovalsCount} />
+            <LandlordBottomNav activeScreen={activeScreen} onNavigate={handleNavigate} user={user} pendingApprovalsCount={pendingApprovalsCount} pendingPaymentCount={pendingPaymentCount} />
           )}
         </>
       )}
@@ -234,8 +247,15 @@ export default function LandlordApp({ user, onLogout }) {
                   const isActive = activeScreen === item.id;
                   return (
                     <TouchableOpacity key={item.id} activeOpacity={0.7} onPress={() => handleMenuNavigate(item.id)} style={{ flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 14, paddingHorizontal: 12, borderRadius: 12, marginBottom: 6, backgroundColor: isActive ? colors.accentBg : 'transparent' }}>
-                      <Ionicons name={isActive ? item.icon : item.iconOutline} size={22} color={isActive ? colors.accent : colors.textSecondary} />
+                      <View style={{ position: 'relative' }}>
+                        <Ionicons name={isActive ? item.icon : item.iconOutline} size={22} color={isActive ? colors.accent : colors.textSecondary} />
+                      </View>
                       <Text numberOfLines={1} style={{ flex: 1, flexShrink: 1, fontSize: fs(15), fontWeight: isActive ? '700' : '500', color: isActive ? colors.accent : colors.text }}>{item.label}</Text>
+                      {item.id === 'complaints' && complaintsCount > 0 && (
+                        <View style={{ minWidth: 22, height: 22, paddingHorizontal: 6, borderRadius: 11, backgroundColor: colors.dangerText, alignItems: 'center', justifyContent: 'center' }}>
+                          <Text style={{ color: '#fff', fontSize: 11, fontWeight: '800' }}>{complaintsCount > 99 ? '99+' : complaintsCount}</Text>
+                        </View>
+                      )}
                     </TouchableOpacity>
                   );
                 })}
