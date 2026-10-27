@@ -24,10 +24,11 @@ const parseLocalDate = (value) => {
     : new Date();
 };
 
-export default function SubmitPaymentProofModal({ visible, onClose, invoice, tenantId, onSuccess }) {
+export default function SubmitPaymentProofModal({ visible, onClose, invoice, pendingChargeTypes = [], tenantId, onSuccess }) {
   const { colors } = useTheme();
   
   const [amount, setAmount] = useState(invoice?.outstanding?.toString() || '');
+  const [chargeType, setChargeType] = useState('');
   const [paymentDate, setPaymentDate] = useState(toLocalDateString(new Date()));
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [calendarMonth, setCalendarMonth] = useState(new Date());
@@ -40,7 +41,13 @@ export default function SubmitPaymentProofModal({ visible, onClose, invoice, ten
 
   useEffect(() => {
     if (visible) {
-      setAmount(invoice?.outstanding?.toString() || '');
+      const availableItem = invoice?.chargeBreakdown?.find((item) =>
+        item.balance > 0
+        && !pendingChargeTypes.includes(item.type)
+        && !pendingChargeTypes.includes('unallocated')
+      );
+      setChargeType(availableItem?.type || '');
+      setAmount(availableItem?.balance?.toString() || '');
       setPaymentDate(toLocalDateString(new Date()));
       setCalendarMonth(new Date());
       setCalendarVisible(false);
@@ -51,6 +58,13 @@ export default function SubmitPaymentProofModal({ visible, onClose, invoice, ten
       setError('');
     }
   }, [visible, invoice?.id, invoice?.outstanding]);
+
+  const availableItems = (invoice?.chargeBreakdown || []).filter((item) =>
+    item.balance > 0
+    && !pendingChargeTypes.includes(item.type)
+    && !pendingChargeTypes.includes('unallocated')
+  );
+  const selectedItem = availableItems.find((item) => item.type === chargeType) || null;
 
   const handlePickImage = async () => {
     try {
@@ -116,8 +130,12 @@ export default function SubmitPaymentProofModal({ visible, onClose, invoice, ten
       setError('There is no invoice available for this payment. Refresh your finances and try again.');
       return false;
     }
-    if (Number(amount) > Number(invoice.outstanding || 0)) {
-      setError('The payment amount cannot be greater than the current balance.');
+    if (!selectedItem) {
+      setError('Choose an unpaid invoice item with no payment proof awaiting review.');
+      return false;
+    }
+    if (Number(amount) > Number(selectedItem.balance || 0)) {
+      setError(`The payment amount cannot be greater than this item's remaining balance of ₱${Number(selectedItem.balance).toLocaleString()}.`);
       return false;
     }
     if (paymentMethod === 'gcash' && !proofImage) {
@@ -142,6 +160,7 @@ export default function SubmitPaymentProofModal({ visible, onClose, invoice, ten
         tenantId,
         invoiceId: invoice.id,
         amount: parseFloat(amount),
+        chargeType,
         paymentDate,
         paymentMethod,
         referenceNo: referenceNo.trim(),
@@ -216,9 +235,60 @@ export default function SubmitPaymentProofModal({ visible, onClose, invoice, ten
               </View>
             )}
 
+            <View style={{ marginBottom: 16 }}>
+              <Text style={{ fontSize: fs(14), fontWeight: '600', color: colors.text, marginBottom: 8 }}>Choose an item *</Text>
+              <View style={{ gap: 8 }}>
+                {(invoice?.chargeBreakdown || []).map((item) => {
+                  const pending = pendingChargeTypes.includes(item.type) || pendingChargeTypes.includes('unallocated');
+                  const selected = chargeType === item.type;
+                  const unavailable = pending || item.balance <= 0;
+                  return (
+                    <TouchableOpacity
+                      key={item.type}
+                      disabled={unavailable}
+                      onPress={() => {
+                        setChargeType(item.type);
+                        setAmount(item.balance.toString());
+                        setError('');
+                      }}
+                      accessibilityRole="radio"
+                      accessibilityState={{ checked: selected, disabled: unavailable }}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: 12,
+                        borderWidth: 1,
+                        borderColor: selected ? colors.accent : colors.cardBorder,
+                        borderRadius: 10,
+                        backgroundColor: selected ? colors.accentBg : colors.bg,
+                        opacity: unavailable ? 0.6 : 1,
+                      }}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: fs(14), fontWeight: '700', color: colors.text }}>{item.label}</Text>
+                        <Text style={{ fontSize: fs(12), color: colors.textSecondary, marginTop: 2 }}>
+                          Remaining ₱{Number(item.balance).toLocaleString()}
+                          {pending ? ' · Proof pending review' : item.status === 'paid' ? ' · Paid' : ''}
+                        </Text>
+                      </View>
+                      {selected && <Ionicons name="checkmark-circle" size={20} color={colors.accent} />}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              {availableItems.length === 0 && (
+                <Text style={{ color: colors.warningText, fontSize: fs(12), marginTop: 8 }}>
+                  All remaining invoice items have a payment proof awaiting review.
+                </Text>
+              )}
+            </View>
+
             {/* Amount */}
             <View style={{ marginBottom: 16 }}>
-              <Text style={{ fontSize: fs(14), fontWeight: '600', color: colors.text, marginBottom: 8 }}>Amount Paid *</Text>
+              <Text style={{ fontSize: fs(14), fontWeight: '600', color: colors.text, marginBottom: 8 }}>
+                Amount for {selectedItem?.label || 'selected item'} *
+              </Text>
               <TextInput
                 value={amount}
                 onChangeText={setAmount}

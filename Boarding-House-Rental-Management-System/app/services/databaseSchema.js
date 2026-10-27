@@ -80,12 +80,14 @@ export const COLLECTIONS = {
  *    - Fields: billing_period ('2026-09'), invoice_type ('initial'|'monthly'|'final'),
  *      rent_charge, utility_charge, water_charge, security_deposit (legacy, always 0), other_charges, additional_charges,
  *      total_amount, due_date, status ('paid'|'unpaid'|'partial'), created_at, notes
+ *    - Per-item paid/partial/unpaid states are derived from PAYMENTS.charge_type and amount_paid.
  *    - Tenant is determined through lease_id -> LEASES.tenant_id; do not duplicate tenant_id here.
  * 
  * 10. PAYMENTS: Financial transactions settling invoices
  *    - PK: payment_id
  *    - FK: invoice_id -> INVOICES.invoice_id
- *    - Fields: amount_paid, payment_date, payment_method ('cash'), reference_no, received_by_user_id
+ *    - Fields: amount_paid, charge_type ('rent'|'electricity'|'water'|'wifi'|'other'|'unallocated'),
+ *      payment_date, payment_method ('cash'|'gcash'), reference_no, received_by_user_id
  * 
  * 11. COMPLAINTS: Issues filed by tenants
  *     - PK: complaint_id
@@ -110,7 +112,7 @@ export const COLLECTIONS = {
  *     - PK: notification_id
  *     - FK: tenant_id -> TENANTS.tenant_id
  *     - FK: related_invoice_id -> INVOICES.invoice_id (optional)
- *     - Fields: type ('approval'|'rejection'|'invoice_created'|'payment_recorded'),
+ *     - Fields: type ('approval'|'rejection'|'invoice_created'|'payment_recorded'|'complaint_status'),
  *       title, message, read, created_at
  *
  * 15. PAYMENT_PROOFS: Tenant-submitted payment proofs awaiting landlord verification
@@ -118,6 +120,7 @@ export const COLLECTIONS = {
  *     - FK: tenant_id -> TENANTS.tenant_id
  *     - FK: invoice_id -> INVOICES.invoice_id
  *     - Fields: amount, payment_date, payment_method ('cash'),
+ *       charge_type ('rent'|'electricity'|'water'|'wifi'|'other'|'unallocated'),
  *       reference_no, proof_image_url, notes, status ('pending'|'approved'|'rejected'),
  *       submitted_at, reviewed_at, reviewed_by_user_id, rejection_reason
  *

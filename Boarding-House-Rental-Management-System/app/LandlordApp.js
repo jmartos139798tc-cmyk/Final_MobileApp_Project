@@ -62,7 +62,7 @@ export default function LandlordApp({ user, onLogout }) {
         ]);
         if (isMounted) {
           setPendingApprovalsCount(approvalCount);
-          setComplaintsCount(complaints.length);
+          setComplaintsCount(complaints.filter((complaint) => complaint.status !== 'resolved').length);
           setPendingPaymentCount(paymentCount);
         }
       } catch (error) {

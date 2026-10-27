@@ -333,13 +333,29 @@ export default function TenantFinancialManagement({ initialFilter = 'all', navig
                         ₱{tenant.balance.toLocaleString()}
                       </Text>
                     </View>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
-                      <Text style={{ fontSize: fs(13), color: colors.textSecondary }}>
-                        Electricity{tenant.billingPeriod ? ` (${tenant.billingPeriod})` : ''}
-                      </Text>
-                      <Text style={{ fontSize: fs(13), fontWeight: '700', color: colors.text }}>
-                        ₱{Number(tenant.electricityCharge || 0).toLocaleString()}
-                      </Text>
+                    <View style={{ gap: 8, marginBottom: 10 }}>
+                      {(tenant.billingItems || []).map((item) => {
+                        const statusLabel = item.status === 'partial' ? 'Partially Paid' : item.status === 'paid' ? 'Paid' : 'Unpaid';
+                        const statusColor = item.status === 'paid'
+                          ? { bg: colors.successBg, text: colors.successText }
+                          : item.status === 'partial'
+                            ? { bg: colors.warningBg, text: colors.warningText }
+                            : { bg: colors.dangerBg, text: colors.dangerText };
+                        return (
+                          <View key={item.type} style={{ paddingVertical: 5, borderBottomWidth: 1, borderBottomColor: colors.cardBorder }}>
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                              <Text style={{ flex: 1, fontSize: fs(13), fontWeight: '600', color: colors.text }}>{item.label}</Text>
+                              <Text style={{ fontSize: fs(13), fontWeight: '700', color: colors.text }}>₱{Number(item.billed).toLocaleString()}</Text>
+                              <View style={{ backgroundColor: statusColor.bg, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 9 }}>
+                                <Text style={{ fontSize: fs(10), fontWeight: '700', color: statusColor.text }}>{statusLabel}</Text>
+                              </View>
+                            </View>
+                            <Text style={{ fontSize: fs(11), color: colors.textSecondary, marginTop: 3 }}>
+                              Remaining ₱{Number(item.balance).toLocaleString()}
+                            </Text>
+                          </View>
+                        );
+                      })}
                     </View>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                       <Text style={{ fontSize: fs(13), color: colors.textSecondary }}>Last Payment</Text>

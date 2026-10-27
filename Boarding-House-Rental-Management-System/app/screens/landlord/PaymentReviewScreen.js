@@ -19,6 +19,15 @@ import {
 } from '../../services/dataService';
 import useRealtimeRefresh from '../../hooks/useRealtimeRefresh';
 
+const PAYMENT_ITEM_LABELS = {
+  rent: 'Rent',
+  electricity: 'Electricity',
+  water: 'Water',
+  wifi: 'Wi-Fi',
+  other: 'Other charges',
+  unallocated: 'Invoice balance',
+};
+
 export default function PaymentReviewScreen({ user, navigation }) {
   const { colors } = useTheme();
   const padding = getResponsivePadding();
@@ -176,6 +185,9 @@ export default function PaymentReviewScreen({ user, navigation }) {
                   <Text style={{ fontSize: fs(13), color: colors.textSecondary, marginTop: 3 }}>
                     Room {proof.roomNumber} · {proof.invoicePeriod}
                   </Text>
+                  <Text style={{ fontSize: fs(12), color: colors.accent, fontWeight: '600', marginTop: 3 }}>
+                    Item: {PAYMENT_ITEM_LABELS[proof.chargeType] || PAYMENT_ITEM_LABELS.unallocated}
+                  </Text>
                 </View>
                 <Text style={{ fontSize: fs(17), fontWeight: '800', color: colors.accent }}>
                   ₱{Number(proof.amount || 0).toLocaleString()}
@@ -267,6 +279,9 @@ export default function PaymentReviewScreen({ user, navigation }) {
                     </Text>
                     <Text style={{ color: colors.textSecondary, fontSize: fs(14) }}>
                       Invoice period: {viewingProof.invoicePeriod}
+                    </Text>
+                    <Text style={{ color: colors.textSecondary, fontSize: fs(14) }}>
+                      Invoice item: {PAYMENT_ITEM_LABELS[viewingProof.chargeType] || PAYMENT_ITEM_LABELS.unallocated}
                     </Text>
                     <Text style={{ color: colors.textSecondary, fontSize: fs(14) }}>
                       Payment date: {formatDate(viewingProof.paymentDate)}

@@ -14,7 +14,9 @@ import { COLLECTIONS } from './databaseSchema.js';
 import { getNormalizedMockDatabase } from './seedDatabase.js';
 import {
   findMatchingPaymentForProof,
+  getComplaintReportCounts,
   getInvoiceBalance as calculateInvoiceBalance,
+  getInvoiceChargeBreakdown as calculateInvoiceChargeBreakdown,
   getInvoiceTotalAmount as calculateInvoiceTotal,
   getMonthlyWifiCharge,
 } from './billingRules.mjs';
@@ -125,36 +127,22 @@ function getInvoiceTotalAmount(invoice) {
 }
 
 function getInvoicePaymentBreakdown(invoice, payments = []) {
-  const rent = Math.max(0, toMoney(invoice?.rent_charge));
-  const utility = Math.max(0, toMoney(invoice?.utility_charge));
-  const other = Math.max(0, toMoney(getInvoiceTotalAmount(invoice) - rent - utility));
-  const totals = { rent, utility, other };
-  const directPaid = { rent: 0, utility: 0, other: 0 };
-  let unallocatedPaid = 0;
+  return calculateInvoiceChargeBreakdown(invoice, payments);
+}
 
-  payments.forEach((payment) => {
-    const amount = Math.max(0, toMoney(payment.amount_paid));
-    const type = payment.charge_type;
-    if (Object.prototype.hasOwnProperty.call(directPaid, type)) directPaid[type] = toMoney(directPaid[type] + amount);
-    else unallocatedPaid = toMoney(unallocatedPaid + amount);
-  });
+function normalizePaymentChargeType(chargeType) {
+  const normalized = chargeType === 'utility' ? 'electricity' : chargeType || 'unallocated';
+  if (!['rent', 'electricity', 'water', 'wifi', 'other', 'unallocated'].includes(normalized)) {
+    throw new Error('Choose a valid invoice item for this payment.');
+  }
+  return normalized;
+}
 
-  return [
-    { type: 'rent', label: 'Rent bill' },
-    { type: 'utility', label: 'Utility bill' },
-    { type: 'other', label: 'Other charges' },
-  ].filter((item) => totals[item.type] > 0).map((item) => {
-    const legacyRoom = Math.max(0, toMoney(totals[item.type] - directPaid[item.type]));
-    const legacyPaid = Math.min(legacyRoom, unallocatedPaid);
-    unallocatedPaid = Math.max(0, toMoney(unallocatedPaid - legacyPaid));
-    const paid = Math.min(totals[item.type], toMoney(directPaid[item.type] + legacyPaid));
-    return {
-      ...item,
-      billed: totals[item.type],
-      paid,
-      balance: Math.max(0, toMoney(totals[item.type] - paid)),
-    };
-  });
+function getPaymentChargeType(payment, invoice, invoicePayments) {
+  const chargeType = normalizePaymentChargeType(payment.charge_type);
+  if (chargeType !== 'other') return chargeType;
+  const breakdown = getInvoicePaymentBreakdown(invoice, invoicePayments);
+  return breakdown.some((item) => item.type === 'other') ? 'other' : 'wifi';
 }
 
 const WIFI_CHARGE = { id: 'wifi', label: 'Wi-Fi', amount: 100 };
@@ -712,11 +700,7 @@ export async function getPeriodSummary(period = getCurrentBillingPeriod()) {
       getOccupancyStats(),
     ]);
     const complaints = store[COLLECTIONS.COMPLAINTS] || [];
-    const periodComplaints = complaints.filter((complaint) => {
-      const dateValue = complaint.filed_at || complaint.created_at;
-      const date = dateValue?.toDate ? dateValue.toDate() : new Date(dateValue);
-      return !Number.isNaN(date.getTime()) && `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}` === period;
-    });
+    const complaintCounts = getComplaintReportCounts(complaints, period);
     return {
       cashReceived: revenue.collected,
       rentBilled: revenue.rentBilled,
@@ -724,8 +708,7 @@ export async function getPeriodSummary(period = getCurrentBillingPeriod()) {
       electricityFees: revenue.electricityFees,
       occupiedRooms: occupancy.occupied,
       totalRooms: occupancy.totalRooms,
-      newComplaints: periodComplaints.length,
-      resolved: periodComplaints.filter((complaint) => complaint.status === 'resolved').length,
+      ...complaintCounts,
     };
   } catch (error) {
     console.error('Error computing period summary:', error);
@@ -745,16 +728,28 @@ export async function getAnnouncements() {
   try {
     const store = await getStore(COLLECTIONS.ANNOUNCEMENTS);
     const announcements = store[COLLECTIONS.ANNOUNCEMENTS] || [];
-    return announcements.map((ann) => ({
-      id: String(ann.id).replace('ann-', ''),
-      announcement_id: ann.id,
-      category: ann.category,
-      date: ann.created_at,
-      title: ann.title,
-      description: ann.description,
-      badgeColor: ann.category === 'Payment' ? '#10b981' : '#059669',
-      badgeBg: '#d1fae5',
-    }));
+    return announcements
+      .map((ann) => {
+        const idTimestamp = Number(String(ann.id).match(/\d{10,}/)?.[0]);
+        const parsedTimestamp = Date.parse(ann.created_at || '');
+        const displayDate = Number.isNaN(parsedTimestamp)
+          ? ann.created_at
+          : new Date(parsedTimestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        return {
+          id: String(ann.id).replace('ann-', ''),
+          announcement_id: ann.id,
+          category: ann.category,
+          date: displayDate,
+          created_at: ann.created_at,
+          title: ann.title,
+          description: ann.description,
+          badgeColor: ann.category === 'Payment' ? '#10b981' : '#059669',
+          badgeBg: '#d1fae5',
+          sortTime: Number.isFinite(idTimestamp) ? idTimestamp : Number.isNaN(parsedTimestamp) ? 0 : parsedTimestamp,
+        };
+      })
+      .sort((a, b) => b.sortTime - a.sortTime)
+      .map(({ sortTime, ...announcement }) => announcement);
   } catch (error) {
     console.error('Error fetching announcements:', error);
     throw error;
@@ -1161,6 +1156,7 @@ export async function getTenantBillingBreakdown(id = '2') {
 
     if (invoice) {
       const invPayments = payments.filter((p) => p.invoice_id === invoice.id);
+      const chargeBreakdown = getInvoicePaymentBreakdown(invoice, invPayments);
       const paidAmount = invPayments.reduce((sum, p) => sum + (p.amount_paid || 0), 0);
       const totalDue = getInvoiceTotalAmount(invoice);
       const outstanding = Math.max(0, totalDue - paidAmount);
@@ -1197,6 +1193,7 @@ export async function getTenantBillingBreakdown(id = '2') {
         receiptNumber: latestPayment?.reference_no || null,
         paymentDate: latestPayment?.payment_date || null,
         paymentMethod: latestPayment?.payment_method || null,
+        chargeBreakdown,
       };
     }
 
@@ -1214,6 +1211,7 @@ export async function getTenantBillingBreakdown(id = '2') {
       dueDate: 'Pending room assignment',
       paidAmount: 0,
       outstanding: 0,
+      chargeBreakdown: [],
       totalOutstanding,
     };
   } catch (error) {
@@ -1415,6 +1413,7 @@ export async function submitComplaint({ title, description = '', tenantId }) {
       description,
       status: 'pending',
       filed_at: dateStr,
+      created_at: new Date().toISOString(),
     };
 
     if (isSupabaseConfigured && supabase) {
@@ -1798,8 +1797,9 @@ export async function getCaretakerDashboardData() {
  */
 export async function addAnnouncement({ category, title, description }) {
   try {
-    const newId = `ann-${Date.now()}`;
-    const dateStr = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    const now = new Date();
+    const newId = `ann-${now.getTime()}`;
+    const dateStr = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     const boardingHouses = isSupabaseConfigured && supabase
       ? await readCollection(COLLECTIONS.BOARDING_HOUSES)
       : (getNormalizedMockDatabase()[COLLECTIONS.BOARDING_HOUSES] || []);
@@ -1812,7 +1812,7 @@ export async function addAnnouncement({ category, title, description }) {
       category,
       title,
       description,
-      created_at: dateStr,
+      created_at: now.toISOString(),
     };
 
     if (isSupabaseConfigured && supabase) {
@@ -1827,6 +1827,7 @@ export async function addAnnouncement({ category, title, description }) {
       announcement_id: newId,
       category,
       date: dateStr,
+      created_at: now.toISOString(),
       title,
       description,
       badgeColor: category === 'Payment' ? '#10b981' : '#059669',
@@ -1844,22 +1845,38 @@ export async function addAnnouncement({ category, title, description }) {
 export async function updateComplaintStatus(complaintId, newStatus) {
   try {
     const formattedId = complaintId.startsWith('comp-') ? complaintId : `comp-${complaintId}`;
-    const dateStr = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    const validStatuses = ['pending', 'in-progress', 'resolved'];
+    if (!validStatuses.includes(newStatus)) {
+      throw new Error('Invalid complaint status.');
+    }
 
     if (isSupabaseConfigured && supabase) {
       const updates = { status: newStatus };
       if (newStatus === 'resolved') {
-        updates.resolved_at = dateStr;
+        updates.resolved_at = new Date().toISOString();
       }
       await updateDocument(COLLECTIONS.COMPLAINTS, formattedId, updates);
     } else {
       const mockStore = getNormalizedMockDatabase();
       const complaint = (mockStore[COLLECTIONS.COMPLAINTS] || []).find((c) => c.id === formattedId);
-      if (complaint) {
+      if (complaint && complaint.status !== newStatus) {
         complaint.status = newStatus;
         if (newStatus === 'resolved') {
-          complaint.resolved_at = dateStr;
+          complaint.resolved_at = new Date().toISOString();
         }
+        const statusLabel = newStatus === 'in-progress' ? 'In Progress' : newStatus === 'resolved' ? 'Resolved' : 'Pending';
+        const notifications = mockStore[COLLECTIONS.TENANT_NOTIFICATIONS]
+          || (mockStore[COLLECTIONS.TENANT_NOTIFICATIONS] = []);
+        notifications.unshift({
+          id: `notif-complaint-${complaint.id}-${Date.now()}`,
+          tenant_id: complaint.tenant_id,
+          type: 'complaint_status',
+          title: 'Complaint status updated',
+          message: `Your complaint "${complaint.title}" is now ${statusLabel}.`,
+          read: false,
+          dismissed: false,
+          created_at: new Date().toISOString(),
+        });
       }
     }
 
@@ -2386,6 +2403,7 @@ export async function getTenantFinancialSummary(tenantId) {
         hasLease: false,
         totalCollected: 0,
         outstandingBalance: 0,
+        billingItems: [],
         securityDeposit: 0,
         leaseStart: null,
         roomNumber: null,
@@ -2422,6 +2440,9 @@ export async function getTenantFinancialSummary(tenantId) {
       monthlyRent: activeLease.agreed_monthly_rent,
       electricityCharge: Number(overviewInvoice?.utility_charge) || 0,
       billingPeriod: overviewInvoice?.billing_period || null,
+      billingItems: overviewInvoice
+        ? getInvoicePaymentBreakdown(overviewInvoice, tenantPayments.filter((payment) => payment.invoice_id === overviewInvoice.id))
+        : [],
     };
   } catch (error) {
     console.error('Error fetching tenant financial summary:', error);
@@ -2485,6 +2506,7 @@ export async function getTenantsWithFinancialStatus(filter = 'all') {
       COLLECTIONS.ROOM_TYPES,
       COLLECTIONS.INVOICES,
       COLLECTIONS.PAYMENTS,
+      COLLECTIONS.PAYMENT_PROOFS,
     );
     const tenants = store[COLLECTIONS.TENANTS] || [];
     const leases = store[COLLECTIONS.LEASES] || [];
@@ -2554,6 +2576,12 @@ export async function getTenantsWithFinancialStatus(filter = 'all') {
             monthlyRent: activeLease.agreed_monthly_rent,
             electricityCharge: Number(overviewInvoice?.utility_charge) || 0,
             billingPeriod: overviewInvoice?.billing_period || null,
+            billingItems: overviewInvoice
+              ? getInvoicePaymentBreakdown(
+                overviewInvoice,
+                tenantPayments.filter((payment) => payment.invoice_id === overviewInvoice.id),
+              )
+              : [],
             balance,
             hasRecordedPayment: tenantPayments.length > 0,
             lastPayment: lastPayment === null ? null : new Date(lastPayment).toISOString(),
@@ -2610,7 +2638,11 @@ export async function getTenantPaymentHistory(tenantId) {
             ? payment.payment_date
             : new Date(paymentTimestamp).toISOString(),
           method: payment.payment_method,
-          chargeType: payment.charge_type || 'unallocated',
+          chargeType: getPaymentChargeType(
+            payment,
+            invoice,
+            tenantPayments.filter((item) => item.invoice_id === payment.invoice_id),
+          ),
           notes: payment.notes || '',
           referenceNo: payment.reference_no,
           invoiceId: payment.invoice_id,
@@ -2664,7 +2696,7 @@ export async function getInvoiceWithPayments(invoiceId, excludePaymentId = null)
         amount: p.amount_paid,
         date: p.payment_date,
         method: p.payment_method,
-        chargeType: p.charge_type || 'unallocated',
+        chargeType: getPaymentChargeType(p, invoice, invoicePayments),
         referenceNo: p.reference_no,
       })),
       totalPaid,
@@ -2699,7 +2731,7 @@ export async function updatePayment({ paymentId, amountPaid, paymentDate, paymen
     throw new Error('Enter a valid payment date that is not in the future.');
   }
   if (!['cash', 'gcash'].includes(paymentMethod)) throw new Error('Choose Cash or GCash as the payment method.');
-  const normalizedChargeType = ['rent', 'utility', 'other', 'unallocated'].includes(chargeType) ? chargeType : 'unallocated';
+  const normalizedChargeType = normalizePaymentChargeType(chargeType);
 
   const otherPayments = payments.filter((item) => item.invoice_id === invoice.id && item.id !== paymentId);
   const invoiceBalance = Math.max(0, toMoney(getInvoiceTotalAmount(invoice) - otherPayments.reduce((sum, item) => sum + Number(item.amount_paid || 0), 0)));
@@ -2765,7 +2797,7 @@ export async function recordPayment({ invoiceId, amountPaid, paymentDate, paymen
     if (normalizedAmount > balanceBeforePayment) {
       throw new Error(`Payment cannot exceed this invoice's remaining balance of ${balanceBeforePayment.toLocaleString()}`);
     }
-    const normalizedChargeType = ['rent', 'utility', 'other', 'unallocated'].includes(chargeType) ? chargeType : 'unallocated';
+    const normalizedChargeType = normalizePaymentChargeType(chargeType);
     if (normalizedChargeType !== 'unallocated') {
       const component = getInvoicePaymentBreakdown(invoice, payments.filter((payment) => payment.invoice_id === invoiceId))
         .find((item) => item.type === normalizedChargeType);
@@ -2947,7 +2979,7 @@ export async function createNotification({ tenantId, type, title, message, relat
 /**
  * 40. Submit payment proof (tenant submits payment with image)
  */
-export async function submitPaymentProof({ tenantId, invoiceId, amount, paymentDate, paymentMethod, referenceNo, proofImageUrl, notes }) {
+export async function submitPaymentProof({ tenantId, invoiceId, amount, paymentDate, paymentMethod, chargeType, referenceNo, proofImageUrl, notes }) {
   try {
     if (!['cash', 'gcash'].includes(String(paymentMethod || '').toLowerCase())) {
       throw new Error('Choose Cash or GCash as the payment method.');
@@ -2977,10 +3009,26 @@ export async function submitPaymentProof({ tenantId, invoiceId, amount, paymentD
     if (!Number.isFinite(paymentAmount) || paymentAmount <= 0) throw new Error('Enter a valid payment amount.');
     if (!paymentDate || Number.isNaN(new Date(`${paymentDate}T00:00:00`).getTime())) throw new Error('Enter a valid payment date.');
     if (paymentMethod === 'gcash' && !proofImageUrl) throw new Error('Upload a photo of your GCash receipt.');
+    const normalizedChargeType = normalizePaymentChargeType(chargeType);
     const outstanding = getInvoiceBalance(invoice.id, store);
     if (paymentAmount > outstanding) throw new Error(`The payment cannot exceed the invoice balance of PHP ${outstanding.toLocaleString()}.`);
-    if ((store[COLLECTIONS.PAYMENT_PROOFS] || []).some((proof) => proof.invoice_id === invoiceId && proof.status === 'pending')) {
-      throw new Error('A payment proof for this invoice is already awaiting review.');
+    const invoicePayments = (store[COLLECTIONS.PAYMENTS] || []).filter((payment) => payment.invoice_id === invoiceId);
+    if (normalizedChargeType !== 'unallocated') {
+      const component = getInvoicePaymentBreakdown(invoice, invoicePayments)
+        .find((item) => item.type === normalizedChargeType);
+      if (!component || paymentAmount > component.balance) {
+        throw new Error(`The payment cannot exceed this item's remaining balance of PHP ${(component?.balance || 0).toLocaleString()}.`);
+      }
+    }
+    const hasConflictingPendingProof = (store[COLLECTIONS.PAYMENT_PROOFS] || []).some((proof) => {
+      if (proof.invoice_id !== invoiceId || proof.status !== 'pending') return false;
+      const pendingChargeType = normalizePaymentChargeType(proof.charge_type);
+      return pendingChargeType === 'unallocated'
+        || normalizedChargeType === 'unallocated'
+        || pendingChargeType === normalizedChargeType;
+    });
+    if (hasConflictingPendingProof) {
+      throw new Error('A payment proof for this invoice item is already awaiting review.');
     }
     
     const proofId = `proof-${Date.now()}`;
@@ -2991,6 +3039,7 @@ export async function submitPaymentProof({ tenantId, invoiceId, amount, paymentD
       tenant_id: tenantId,
       invoice_id: invoiceId,
       amount: paymentAmount,
+      charge_type: normalizedChargeType,
       payment_date: paymentDate,
       payment_method: paymentMethod,
       reference_no: referenceNo || '',
@@ -3064,6 +3113,7 @@ export async function getPendingPaymentProofs() {
           invoiceId: proof.invoice_id,
           invoicePeriod: invoice?.billing_period || '-',
           amount: proof.amount,
+          chargeType: normalizePaymentChargeType(proof.charge_type),
           paymentDate: proof.payment_date,
           paymentMethod: proof.payment_method,
           referenceNo: proof.reference_no,
@@ -3099,6 +3149,7 @@ export async function getTenantPaymentProofs(tenantId) {
           invoiceId: proof.invoice_id,
           invoicePeriod: invoice?.billing_period || '-',
           amount: proof.amount,
+          chargeType: normalizePaymentChargeType(proof.charge_type),
           paymentDate: proof.payment_date,
           paymentMethod: proof.payment_method,
           referenceNo: proof.reference_no,
@@ -3152,6 +3203,7 @@ export async function approvePaymentProof(proofId, reviewerUserId) {
         amountPaid: proof.amount,
         paymentDate: proof.payment_date,
         paymentMethod: proof.payment_method,
+        chargeType: normalizePaymentChargeType(proof.charge_type),
         referenceNo: stableReference,
         receivedBy: reviewerUserId,
       });

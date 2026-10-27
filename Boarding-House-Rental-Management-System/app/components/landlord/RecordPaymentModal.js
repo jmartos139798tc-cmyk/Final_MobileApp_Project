@@ -20,6 +20,8 @@ export default function RecordPaymentModal({ visible, tenant, paymentToEdit = nu
   const [latestInvoiceId, setLatestInvoiceId] = useState(null);
   const [editingPaymentId, setEditingPaymentId] = useState(null);
   const [invoiceBalance, setInvoiceBalance] = useState(0);
+  const [invoiceItems, setInvoiceItems] = useState([]);
+  const [selectedChargeType, setSelectedChargeType] = useState('unallocated');
   
   const [amount, setAmount] = useState('');
   const [paymentDate, setPaymentDate] = useState(getLocalDateString());
@@ -44,6 +46,8 @@ export default function RecordPaymentModal({ visible, tenant, paymentToEdit = nu
       setLatestInvoiceId(null);
       setEditingPaymentId(paymentToEdit?.id || null);
       setInvoiceBalance(0);
+      setInvoiceItems([]);
+      setSelectedChargeType('unallocated');
       setAmount('');
       setNotes('');
       setPaymentDate(getLocalDateString());
@@ -53,10 +57,23 @@ export default function RecordPaymentModal({ visible, tenant, paymentToEdit = nu
       const invoice = paymentToEdit
         ? await getInvoiceWithPayments(paymentToEdit.invoiceId, paymentToEdit.id)
         : await getNextUnpaidInvoiceForTenant(tenant.tenantId);
+      const items = invoice?.chargeBreakdown || invoice?.breakdown || [];
+      const existingChargeType = paymentToEdit?.chargeType === 'utility'
+        ? 'electricity'
+        : paymentToEdit?.chargeType || 'unallocated';
+      const firstUnpaidItem = items.find((item) => item.balance > 0);
+      const chargeType = paymentToEdit
+        ? existingChargeType
+        : firstUnpaidItem?.type || 'unallocated';
       setOutstandingBalance(Number(summary.outstandingBalance) || 0);
       setLatestInvoiceId(invoice?.id || null);
       setInvoiceBalance(Number(invoice?.balance) || 0);
-      setAmount(paymentToEdit ? String(Number(paymentToEdit.amount) || '') : invoice ? String(Number(invoice.balance) || 0) : '');
+      setInvoiceItems(items);
+      setSelectedChargeType(chargeType);
+      const selectedItem = items.find((item) => item.type === chargeType);
+      setAmount(paymentToEdit
+        ? String(Number(paymentToEdit.amount) || '')
+        : String(Number(selectedItem?.balance ?? invoice?.balance) || ''));
       if (!invoice) setError(paymentToEdit ? 'The invoice for this payment could not be loaded.' : 'This tenant has no unpaid invoice to record a payment against.');
       if (paymentToEdit) {
         setPaymentDate(String(paymentToEdit.date || getLocalDateString()).slice(0, 10));
@@ -108,12 +125,14 @@ export default function RecordPaymentModal({ visible, tenant, paymentToEdit = nu
       setError('Payment date cannot be in the future.');
       return null;
     }
-    if (paymentAmount > invoiceBalance) {
-      setError(`Payment cannot exceed this invoice's remaining balance of ${invoiceBalance.toLocaleString()}.`);
-      return null;
-    }
     if (!latestInvoiceId) {
       setError('No unpaid invoice is available for this tenant.');
+      return null;
+    }
+    const selectedItem = invoiceItems.find((item) => item.type === selectedChargeType);
+    const selectedBalance = selectedChargeType === 'unallocated' ? invoiceBalance : Number(selectedItem?.balance) || 0;
+    if (paymentAmount > Math.min(invoiceBalance, selectedBalance)) {
+      setError(`Payment cannot exceed this item's remaining balance of ${Math.min(invoiceBalance, selectedBalance).toLocaleString()}.`);
       return null;
     }
     if (!['cash', 'gcash'].includes(paymentMethod)) {
@@ -144,7 +163,7 @@ export default function RecordPaymentModal({ visible, tenant, paymentToEdit = nu
           amountPaid: paymentAmount,
           paymentDate,
           paymentMethod,
-          chargeType: 'unallocated',
+          chargeType: selectedChargeType,
           notes: notes.trim(),
         });
       } else {
@@ -153,7 +172,7 @@ export default function RecordPaymentModal({ visible, tenant, paymentToEdit = nu
           amountPaid: paymentAmount,
           paymentDate,
           paymentMethod,
-          chargeType: 'unallocated',
+          chargeType: selectedChargeType,
           notes: notes.trim(),
         });
       }
@@ -180,6 +199,10 @@ export default function RecordPaymentModal({ visible, tenant, paymentToEdit = nu
     { id: 'cash', label: 'Cash', icon: 'cash-outline' },
     { id: 'gcash', label: 'GCash', icon: 'phone-portrait-outline' },
   ];
+  const selectedItem = invoiceItems.find((item) => item.type === selectedChargeType) || null;
+  const selectedBalance = selectedChargeType === 'unallocated'
+    ? invoiceBalance
+    : Number(selectedItem?.balance) || 0;
 
   if (!tenant) return null;
 
@@ -265,7 +288,7 @@ export default function RecordPaymentModal({ visible, tenant, paymentToEdit = nu
             <View style={{ backgroundColor: colors.accentBg, padding: 12, borderRadius: 8, marginBottom: 16 }}>
               <Text style={{ fontSize: fs(14), color: colors.text, fontWeight: '700', marginBottom: 4 }}>{editingPaymentId ? 'Confirm changes' : 'Confirm payment'}</Text>
               <Text style={{ fontSize: fs(13), color: colors.textSecondary }}>
-                {editingPaymentId ? 'Update' : 'Record'} ₱{Number(amount).toLocaleString()} via {paymentMethod === 'gcash' ? 'GCash' : 'cash'} for {tenant.name} on {paymentDate}?
+                {editingPaymentId ? 'Update' : 'Record'} ₱{Number(amount).toLocaleString()} for {selectedItem?.label || 'the invoice'} via {paymentMethod === 'gcash' ? 'GCash' : 'cash'} for {tenant.name} on {paymentDate}?
               </Text>
             </View>
           )}
@@ -278,9 +301,57 @@ export default function RecordPaymentModal({ visible, tenant, paymentToEdit = nu
               </View>
             ) : (
               <>
+                {/* Invoice Item */}
+                <Text style={{ fontSize: fs(14), fontWeight: '700', color: colors.text, marginBottom: 8 }}>
+                  Invoice Item <Text style={{ color: colors.dangerText }}>*</Text>
+                </Text>
+                <View style={{ gap: 8, marginBottom: 16 }}>
+                  {invoiceItems.filter((item) => item.balance > 0 || item.type === selectedChargeType).map((item) => {
+                    const selected = selectedChargeType === item.type;
+                    return (
+                      <TouchableOpacity
+                        key={item.type}
+                        onPress={() => {
+                          setSelectedChargeType(item.type);
+                          setAmount(String(item.balance));
+                          setError('');
+                          setConfirming(false);
+                        }}
+                        disabled={submitting}
+                        accessibilityRole="radio"
+                        accessibilityState={{ checked: selected }}
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: 11,
+                          borderRadius: 8,
+                          borderWidth: 1,
+                          borderColor: selected ? colors.accent : colors.cardBorder,
+                          backgroundColor: selected ? colors.accentBg : colors.bg,
+                        }}
+                      >
+                        <View>
+                          <Text style={{ fontSize: fs(14), fontWeight: '700', color: colors.text }}>{item.label}</Text>
+                          <Text style={{ fontSize: fs(12), color: colors.textSecondary, marginTop: 2 }}>
+                            Remaining ₱{Number(item.balance).toLocaleString()} · {item.status === 'partial' ? 'Partially Paid' : item.status === 'paid' ? 'Paid' : 'Unpaid'}
+                          </Text>
+                        </View>
+                        {selected && <Ionicons name="checkmark-circle" size={20} color={colors.accent} />}
+                      </TouchableOpacity>
+                    );
+                  })}
+                  {selectedChargeType === 'unallocated' && (
+                    <View style={{ padding: 11, borderRadius: 8, backgroundColor: colors.warningBg }}>
+                      <Text style={{ fontSize: fs(13), fontWeight: '700', color: colors.warningText }}>Legacy unallocated payment</Text>
+                      <Text style={{ fontSize: fs(12), color: colors.warningText, marginTop: 2 }}>This existing payment is not linked to a specific item.</Text>
+                    </View>
+                  )}
+                </View>
+
                 {/* Amount */}
                 <Text style={{ fontSize: fs(14), fontWeight: '700', color: colors.text, marginBottom: 8 }}>
-                  Amount Paid <Text style={{ color: colors.dangerText }}>*</Text>
+                  Amount Paid for {selectedItem?.label || 'Invoice'} <Text style={{ color: colors.dangerText }}>*</Text>
                 </Text>
                 <TextInput
                   value={amount}
@@ -306,7 +377,7 @@ export default function RecordPaymentModal({ visible, tenant, paymentToEdit = nu
                   }}
                 />
                 <Text style={{ fontSize: fs(12), color: colors.textMuted, marginTop: -10, marginBottom: 16 }}>
-                  Invoice balance: ₱{invoiceBalance.toLocaleString()}. Partial payments are allowed.
+                  Item balance: ₱{selectedBalance.toLocaleString()}. Partial payments are allowed.
                 </Text>
 
                 {/* Payment Date */}

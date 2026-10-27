@@ -8,6 +8,15 @@ import { getCurrentTenant, getTenantBillingBreakdown, getTenantPaymentHistory, g
 import SubmitPaymentProofModal from '../../components/tenant/SubmitPaymentProofModal';
 import useRealtimeRefresh from '../../hooks/useRealtimeRefresh';
 
+const PAYMENT_ITEM_LABELS = {
+  rent: 'Rent',
+  electricity: 'Electricity',
+  water: 'Water',
+  wifi: 'Wi-Fi',
+  other: 'Other charges',
+  unallocated: 'Invoice balance',
+};
+
 export default function TenantFinancesScreen({ user, onNavigateToApplication }) {
   const { colors } = useTheme();
   const padding = getResponsivePadding();
@@ -160,8 +169,15 @@ export default function TenantFinancesScreen({ user, onNavigateToApplication }) 
     id: billingBreakdown.invoiceId,
     period: billingBreakdown.month,
     outstanding: billingBreakdown.outstanding,
+    chargeBreakdown: billingBreakdown.chargeBreakdown || [],
   } : null;
-  const hasPendingProof = paymentProofs.some((proof) => proof.invoiceId === currentInvoice?.id && proof.status === 'pending');
+  const pendingProofsForInvoice = paymentProofs.filter((proof) =>
+    proof.invoiceId === currentInvoice?.id && proof.status === 'pending'
+  );
+  const pendingChargeTypes = pendingProofsForInvoice.map((proof) => proof.chargeType || 'unallocated');
+  const hasAvailablePaymentItem = currentInvoice?.chargeBreakdown.some((item) =>
+    item.balance > 0 && !pendingChargeTypes.includes(item.type) && !pendingChargeTypes.includes('unallocated')
+  );
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -169,6 +185,7 @@ export default function TenantFinancesScreen({ user, onNavigateToApplication }) 
         visible={showPaymentModal}
         onClose={() => setShowPaymentModal(false)}
         invoice={currentInvoice}
+        pendingChargeTypes={pendingChargeTypes}
         tenantId={tenantId}
         onSuccess={loadFinancialData}
       />
@@ -242,10 +259,10 @@ export default function TenantFinancesScreen({ user, onNavigateToApplication }) 
         {/* Submit Payment Button */}
         {balance > 0 && currentInvoice?.id && (
           <TouchableOpacity
-            onPress={() => !hasPendingProof && setShowPaymentModal(true)}
-            disabled={hasPendingProof || !currentInvoice?.id}
+            onPress={() => setShowPaymentModal(true)}
+            disabled={!hasAvailablePaymentItem}
             style={{
-              backgroundColor: hasPendingProof ? colors.warningText : colors.successText,
+              backgroundColor: hasAvailablePaymentItem ? colors.successText : colors.warningText,
               padding: 16,
               borderRadius: 12,
               flexDirection: 'row',
@@ -255,9 +272,9 @@ export default function TenantFinancesScreen({ user, onNavigateToApplication }) 
               marginBottom: spacing.lg,
             }}
           >
-            <Ionicons name={hasPendingProof ? 'time-outline' : 'cloud-upload-outline'} size={20} color="#ffffff" />
+            <Ionicons name={hasAvailablePaymentItem ? 'cloud-upload-outline' : 'time-outline'} size={20} color="#ffffff" />
             <Text style={{ fontSize: fs(16), fontWeight: '700', color: '#ffffff' }}>
-              {hasPendingProof ? 'Payment Proof Pending Review' : 'Submit Payment Proof'}
+              {hasAvailablePaymentItem ? 'Submit Payment Proof' : 'Payment Proof Pending Review'}
             </Text>
           </TouchableOpacity>
         )}
@@ -301,28 +318,38 @@ export default function TenantFinancesScreen({ user, onNavigateToApplication }) 
               Current Invoice {billingBreakdown.month && `(${billingBreakdown.month})`}
             </Text>
 
-            <View style={{ gap: 10 }}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <Text style={{ fontSize: fs(14), color: colors.textSecondary }}>{billingBreakdown.invoiceType === 'initial' ? '1 Month Advance' : 'Monthly Rent'}</Text>
-                <Text style={{ fontSize: fs(14), fontWeight: '600', color: colors.text }}>₱{billingBreakdown.monthlyRent.toLocaleString()}</Text>
-              </View>
-
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <Text style={{ fontSize: fs(14), color: colors.textSecondary }}>Electricity</Text>
-                <Text style={{ fontSize: fs(14), fontWeight: '600', color: colors.text }}>₱{billingBreakdown.electricity.toLocaleString()}</Text>
-              </View>
-
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <Text style={{ fontSize: fs(14), color: colors.textSecondary }}>Water</Text>
-                <Text style={{ fontSize: fs(14), fontWeight: '600', color: colors.text }}>₱0</Text>
-              </View>
-
-              {(billingBreakdown.additionalCharges || []).map((charge, index) => (
-                <View key={charge.id || `${charge.label}-${index}`} style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                  <Text style={{ flex: 1, fontSize: fs(14), color: colors.textSecondary }}>{charge.label || 'Additional charge'}</Text>
-                  <Text style={{ fontSize: fs(14), fontWeight: '600', color: colors.text }}>₱{Number(charge.amount || 0).toLocaleString()}</Text>
-                </View>
-              ))}
+            <View style={{ gap: 12 }}>
+              {(billingBreakdown.chargeBreakdown || []).map((item) => {
+                const statusLabel = item.status === 'partial' ? 'Partially Paid' : item.status === 'paid' ? 'Paid' : 'Unpaid';
+                const statusColor = item.status === 'paid'
+                  ? { background: colors.successBg, text: colors.successText }
+                  : item.status === 'partial'
+                    ? { background: colors.warningBg, text: colors.warningText }
+                    : { background: colors.dangerBg, text: colors.dangerText };
+                const label = item.type === 'rent' && billingBreakdown.invoiceType === 'initial'
+                  ? '1 Month Advance'
+                  : item.label;
+                const hasPending = pendingChargeTypes.includes(item.type) || pendingChargeTypes.includes('unallocated');
+                return (
+                  <View key={item.type} style={{ paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: colors.cardBorder }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                      <Text style={{ flex: 1, fontSize: fs(14), fontWeight: '600', color: colors.text }}>{label}</Text>
+                      <Text style={{ fontSize: fs(14), fontWeight: '700', color: colors.text }}>₱{Number(item.billed).toLocaleString()}</Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 5 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <View style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, backgroundColor: statusColor.background }}>
+                          <Text style={{ fontSize: fs(11), fontWeight: '700', color: statusColor.text }}>{statusLabel}</Text>
+                        </View>
+                        {hasPending && <Text style={{ fontSize: fs(11), fontWeight: '600', color: colors.warningText }}>Proof pending</Text>}
+                      </View>
+                      <Text style={{ fontSize: fs(12), color: colors.textSecondary }}>
+                        Remaining ₱{Number(item.balance).toLocaleString()}
+                      </Text>
+                    </View>
+                  </View>
+                );
+              })}
 
               <View style={{ height: 1, backgroundColor: colors.cardBorder, marginVertical: 4 }} />
 
@@ -385,6 +412,9 @@ export default function TenantFinancesScreen({ user, onNavigateToApplication }) 
                     <Ionicons name="time-outline" size={20} color={colors.warningText} />
                     <View style={{ flex: 1 }}>
                       <Text style={{ fontSize: fs(15), fontWeight: '700', color: colors.text }}>₱{proof.amount.toLocaleString()}</Text>
+                      <Text style={{ fontSize: fs(12), color: colors.accent, marginTop: 2 }}>
+                        Item: {PAYMENT_ITEM_LABELS[proof.chargeType] || PAYMENT_ITEM_LABELS.unallocated}
+                      </Text>
                       <Text style={{ fontSize: fs(13), color: colors.textSecondary, marginTop: 2 }}>
                         Submitted {new Date(proof.submittedAt).toLocaleDateString()}
                       </Text>
@@ -417,6 +447,9 @@ export default function TenantFinancesScreen({ user, onNavigateToApplication }) 
                     <Ionicons name="close-circle" size={20} color={colors.dangerText} />
                     <View style={{ flex: 1 }}>
                       <Text style={{ fontSize: fs(15), fontWeight: '700', color: colors.text }}>₱{proof.amount.toLocaleString()}</Text>
+                      <Text style={{ fontSize: fs(12), color: colors.accent, marginTop: 2 }}>
+                        Item: {PAYMENT_ITEM_LABELS[proof.chargeType] || PAYMENT_ITEM_LABELS.unallocated}
+                      </Text>
                       <Text style={{ fontSize: fs(13), color: colors.textSecondary, marginTop: 2 }}>
                         Submitted {new Date(proof.submittedAt).toLocaleDateString()}
                       </Text>
@@ -471,6 +504,9 @@ export default function TenantFinancesScreen({ user, onNavigateToApplication }) 
                   <View style={{ flex: 1 }}>
                     <Text style={{ fontSize: fs(16), fontWeight: '700', color: colors.text }}>₱{payment.amount.toLocaleString()}</Text>
                     <Text style={{ fontSize: fs(13), color: colors.textSecondary, marginTop: 2 }}>{formatDate(payment.date)}</Text>
+                    <Text style={{ fontSize: fs(12), color: colors.accent, marginTop: 2 }}>
+                      Item: {PAYMENT_ITEM_LABELS[payment.chargeType] || PAYMENT_ITEM_LABELS.unallocated}
+                    </Text>
                     {payment.referenceNo && (
                       <Text style={{ fontSize: fs(12), color: colors.textMuted, marginTop: 2 }}>Ref: {payment.referenceNo}</Text>
                     )}

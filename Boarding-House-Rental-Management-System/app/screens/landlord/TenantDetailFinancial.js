@@ -8,6 +8,15 @@ import { getTenantFinancialSummary, getTenantPaymentHistory } from '../../servic
 import RecordPaymentModal from '../../components/landlord/RecordPaymentModal';
 import useRealtimeRefresh from '../../hooks/useRealtimeRefresh';
 
+const PAYMENT_ITEM_LABELS = {
+  rent: 'Rent',
+  electricity: 'Electricity',
+  water: 'Water',
+  wifi: 'Wi-Fi',
+  other: 'Other charges',
+  unallocated: 'Invoice balance',
+};
+
 export default function TenantDetailFinancial({ route, navigation }) {
   const { colors } = useTheme();
   const padding = getResponsivePadding();
@@ -161,27 +170,36 @@ export default function TenantDetailFinancial({ route, navigation }) {
             </View>
           </View>
 
-          {/* Monthly Rent */}
-          <View>
-            <View style={{ ...cardStyle, backgroundColor: colors.card, borderColor: colors.cardBorder, padding: 16 }}>
-              <Text style={{ fontSize: fs(13), color: colors.textSecondary, marginBottom: 6 }}>Monthly Rent</Text>
-              <Text style={{ fontSize: fs(20), fontWeight: '700', color: colors.text }}>
-                ₱{summary.monthlyRent.toLocaleString()}
-              </Text>
-              <Text style={{ fontSize: fs(12), color: colors.textMuted, marginTop: 4 }}>Per month</Text>
-            </View>
-          </View>
-
-          {/* Current Electricity Bill */}
+          {/* Current invoice item status */}
           <View style={{ marginTop: spacing.sm }}>
             <View style={{ ...cardStyle, backgroundColor: colors.card, borderColor: colors.cardBorder, padding: 16 }}>
-              <Text style={{ fontSize: fs(13), color: colors.textSecondary, marginBottom: 6 }}>
-                Electricity{summary.billingPeriod ? ` · ${summary.billingPeriod}` : ''}
+              <Text style={{ fontSize: fs(15), fontWeight: '700', color: colors.text, marginBottom: 12 }}>
+                Current Invoice Items{summary.billingPeriod ? ` · ${summary.billingPeriod}` : ''}
               </Text>
-              <Text style={{ fontSize: fs(20), fontWeight: '700', color: colors.text }}>
-                ₱{Number(summary.electricityCharge || 0).toLocaleString()}
-              </Text>
-              <Text style={{ fontSize: fs(12), color: colors.textMuted, marginTop: 4 }}>Current bill</Text>
+              <View style={{ gap: 10 }}>
+                {(summary.billingItems || []).map((item) => {
+                  const statusLabel = item.status === 'partial' ? 'Partially Paid' : item.status === 'paid' ? 'Paid' : 'Unpaid';
+                  const statusColor = item.status === 'paid'
+                    ? { bg: colors.successBg, text: colors.successText }
+                    : item.status === 'partial'
+                      ? { bg: colors.warningBg, text: colors.warningText }
+                      : { bg: colors.dangerBg, text: colors.dangerText };
+                  return (
+                    <View key={item.type} style={{ paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.cardBorder }}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                        <Text style={{ flex: 1, fontSize: fs(14), fontWeight: '600', color: colors.text }}>{item.label}</Text>
+                        <Text style={{ fontSize: fs(14), fontWeight: '700', color: colors.text }}>₱{Number(item.billed).toLocaleString()}</Text>
+                        <View style={{ backgroundColor: statusColor.bg, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10 }}>
+                          <Text style={{ fontSize: fs(10), fontWeight: '700', color: statusColor.text }}>{statusLabel}</Text>
+                        </View>
+                      </View>
+                      <Text style={{ fontSize: fs(12), color: colors.textSecondary, marginTop: 4 }}>
+                        Paid ₱{Number(item.paid).toLocaleString()} · Remaining ₱{Number(item.balance).toLocaleString()}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
             </View>
           </View>
         </View>
@@ -228,6 +246,9 @@ export default function TenantDetailFinancial({ route, navigation }) {
                       </Text>
                       <Text style={{ fontSize: fs(13), color: colors.textSecondary, marginTop: 2 }}>
                         {formatDate(payment.date)}
+                      </Text>
+                      <Text style={{ fontSize: fs(12), color: colors.accent, marginTop: 2 }}>
+                        Item: {PAYMENT_ITEM_LABELS[payment.chargeType] || PAYMENT_ITEM_LABELS.unallocated}
                       </Text>
                     </View>
 

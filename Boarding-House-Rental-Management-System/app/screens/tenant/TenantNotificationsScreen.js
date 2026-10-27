@@ -151,6 +151,8 @@ export default function TenantNotificationsScreen({ user, applicationRejected = 
         return { name: 'document-text', color: '#f59e0b', bg: '#fef3c7', label: 'Invoice' };
       case 'payment_recorded':
         return { name: 'cash', color: colors.successText, bg: colors.successBg, label: 'Payment' };
+      case 'complaint_status':
+        return { name: 'construct', color: colors.infoText, bg: colors.infoBg, label: 'Complaint' };
       default:
         return { name: 'notifications', color: colors.accent, bg: colors.accentBg, label: 'Notification' };
     }
