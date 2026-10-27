@@ -6,6 +6,7 @@ import {
   getInvoiceBalance,
   getInvoiceChargeBreakdown,
   getInvoiceTotalAmount,
+  getLeaseOutstandingBalance,
   getMonthlyWifiCharge,
 } from '../app/services/billingRules.mjs';
 
@@ -26,6 +27,19 @@ test('partial payments produce the expected invoice balance', () => {
   ];
   assert.equal(getInvoiceBalance(invoice, payments), 1600);
   assert.equal(getInvoiceBalance(invoice, [{ invoice_id: 'inv-1', amount_paid: 3000 }]), 0);
+});
+
+test('lease outstanding balance includes every invoice on that lease', () => {
+  const invoices = [
+    { id: 'initial', lease_id: 'lease-1', total_amount: 1850 },
+    { id: 'monthly', lease_id: 'lease-1', total_amount: 1922 },
+    { id: 'other-lease', lease_id: 'lease-2', total_amount: 500 },
+  ];
+  const payments = [{ invoice_id: 'initial', amount_paid: 1750 }];
+
+  assert.equal(getLeaseOutstandingBalance(invoices, 'lease-1', payments), 2022);
+  assert.equal(getLeaseOutstandingBalance(invoices, 'lease-2', payments), 500);
+  assert.equal(getLeaseOutstandingBalance(invoices, 'missing-lease', payments), 0);
 });
 
 test('invoice charge breakdown tracks per-item partial payments and legacy utility allocations', () => {

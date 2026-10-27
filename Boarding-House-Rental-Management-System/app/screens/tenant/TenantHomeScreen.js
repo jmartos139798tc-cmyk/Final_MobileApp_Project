@@ -36,6 +36,7 @@ export default function TenantHomeScreen({ user, onNavigateToNotifications, onNa
   const hasLoadedOnce = useRef(false);
 
   const [showReceiptModal, setShowReceiptModal] = useState(false);
+  const outstandingBalance = Number(billing?.totalOutstanding ?? tenant?.outstandingBalance ?? 0);
 
   useRealtimeRefresh(`tenant-home-${user?.tenant_id || 'unknown'}`, [
     { table: 'tenants', filter: `id=eq.${user?.tenant_id || ''}` },
@@ -251,7 +252,7 @@ export default function TenantHomeScreen({ user, onNavigateToNotifications, onNa
                   marginBottom: 6,
                   letterSpacing: -0.5,
                 }}>
-                  ₱{tenant.outstandingBalance.toLocaleString()}
+                  ₱{outstandingBalance.toLocaleString()}
                 </Text>
 
                 <Text style={{
@@ -587,7 +588,7 @@ export default function TenantHomeScreen({ user, onNavigateToNotifications, onNa
               </View>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: colors.divider, paddingTop: 8 }}>
                 <Text style={{ fontSize: fs(13), fontWeight: '700', color: colors.textMuted }}>Balance Due</Text>
-                <Text style={{ fontSize: fs(14), fontWeight: '900', color: colors.danger }}>₱{tenant.outstandingBalance.toLocaleString()}</Text>
+                <Text style={{ fontSize: fs(14), fontWeight: '900', color: colors.danger }}>₱{outstandingBalance.toLocaleString()}</Text>
               </View>
             </View> : <View style={{ backgroundColor: colors.bg, borderRadius: 12, padding: 18, marginBottom: 18 }}><Text style={{ color: colors.textSecondary, fontSize: fs(14), lineHeight: 21 }}>No payment receipt is available for this billing period yet.</Text></View>}
 

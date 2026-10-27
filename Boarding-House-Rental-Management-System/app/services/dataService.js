@@ -18,6 +18,7 @@ import {
   getInvoiceBalance as calculateInvoiceBalance,
   getInvoiceChargeBreakdown as calculateInvoiceChargeBreakdown,
   getInvoiceTotalAmount as calculateInvoiceTotal,
+  getLeaseOutstandingBalance,
   getMonthlyWifiCharge,
 } from './billingRules.mjs';
 
@@ -784,7 +785,9 @@ export async function getCurrentTenant(id = '2') {
     const room = lease ? rooms.find((r) => r.id === lease.room_id) : null;
     const roomType = room ? roomTypes.find((type) => type.id === room.type_id) : null;
     const invoice = lease ? getLatestInvoiceForLease(invoices, lease.id) : null;
-    const balance = invoice ? getInvoiceBalance(invoice.id, store) : 0;
+    const balance = lease
+      ? getLeaseOutstandingBalance(invoices, lease.id, store[COLLECTIONS.PAYMENTS] || [])
+      : 0;
 
     return {
       id: String(tenant.id).replace('tenant-', ''),
@@ -1138,7 +1141,9 @@ export async function getTenantBillingBreakdown(id = '2') {
     const lease = leases.find((l) => l.tenant_id === formattedId && l.status === 'active');
     const leaseInvoices = lease ? invoices.filter((item) => item.lease_id === lease.id) : [];
     const invoice = lease ? getTenantOverviewInvoice(invoices, lease.id, payments) : null;
-    const totalOutstanding = leaseInvoices.reduce((total, item) => total + getInvoiceBalance(item.id, store), 0);
+    const totalOutstanding = lease
+      ? getLeaseOutstandingBalance(invoices, lease.id, payments)
+      : 0;
     const today = new Date();
     const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
     const overdueRentBalance = leaseInvoices.reduce((total, item) => {
@@ -2420,11 +2425,7 @@ export async function getTenantFinancialSummary(tenantId) {
     );
 
     const totalCollected = tenantPayments.reduce((sum, p) => toMoney(sum + (Number(p.amount_paid) || 0)), 0);
-    const outstandingBalance = tenantInvoices.reduce((sum, inv) => {
-      const invPayments = tenantPayments.filter((p) => p.invoice_id === inv.id);
-      const paidAmount = invPayments.reduce((s, p) => s + (Number(p.amount_paid) || 0), 0);
-      return toMoney(sum + Math.max(0, toMoney(getInvoiceTotalAmount(inv) - paidAmount)));
-    }, 0);
+    const outstandingBalance = getLeaseOutstandingBalance(tenantInvoices, activeLease.id, tenantPayments);
     const overviewInvoice = getTenantOverviewInvoice(tenantInvoices, activeLease.id, tenantPayments);
     
     return {
@@ -2535,11 +2536,7 @@ export async function getTenantsWithFinancialStatus(filter = 'all') {
             proof.status === 'approved' && tenantInvoiceIds.has(proof.invoice_id)
           );
           
-          const balance = tenantInvoices.reduce((sum, inv) => {
-            const invPayments = tenantPayments.filter((p) => p.invoice_id === inv.id);
-            const paidAmount = invPayments.reduce((s, p) => s + (Number(p.amount_paid) || 0), 0);
-            return toMoney(sum + Math.max(0, toMoney(getInvoiceTotalAmount(inv) - paidAmount)));
-          }, 0);
+          const balance = getLeaseOutstandingBalance(tenantInvoices, activeLease.id, tenantPayments);
           
           // Find latest unpaid invoice to check if overdue
           const unpaidInvoices = tenantInvoices.filter((inv) => {

@@ -45,6 +45,13 @@ export function getInvoiceBalance(invoice, payments = []) {
   return Math.max(0, Math.round((getInvoiceTotalAmount(invoice) - paid) * 100) / 100);
 }
 
+export function getLeaseOutstandingBalance(invoices, leaseId, payments = []) {
+  const total = invoices
+    .filter((invoice) => invoice.lease_id === leaseId)
+    .reduce((balance, invoice) => balance + getInvoiceBalance(invoice, payments), 0);
+  return Math.round(total * 100) / 100;
+}
+
 export function getInvoiceChargeBreakdown(invoice, payments = []) {
   const rent = Math.max(0, Number(invoice?.rent_charge) || 0);
   const electricity = Math.max(0, Number(invoice?.utility_charge) || 0);
