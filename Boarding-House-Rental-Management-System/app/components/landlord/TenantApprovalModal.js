@@ -393,6 +393,10 @@ export default function TenantApprovalModal({ visible, tenant, onClose, onSucces
                       <Text style={{ fontSize: fs(13), color: colors.textSecondary, marginTop: 2 }}>
                         {room.type} · {room.occupancy}/{room.maxCapacity} occupants · ₱{room.baseRent.toLocaleString()}/tenant/month
                       </Text>
+                      <Text style={{ fontSize: fs(11), color: colors.textSecondary, marginTop: 2 }}>
+                        ₱{room.roomRate.toLocaleString()}/room/month
+                        {(room.hasAirConditioning || room.hasPrivateBathroom) ? ` · ${[room.hasAirConditioning ? 'Air-conditioned' : null, room.hasPrivateBathroom ? 'Private CR' : null].filter(Boolean).join(' · ')}` : ''}
+                      </Text>
                       <Text style={{ fontSize: fs(11), color: colors.textMuted, marginTop: 3 }}>{room.description}</Text>
                     </View>
 

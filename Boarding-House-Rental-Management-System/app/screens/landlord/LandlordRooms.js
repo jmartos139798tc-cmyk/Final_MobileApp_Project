@@ -13,7 +13,13 @@ import {
   cardStyle,
   getGridColumns,
 } from '../../utils/responsive';
-import { addRoom, getRooms, getRoomTypes } from '../../services/dataService';
+import { addRoom, getRooms, getRoomTypes, updateRoom } from '../../services/dataService';
+import {
+  isRoomLimitReached,
+  PREMIUM_ROOM_TYPE_ID,
+  ROOM_LIMIT_ERROR_MESSAGE,
+  STANDARD_ROOM_TYPE_ID,
+} from '../../services/roomRules.mjs';
 import useRealtimeRefresh from '../../hooks/useRealtimeRefresh';
 
 async function loadRoomTypesWithTimeout(timeoutMs = 12000) {
@@ -32,7 +38,13 @@ async function loadRoomTypesWithTimeout(timeoutMs = 12000) {
 
 function getRoomErrorMessage(error, fallbackMessage) {
   if (['42501', 'PGRST301', 'permission-denied'].includes(error?.code)) {
-    return 'Only the owner account can add rooms.';
+    return 'Only the owner account can manage rooms.';
+  }
+  if (error?.code === '23514' || /at most 18 rooms/i.test(error?.message || '')) {
+    return ROOM_LIMIT_ERROR_MESSAGE;
+  }
+  if (error?.code === '23505') {
+    return 'A room with that number already exists.';
   }
   if (['unavailable', 'deadline-exceeded', 'auth/network-request-failed'].includes(error?.code)) {
     return 'Could not connect to Supabase. Check your internet connection and try again.';
@@ -64,11 +76,13 @@ export default function RoomsScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [createModalVisible, setCreateModalVisible] = useState(false);
+  const [editingRoom, setEditingRoom] = useState(null);
   const [loadingRoomTypes, setLoadingRoomTypes] = useState(false);
   const [roomNumber, setRoomNumber] = useState('');
   const [occupantName, setOccupantName] = useState('');
   const [selectedTypeId, setSelectedTypeId] = useState('');
   const [hasAirConditioning, setHasAirConditioning] = useState(false);
+  const [hasPrivateBathroom, setHasPrivateBathroom] = useState(false);
   const [formError, setFormError] = useState('');
   const [saving, setSaving] = useState(false);
   const occupantNameInputRef = useRef(null);
@@ -99,8 +113,17 @@ export default function RoomsScreen() {
   ], loadData);
 
   const openCreateRoom = async () => {
+    if (isRoomLimitReached(rooms.length)) {
+      setFormError(ROOM_LIMIT_ERROR_MESSAGE);
+      return;
+    }
+    setEditingRoom(null);
+    setRoomNumber('');
+    setOccupantName('');
+    setSelectedTypeId(roomTypes[0]?.id || '');
     setFormError('');
     setHasAirConditioning(false);
+    setHasPrivateBathroom(false);
     setCreateModalVisible(true);
     if (roomTypes.length > 0) return;
 
@@ -116,16 +139,61 @@ export default function RoomsScreen() {
     }
   };
 
+  const openEditRoom = (room) => {
+    setEditingRoom(room);
+    setRoomNumber(room.number);
+    setOccupantName(room.reservedFor || '');
+    setSelectedTypeId(room.typeId || '');
+    setHasAirConditioning(
+      room.typeId === PREMIUM_ROOM_TYPE_ID || Boolean(room.hasAirConditioning),
+    );
+    setHasPrivateBathroom(
+      room.typeId === PREMIUM_ROOM_TYPE_ID || Boolean(room.hasPrivateBathroom),
+    );
+    setFormError('');
+    setCreateModalVisible(true);
+  };
+
   const closeCreateRoom = () => {
     if (saving) return;
     setCreateModalVisible(false);
+    setEditingRoom(null);
     setFormError('');
   };
 
   const selectRoomType = (type) => {
     if (saving || loadingRoomTypes) return;
+    if (editingRoom?.tenant && type.id !== editingRoom.typeId) {
+      setFormError('Room type cannot be changed while an active lease is assigned.');
+      return;
+    }
     setSelectedTypeId(type.id);
     setFormError('');
+    if (type.id === PREMIUM_ROOM_TYPE_ID) {
+      setHasAirConditioning(true);
+      setHasPrivateBathroom(true);
+    } else if (type.id === STANDARD_ROOM_TYPE_ID) {
+      setHasAirConditioning(false);
+      setHasPrivateBathroom(false);
+    }
+  };
+
+  const updateRoomAmenity = (amenity, value) => {
+    const nextAirConditioning = amenity === 'airConditioning' ? value : hasAirConditioning;
+    const nextPrivateBathroom = amenity === 'privateBathroom' ? value : hasPrivateBathroom;
+    setHasAirConditioning(nextAirConditioning);
+    setHasPrivateBathroom(nextPrivateBathroom);
+    if (nextAirConditioning && nextPrivateBathroom) {
+      setSelectedTypeId(PREMIUM_ROOM_TYPE_ID);
+    } else if (selectedTypeId === PREMIUM_ROOM_TYPE_ID) {
+      setSelectedTypeId(STANDARD_ROOM_TYPE_ID);
+    }
+    setFormError(
+      nextAirConditioning && nextPrivateBathroom
+        && !roomTypes.some((type) => type.id === PREMIUM_ROOM_TYPE_ID)
+        ? 'Premium room type is missing from Supabase. Run npx supabase db push from the project folder, then reload the app.'
+        : '',
+    );
   };
 
   const saveRoom = async () => {
@@ -136,18 +204,28 @@ export default function RoomsScreen() {
       setFormError('Enter a room number using 1 to 4 digits.');
       return;
     }
-    if (!selectedTypeId || !roomTypes.some((type) => type.id === selectedTypeId)) {
-      setFormError('Choose a room type.');
+    const selectedTypeIsAvailable = roomTypes.some((type) => type.id === selectedTypeId);
+    const isKeepingExistingType = editingRoom?.typeId === selectedTypeId;
+    if (!selectedTypeId || (!selectedTypeIsAvailable && !isKeepingExistingType)) {
+      setFormError(selectedTypeId === PREMIUM_ROOM_TYPE_ID
+        ? 'Premium room type is missing from Supabase. Run npx supabase db push from the project folder, then reload the app.'
+        : 'Choose a room type.');
       return;
     }
 
     const normalizedNumber = String(parseInt(cleanRoomNumber, 10));
-    if (rooms.some((room) => String(parseInt(room.number, 10)) === normalizedNumber)) {
+    if (!editingRoom && isRoomLimitReached(rooms.length)) {
+      setFormError(ROOM_LIMIT_ERROR_MESSAGE);
+      return;
+    }
+    if (rooms.some((room) => (
+      room.databaseId !== editingRoom?.databaseId
+      && String(parseInt(room.number, 10)) === normalizedNumber
+    ))) {
       setFormError('A room with that number already exists.');
       return;
     }
 
-    const selectedType = roomTypes.find((type) => type.id === selectedTypeId);
     const cleanOccupantName = occupantName.replace(/\s+/g, ' ').trim();
     if (cleanOccupantName && !/\p{L}/u.test(cleanOccupantName)) {
       setFormError('Occupant name must include at least one letter.');
@@ -156,26 +234,31 @@ export default function RoomsScreen() {
 
     setSaving(true);
     try {
-      const newRoom = await addRoom({
-        roomNumber: cleanRoomNumber,
-        typeId: selectedTypeId,
-        reservedForName: cleanOccupantName,
-        hasAirConditioning,
-      });
-      setRooms((currentRooms) => [...currentRooms, {
-        id: String(newRoom.id).replace('room-', ''),
-        number: newRoom.room_number,
-        type: 'Double',
-        tenant: null,
-        status: newRoom.status,
-        balance: 0,
-        hasAirConditioning: Boolean(newRoom.has_air_conditioning),
-        ...(newRoom.reserved_for_name ? { reservedFor: newRoom.reserved_for_name } : {}),
-      }]);
+      if (editingRoom) {
+        await updateRoom({
+          roomId: editingRoom.databaseId,
+          roomNumber: cleanRoomNumber,
+          typeId: selectedTypeId,
+          reservedForName: cleanOccupantName,
+          hasAirConditioning,
+          hasPrivateBathroom,
+        });
+      } else {
+        await addRoom({
+          roomNumber: cleanRoomNumber,
+          typeId: selectedTypeId,
+          reservedForName: cleanOccupantName,
+          hasAirConditioning,
+          hasPrivateBathroom,
+        });
+      }
+      await loadData();
       setRoomNumber('');
       setOccupantName('');
       setHasAirConditioning(false);
+      setHasPrivateBathroom(false);
       setSelectedTypeId(roomTypes[0]?.id || '');
+      setEditingRoom(null);
       setFormError('');
       setCreateModalVisible(false);
     } catch (err) {
@@ -186,6 +269,7 @@ export default function RoomsScreen() {
   };
 
   const totalCount = rooms.length;
+  const roomLimitReached = isRoomLimitReached(totalCount);
   const occupiedCount = rooms.filter((room) => room.status !== 'vacant').length;
   const vacantCount = rooms.filter((room) => room.status === 'vacant').length;
 
@@ -241,6 +325,36 @@ export default function RoomsScreen() {
     return { label: 'VACANT', bg: colors.infoBg, fg: colors.infoText };
   };
 
+  const selectedRoomType = roomTypes.find((type) => type.id === selectedTypeId);
+  const premiumRoomTypeAvailable = roomTypes.some((type) => type.id === PREMIUM_ROOM_TYPE_ID);
+  const isPremiumRoom = selectedTypeId === PREMIUM_ROOM_TYPE_ID && premiumRoomTypeAvailable;
+  const renderAmenitySelector = (label, value, setValue, description, disabled = false) => (
+    <View style={{ marginTop: 13, padding: 13, borderRadius: 12, borderWidth: 1, borderColor: colors.cardBorder, backgroundColor: colors.bg }}>
+      <Text style={{ color: colors.text, fontSize: fs(14), fontWeight: '700' }}>{label}</Text>
+      <Text style={{ color: colors.textMuted, fontSize: fs(12), marginTop: 3 }}>{description}</Text>
+      <View style={{ flexDirection: 'row', gap: 18, marginTop: 10 }}>
+        {[{ label: 'Yes', value: true }, { label: 'No', value: false }].map((option) => {
+          const selected = value === option.value;
+          return (
+            <TouchableOpacity
+              key={option.label}
+              accessibilityRole="radio"
+              accessibilityState={{ selected, disabled: saving || disabled }}
+              disabled={saving || disabled}
+              onPress={() => setValue(option.value)}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4, opacity: saving || disabled ? 0.6 : 1 }}
+            >
+              <View style={{ width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: selected ? colors.ownerAccent : colors.cardBorder, alignItems: 'center', justifyContent: 'center' }}>
+                {selected && <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: colors.ownerAccent }} />}
+              </View>
+              <Text style={{ color: selected ? colors.text : colors.textSecondary, fontSize: fs(13), fontWeight: selected ? '700' : '500' }}>{option.label}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    </View>
+  );
+
   if (loading) return <ScreenSkeleton />;
   if (error) {
     return (
@@ -268,18 +382,27 @@ export default function RoomsScreen() {
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
             <View style={{ flex: 1 }}>
               <Text style={{ fontSize: fs(30), color: colors.text, fontWeight: '900', letterSpacing: -0.5 }}>Rooms</Text>
-              <Text style={{ fontSize: fs(14), color: colors.textSecondary, marginTop: 5, lineHeight: 20 }}>Room availability and tenant payment status.</Text>
+              <Text style={{ fontSize: fs(14), color: colors.textSecondary, marginTop: 5, lineHeight: 20 }}>Room availability, rates, and amenities. Tap a room card to edit its details.</Text>
             </View>
             <TouchableOpacity
               accessibilityRole="button"
-              accessibilityLabel="Create room"
+              accessibilityLabel="Add room"
+              accessibilityState={{ disabled: roomLimitReached }}
+              disabled={roomLimitReached}
               onPress={openCreateRoom}
-              style={{ minHeight: 44, paddingHorizontal: 16, borderRadius: 999, overflow: 'hidden', backgroundColor: colors.ownerAccent, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 }}
+              style={{ minHeight: 44, paddingHorizontal: 16, borderRadius: 999, overflow: 'hidden', backgroundColor: colors.ownerAccent, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, opacity: roomLimitReached ? 0.55 : 1 }}
             >
               <Ionicons name="add" size={19} color={colors.onPrimary || '#ffffff'} />
               <Text style={{ color: colors.onPrimary || '#ffffff', fontWeight: '800', fontSize: fs(13) }}>Add room</Text>
             </TouchableOpacity>
           </View>
+          {roomLimitReached && (
+            <View accessibilityRole="alert" style={{ marginTop: 12, padding: 12, borderRadius: 12, backgroundColor: colors.warningBg }}>
+              <Text style={{ color: colors.warningText, fontSize: fs(13), fontWeight: '700' }}>
+                Room limit reached — a boarding house can have at most 18 rooms. You can still edit existing rooms.
+              </Text>
+            </View>
+          )}
 
           <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.lg }}>
             {[
@@ -371,10 +494,16 @@ export default function RoomsScreen() {
             {pageRooms.map((room) => {
             const statusColor = getStatusColor(room.status);
             const isVacant = room.status === 'vacant';
+            const roomOccupants = room.occupants?.length
+              ? room.occupants
+              : (room.tenant ? [room.tenant] : []);
 
             return (
-              <View
+              <TouchableOpacity
                 key={room.id}
+                accessibilityRole="button"
+                accessibilityLabel={`Edit room ${room.number}, ${room.type}, ${room.baseRent.toLocaleString()} pesos per month`}
+                onPress={() => openEditRoom(room)}
                 style={[
                   cardStyle,
                   { 
@@ -421,25 +550,28 @@ export default function RoomsScreen() {
                     {room.type}
                   </Text>
 
-                  {room.hasAirConditioning && (
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 }}>
-                      <Ionicons name="snow-outline" size={13} color={colors.accent} />
-                      <Text style={{ fontSize: fs(11), fontWeight: '600', color: colors.accent }}>Air-conditioned</Text>
-                    </View>
+                  <Text style={{ fontSize: fs(12), fontWeight: '800', color: colors.ownerAccent, marginTop: 3 }}>
+                    ₱{room.baseRent.toLocaleString()} / room / month
+                  </Text>
+
+                  {(room.hasAirConditioning || room.hasPrivateBathroom) && (
+                    <Text numberOfLines={1} style={{ fontSize: fs(10), fontWeight: '600', color: colors.textSecondary, marginTop: 3 }}>
+                      {[room.hasAirConditioning ? 'Air-conditioned' : null, room.hasPrivateBathroom ? 'Private CR' : null].filter(Boolean).join(' · ')}
+                    </Text>
                   )}
 
-                  {room.tenant ? (
+                  {roomOccupants.length > 0 ? (
                     <>
-                      <Text 
-                        numberOfLines={1} 
-                        style={{ 
-                          fontSize: fs(14), 
-                          fontWeight: '700', 
-                          color: colors.text, 
-                          marginTop: 3 
+                      <Text
+                        numberOfLines={2}
+                        style={{
+                          fontSize: fs(13),
+                          fontWeight: '700',
+                          color: colors.text,
+                          marginTop: 3,
                         }}
                       >
-                        {room.tenant}
+                        {roomOccupants.join(' - ')}
                       </Text>
                       {room.balance > 0 ? (
                         <Text 
@@ -483,7 +615,7 @@ export default function RoomsScreen() {
                     </Text>
                   )}
                 </View>
-              </View>
+              </TouchableOpacity>
             );
             })}
           </View>
@@ -542,12 +674,12 @@ export default function RoomsScreen() {
           >
             <View style={{ width: '100%', maxWidth: 440, maxHeight: '88%', backgroundColor: colors.card, borderColor: colors.cardBorder, borderWidth: 1, borderRadius: 22, overflow: 'hidden' }}>
               <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 22 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-              <View>
-                <Text style={{ fontSize: fs(21), color: colors.text, fontWeight: '900' }}>Add a room</Text>
-                <Text style={{ fontSize: fs(13), color: colors.textSecondary, marginTop: 4 }}>New rooms start as vacant.</Text>
+            <View style={{ width: '100%', flexDirection: 'row', alignItems: 'flex-start' }}>
+              <View style={{ flex: 1, minWidth: 0, paddingRight: 10 }}>
+                <Text style={{ fontSize: fs(21), color: colors.text, fontWeight: '900' }}>{editingRoom ? `Edit room ${editingRoom.number}` : 'Add a room'}</Text>
+                <Text style={{ fontSize: fs(13), color: colors.textSecondary, marginTop: 4 }}>{editingRoom ? 'Update the room type, rent, and amenities.' : 'New rooms start vacant.'}</Text>
               </View>
-              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close" disabled={saving} onPress={closeCreateRoom} style={{ width: 40, height: 40, borderRadius: 20, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', opacity: saving ? 0.5 : 1 }}>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Close" disabled={saving} onPress={closeCreateRoom} style={{ width: 40, height: 40, flexShrink: 0, borderRadius: 20, overflow: 'hidden', backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center', opacity: saving ? 0.5 : 1 }}>
                 <Ionicons name="close" size={22} color={colors.textSecondary} />
               </TouchableOpacity>
             </View>
@@ -567,50 +699,55 @@ export default function RoomsScreen() {
               style={{ minHeight: 48, paddingHorizontal: 13, borderRadius: 12, borderWidth: 1, borderColor: colors.cardBorder, color: colors.text, backgroundColor: colors.bg, fontSize: fs(15), opacity: saving ? 0.6 : 1 }}
             />
 
-            <Text style={{ marginTop: 17, marginBottom: 8, color: colors.textSecondary, fontSize: fs(13), fontWeight: '700' }}>Room type</Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            <Text style={{ marginTop: 17, marginBottom: 8, color: colors.textSecondary, fontSize: fs(13), fontWeight: '700' }}>Room type and monthly room price</Text>
+            <View style={{ gap: 8 }}>
               {roomTypes.map((type) => {
                 const active = selectedTypeId === type.id;
+                const typeChangeBlocked = Boolean(editingRoom?.tenant) && type.id !== editingRoom.typeId;
+                const amenitiesLabel = type.id === PREMIUM_ROOM_TYPE_ID
+                  ? 'Air-conditioned · Private CR'
+                  : type.id === STANDARD_ROOM_TYPE_ID
+                    ? 'Not air-conditioned · No private CR'
+                    : type.description;
                 return (
                   <TouchableOpacity
                     key={type.id}
-                    disabled={saving || loadingRoomTypes}
+                    disabled={saving || loadingRoomTypes || typeChangeBlocked}
                     onPress={() => selectRoomType(type)}
                     accessibilityRole="button"
-                    accessibilityState={{ selected: active, disabled: saving || loadingRoomTypes }}
-                    style={{ paddingHorizontal: 13, paddingVertical: 10, borderRadius: 999, overflow: 'hidden', borderWidth: 1, borderColor: active ? colors.ownerAccent : colors.cardBorder, backgroundColor: active ? colors.ownerAccentBg : colors.bg, opacity: saving || loadingRoomTypes ? 0.6 : 1 }}
+                    accessibilityState={{ selected: active, disabled: saving || loadingRoomTypes || typeChangeBlocked }}
+                    style={{ width: '100%', padding: 13, borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: active ? colors.ownerAccent : colors.cardBorder, backgroundColor: active ? colors.ownerAccentBg : colors.bg, opacity: saving || loadingRoomTypes || typeChangeBlocked ? 0.6 : 1 }}
                   >
                     <Text style={{ fontSize: fs(13), fontWeight: '700', color: active ? colors.ownerAccent : colors.textSecondary }}>{type.name}</Text>
+                    <Text style={{ fontSize: fs(12), fontWeight: '800', color: active ? colors.ownerAccent : colors.text, marginTop: 4 }}>₱{Number(type.baseRent).toLocaleString()} / month</Text>
+                    {!!amenitiesLabel && <Text style={{ fontSize: fs(12), color: colors.textMuted, marginTop: 5 }}>{amenitiesLabel}</Text>}
                   </TouchableOpacity>
                 );
               })}
             </View>
+            {editingRoom?.tenant && <Text style={{ color: colors.textMuted, fontSize: fs(11), marginTop: 8 }}>An active lease is using this room. Its room type and monthly price cannot be changed.</Text>}
+            {!selectedRoomType && editingRoom && <Text style={{ color: colors.textMuted, fontSize: fs(11), marginTop: 8 }}>Current type: {editingRoom.type} — this type will stay unchanged unless you select an available option.</Text>}
             {loadingRoomTypes && <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10 }}><ActivityIndicator size="small" color={colors.ownerAccent} /><Text style={{ color: colors.textMuted, fontSize: fs(12) }}>Loading room types…</Text></View>}
-            
-              <View style={{ marginTop: 17, padding: 13, borderRadius: 12, borderWidth: 1, borderColor: colors.cardBorder, backgroundColor: colors.bg }}>
-                <Text style={{ color: colors.text, fontSize: fs(14), fontWeight: '700' }}>Air conditioning</Text>
-                <Text style={{ color: colors.textMuted, fontSize: fs(12), marginTop: 3 }}>Does this room have an air conditioner?</Text>
-                <View style={{ flexDirection: 'row', gap: 18, marginTop: 10 }}>
-                  {[{ label: 'Yes', value: true }, { label: 'No', value: false }].map((option) => {
-                    const selected = hasAirConditioning === option.value;
-                    return (
-                      <TouchableOpacity
-                        key={option.label}
-                        accessibilityRole="radio"
-                        accessibilityState={{ selected, disabled: saving }}
-                        disabled={saving}
-                        onPress={() => setHasAirConditioning(option.value)}
-                        style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4, opacity: saving ? 0.6 : 1 }}
-                      >
-                        <View style={{ width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: selected ? colors.ownerAccent : colors.cardBorder, alignItems: 'center', justifyContent: 'center' }}>
-                          {selected && <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: colors.ownerAccent }} />}
-                        </View>
-                        <Text style={{ color: selected ? colors.text : colors.textSecondary, fontSize: fs(13), fontWeight: selected ? '700' : '500' }}>{option.label}</Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </View>
+            <View style={{ borderTopWidth: 1, borderTopColor: colors.divider, marginTop: 18, paddingTop: 3 }} />
+            {renderAmenitySelector(
+              'Air conditioning',
+              hasAirConditioning,
+              (value) => updateRoomAmenity('airConditioning', value),
+              isPremiumRoom ? 'Included with the ₱5,000 Double Room option.' : 'Select both air conditioning and private CR to use the ₱5,000 Double Room option.',
+              isPremiumRoom,
+            )}
+            {selectedTypeId === PREMIUM_ROOM_TYPE_ID && !premiumRoomTypeAvailable && (
+              <Text accessibilityRole="alert" style={{ color: colors.warningText, backgroundColor: colors.warningBg, padding: 11, borderRadius: 10, marginTop: 10, fontSize: fs(12), lineHeight: 18 }}>
+                The ₱5,000 Double Room option is not configured in Supabase yet. Run npx supabase db push from the project folder, then close and reopen this screen.
+              </Text>
+            )}
+            {renderAmenitySelector(
+              'Private CR',
+              hasPrivateBathroom,
+              (value) => updateRoomAmenity('privateBathroom', value),
+              isPremiumRoom ? 'Included with the ₱5,000 Double Room option.' : 'Select both air conditioning and private CR to use the ₱5,000 Double Room option.',
+              isPremiumRoom,
+            )}
 
               <View>
                 <Text style={{ marginTop: 17, marginBottom: 7, color: colors.textSecondary, fontSize: fs(13), fontWeight: '700' }}>Occupant name (optional)</Text>
@@ -638,8 +775,8 @@ export default function RoomsScreen() {
                 <Text style={{ color: colors.ownerAccent, fontSize: fs(13), fontWeight: '800' }}>Retry loading room types</Text>
               </TouchableOpacity>
             )}
-            <TouchableOpacity accessibilityRole="button" disabled={saving || loadingRoomTypes || roomTypes.length === 0} onPress={saveRoom} style={{ minHeight: 48, marginTop: 20, borderRadius: 999, overflow: 'hidden', backgroundColor: colors.ownerAccent, alignItems: 'center', justifyContent: 'center', opacity: saving || loadingRoomTypes || roomTypes.length === 0 ? 0.6 : 1 }}>
-              {saving || loadingRoomTypes ? <ActivityIndicator color={colors.onPrimary || '#ffffff'} /> : <Text style={{ color: colors.onPrimary || '#ffffff', fontSize: fs(14), fontWeight: '800' }}>Create room</Text>}
+            <TouchableOpacity accessibilityRole="button" disabled={saving || loadingRoomTypes || roomTypes.length === 0 || (!editingRoom && roomLimitReached)} onPress={saveRoom} style={{ minHeight: 48, marginTop: 20, borderRadius: 999, overflow: 'hidden', backgroundColor: colors.ownerAccent, alignItems: 'center', justifyContent: 'center', opacity: saving || loadingRoomTypes || roomTypes.length === 0 || (!editingRoom && roomLimitReached) ? 0.6 : 1 }}>
+              {saving || loadingRoomTypes ? <ActivityIndicator color={colors.onPrimary || '#ffffff'} /> : <Text style={{ color: colors.onPrimary || '#ffffff', fontSize: fs(14), fontWeight: '800' }}>{editingRoom ? 'Save changes' : 'Create room'}</Text>}
                 </TouchableOpacity>
               </ScrollView>
             </View>
@@ -649,4 +786,3 @@ export default function RoomsScreen() {
     </View>
   );
 }
-

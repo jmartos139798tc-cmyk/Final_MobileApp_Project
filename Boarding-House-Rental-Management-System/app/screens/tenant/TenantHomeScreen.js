@@ -200,6 +200,12 @@ export default function TenantHomeScreen({ user, onNavigateToNotifications, onNa
                     <Text style={{ fontSize: fs(12), color: colors.accent, fontWeight: '700' }}>Air conditioning included</Text>
                   </View>
                 )}
+                {tenant.roomNumber && tenant.hasPrivateBathroom && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 5 }}>
+                    <Ionicons name="water-outline" size={14} color={colors.accent} />
+                    <Text style={{ fontSize: fs(12), color: colors.accent, fontWeight: '700' }}>Private CR</Text>
+                  </View>
+                )}
                 {tenant.accountStatus === 'approved' && formatApprovalDate(tenant.approvedAt) && (
                   <Text style={{ fontSize: fs(12), color: colors.successText, marginTop: 3, fontWeight: '700' }}>
                     Approval: {formatApprovalDate(tenant.approvedAt)}

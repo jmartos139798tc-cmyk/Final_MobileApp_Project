@@ -143,7 +143,13 @@ export default function TenantRoomChangeScreen({ user }) {
                       }}>
                         <View>
                           <Text style={{ fontSize: fs(16), color: colors.text, fontWeight: '800' }}>Room {room.number}</Text>
-                          <Text style={{ fontSize: fs(13), color: colors.textMuted, marginTop: 3 }}>{room.type} | PHP {Number(room.monthlyRent || 0).toLocaleString()}/month</Text>
+                          <Text style={{ fontSize: fs(13), color: colors.textMuted, marginTop: 3 }}>{room.type} | PHP {Number(room.monthlyRent || 0).toLocaleString()}/room/month</Text>
+                          <Text style={{ fontSize: fs(12), color: colors.textSecondary, marginTop: 3 }}>Your rent share: PHP {Number(room.tenantRent || 0).toLocaleString()}/month</Text>
+                          {(room.hasAirConditioning || room.hasPrivateBathroom) && (
+                            <Text style={{ fontSize: fs(12), color: colors.textSecondary, marginTop: 3 }}>
+                              {[room.hasAirConditioning ? 'Air-conditioned' : null, room.hasPrivateBathroom ? 'Private CR' : null].filter(Boolean).join(' · ')}
+                            </Text>
+                          )}
                         </View>
                         <Ionicons name={selected ? 'radio-button-on' : 'radio-button-off'} size={24} color={selected ? colors.accent : colors.textMuted} />
                       </TouchableOpacity>
@@ -214,4 +220,3 @@ export default function TenantRoomChangeScreen({ user }) {
     </KeyboardAvoidingView>
   );
 }
-

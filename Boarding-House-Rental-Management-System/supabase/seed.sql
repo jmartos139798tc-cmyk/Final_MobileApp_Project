@@ -8,7 +8,8 @@ on conflict (id) do nothing;
 insert into public.room_types (id, name, base_rent, max_capacity, description)
 values
   ('type-single', 'Single Occupancy', 2500, 1, 'Private room with single bed and study desk'),
-  ('type-double', 'Double Occupancy', 3500, 2, 'Shared room with bunk beds and shared closet')
+  ('type-double', 'Double Room', 3500, 2, 'Double-occupancy room.'),
+  ('type-premium-double', 'Double Room', 5000, 2, 'Double-occupancy room.')
 on conflict (id) do nothing;
 
 insert into public.rooms (id, house_id, room_number, type_id, status)

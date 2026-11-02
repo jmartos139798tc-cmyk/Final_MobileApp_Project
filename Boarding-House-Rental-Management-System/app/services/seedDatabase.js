@@ -26,13 +26,14 @@ export const SEED_DATA = {
 
   // 3. ROOM_TYPES (Keep room types for adding rooms)
   [COLLECTIONS.ROOM_TYPES]: [
-    { id: 'type-double', name: 'Double Occupancy', base_rent: 3500, max_capacity: 2, description: 'Shared room with bunk beds, shared closet, and its own bathroom.' },
+    { id: 'type-double', name: 'Double Room', base_rent: 3500, max_capacity: 2, description: 'Double-occupancy room.' },
+    { id: 'type-premium-double', name: 'Double Room', base_rent: 5000, max_capacity: 2, description: 'Double-occupancy room.' },
   ],
 
   // 4. ROOMS
   [COLLECTIONS.ROOMS]: [
-    { id: 'room-1', house_id: 'bh-1', room_number: '01', type_id: 'type-double', status: 'occupied' },
-    { id: 'room-2', house_id: 'bh-1', room_number: '02', type_id: 'type-double', status: 'occupied' },
+    { id: 'room-1', house_id: 'bh-1', room_number: '01', type_id: 'type-double', status: 'occupied', has_air_conditioning: false, has_private_bathroom: false },
+    { id: 'room-2', house_id: 'bh-1', room_number: '02', type_id: 'type-double', status: 'occupied', has_air_conditioning: false, has_private_bathroom: false },
     { id: 'room-3', house_id: 'bh-1', room_number: '03', type_id: 'type-double', status: 'vacant' },
     { id: 'room-4', house_id: 'bh-1', room_number: '04', type_id: 'type-double', status: 'vacant' },
     { id: 'room-5', house_id: 'bh-1', room_number: '05', type_id: 'type-double', status: 'vacant' },
@@ -413,4 +414,3 @@ export function resetNormalizedMockDatabase() {
   inMemory3NFStore = JSON.parse(JSON.stringify(SEED_DATA));
   return inMemory3NFStore;
 }
-

@@ -4,9 +4,9 @@ The app now uses **Supabase Auth, Postgres, and Supabase Storage**. Firebase acc
 
 ## 1. Apply the database migrations
 
-From the app folder, link the Supabase CLI to the intended project and push the migrations in `supabase/migrations` in timestamp order. The new full-Supabase migration is `20261015120000_supabase_auth_and_full_app.sql`.
+From the app folder, link the Supabase CLI to the intended project and push the migrations in `supabase/migrations` in timestamp order.
 
-The latest migration enables Realtime for the app tables used by live notifications, announcements, approvals, billing, and tenant updates. Apply it to the same hosted project before expecting screens to update automatically.
+The [room-management migration](./migrations/20261109120000_room_options_and_house_limit.sql) adds the ₱3,500 and ₱5,000 Double Room options, stores each room's private-CR amenity, and enforces the 18-room maximum per boarding house. The price and amenity details distinguish the two options in the app. Push the migrations before using the updated room screens.
 
 ```powershell
 npx supabase login
@@ -72,7 +72,7 @@ Sign out and back in so the app reloads the landlord profile. Provision addition
 
 ## 4. Add your property and rooms
 
-For a fresh project, review `supabase/seed.sql`, change the property name, address, electricity rate, monthly Wi-Fi charge, and rents to your actual values, then run it once in the SQL Editor. It adds one house, two room types, and five vacant starter rooms. The inserts do nothing to rows with those IDs that already exist. The Wi-Fi amount is stored in `boarding_houses.monthly_wifi_charge`; the app uses ₱100 if an older property row has no value. It applies to new initial invoices and newly generated invoices for the current billing period. Backdated bills and invoices already issued keep their stored totals. To change the fee later, update the property row in Supabase SQL Editor, for example:
+For a fresh project, review `supabase/seed.sql`, change the property name, address, electricity rate, monthly Wi-Fi charge, and rents to your actual values, then run it once in the SQL Editor. It adds one house, the legacy single-room type plus the two selectable double-room options, and five vacant starter rooms. The inserts do nothing to rows with those IDs that already exist. The Wi-Fi amount is stored in `boarding_houses.monthly_wifi_charge`; the app uses ₱100 if an older property row has no value. It applies to new initial invoices and newly generated invoices for the current billing period. Backdated bills and invoices already issued keep their stored totals. To change the fee later, update the property row in Supabase SQL Editor, for example:
 
 ```sql
 update public.boarding_houses

@@ -13,6 +13,15 @@ import { decode } from 'base64-arraybuffer';
 import { COLLECTIONS } from './databaseSchema.js';
 import { getNormalizedMockDatabase } from './seedDatabase.js';
 import {
+  MAX_ROOMS_PER_HOUSE,
+  PREMIUM_ROOM_TYPE_ID,
+  ROOM_LIMIT_ERROR_MESSAGE,
+  STANDARD_ROOM_TYPE_ID,
+  getEffectiveRoomTypeId,
+  getActiveRoomOccupants,
+  getRoomAmenities,
+} from './roomRules.mjs';
+import {
   findMatchingPaymentForProof,
   getComplaintReportCounts,
   getInvoiceBalance as calculateInvoiceBalance,
@@ -282,19 +291,18 @@ function getTenantOverviewInvoice(invoices, leaseId, payments) {
 
 function formatRoomType(roomType) {
   if (!roomType) return 'Room';
-  return 'Double';
+  return roomType.name || 'Room';
 }
 
 function getRoomDescription(roomType) {
-  const description = String(roomType?.description || '').trim();
-  if (/own bathroom/i.test(description)) return description;
-  return `${description ? `${description.replace(/[.!?]+$/, '')}. ` : ''}Double occupancy room with its own bathroom.`;
+  return String(roomType?.description || '').trim();
 }
 
 function toRoomListItem(room, roomTypes, leases = [], tenants = [], invoices = [], payments = []) {
   const roomType = roomTypes.find((type) => type.id === room.type_id);
   const activeLease = leases.find((lease) => lease.room_id === room.id && lease.status === 'active');
   const tenant = activeLease ? tenants.find((item) => item.id === activeLease.tenant_id) : null;
+  const occupants = getActiveRoomOccupants(room.id, leases, tenants);
 
   let balance = 0;
   let status = room.status === 'occupied' ? 'occupied' : 'vacant';
@@ -314,9 +322,14 @@ function toRoomListItem(room, roomTypes, leases = [], tenants = [], invoices = [
     id: String(room.id).replace('room-', ''),
     number: room.room_number,
     type: formatRoomType(roomType),
+    typeId: room.type_id,
+    databaseId: room.id,
+    baseRent: Number(roomType?.base_rent) || 0,
     description: getRoomDescription(roomType),
     hasAirConditioning: Boolean(room.has_air_conditioning),
-    tenant: tenant ? tenant.first_name : null,
+    hasPrivateBathroom: Boolean(room.has_private_bathroom),
+    tenant: occupants[0] || null,
+    occupants,
     status,
     balance,
     ...(room.reserved_for_name ? { reservedFor: room.reserved_for_name } : {}),
@@ -392,7 +405,10 @@ export async function getRoomTypes() {
   const roomTypes = isSupabaseConfigured && supabase
     ? await readCollection(COLLECTIONS.ROOM_TYPES)
     : (store[COLLECTIONS.ROOM_TYPES] || []);
-  return roomTypes.filter((type) => Number(type.max_capacity) > 1).map((type) => ({
+  const availableTypeIds = new Set([STANDARD_ROOM_TYPE_ID, PREMIUM_ROOM_TYPE_ID]);
+  return roomTypes.filter((type) => (
+    Number(type.max_capacity) > 1 && availableTypeIds.has(type.id)
+  )).map((type) => ({
     id: type.id,
     name: type.name,
     baseRent: type.base_rent,
@@ -404,7 +420,13 @@ export async function getRoomTypes() {
 }
 
 /** Add a vacant room. Room creation is restricted to owner accounts by RLS. */
-export async function addRoom({ roomNumber, typeId, reservedForName = '', hasAirConditioning = false }) {
+export async function addRoom({
+  roomNumber,
+  typeId,
+  reservedForName = '',
+  hasAirConditioning = false,
+  hasPrivateBathroom = false,
+}) {
   const normalizedNumber = String(roomNumber || '').trim().replace(/^0+/, '');
   if (!/^\d{1,4}$/.test(normalizedNumber)) {
     throw new Error('Enter a room number using 1 to 4 digits.');
@@ -433,25 +455,46 @@ export async function addRoom({ roomNumber, typeId, reservedForName = '', hasAir
     ];
   const roomType = roomTypes.find((type) => type.id === typeId);
   if (!roomType) throw new Error('Choose a valid room type.');
+  if (![STANDARD_ROOM_TYPE_ID, PREMIUM_ROOM_TYPE_ID].includes(roomType.id)) {
+    throw new Error('Choose a Double Room option.');
+  }
   if (Number(roomType.max_capacity) <= 1) throw new Error('Only double-occupancy rooms can be created.');
   const boardingHouse = boardingHouses[0];
   if (!boardingHouse?.id) {
     throw new Error('No boarding house is configured. Apply the boarding house setup migration before adding rooms.');
   }
 
+  const houseRoomCount = rooms.filter((room) => room.house_id === boardingHouse.id).length;
+  if (houseRoomCount >= MAX_ROOMS_PER_HOUSE) {
+    throw new Error(ROOM_LIMIT_ERROR_MESSAGE);
+  }
+
   const formattedNumber = normalizedNumber.padStart(2, '0');
-  if (rooms.some((room) => String(parseInt(room.room_number, 10)) === normalizedNumber)) {
+  if (rooms.some((room) => (
+    room.house_id === boardingHouse.id
+    && String(parseInt(room.room_number, 10)) === normalizedNumber
+  ))) {
     throw new Error('A room with that number already exists.');
   }
 
+  const amenities = getRoomAmenities(typeId, hasAirConditioning, hasPrivateBathroom);
+  const effectiveTypeId = getEffectiveRoomTypeId(
+    typeId,
+    amenities.hasAirConditioning,
+    amenities.hasPrivateBathroom,
+  );
+  if (!roomTypes.some((type) => type.id === effectiveTypeId)) {
+    throw new Error('Apply the room options migration before assigning premium amenities.');
+  }
   const roomId = `room-${Date.now()}`;
   const newRoom = {
     id: roomId,
     house_id: boardingHouse.id,
     room_number: formattedNumber,
-    type_id: roomType.id,
-    has_air_conditioning: Boolean(hasAirConditioning),
-    status: cleanReservedName ? 'occupied' : 'vacant',
+    type_id: effectiveTypeId,
+    has_air_conditioning: amenities.hasAirConditioning,
+    has_private_bathroom: amenities.hasPrivateBathroom,
+    status: 'vacant',
     ...(cleanReservedName ? { reserved_for_name: cleanReservedName } : {}),
   };
 
@@ -462,6 +505,97 @@ export async function addRoom({ roomNumber, typeId, reservedForName = '', hasAir
   }
 
   return newRoom;
+}
+
+/** Update room details without changing its occupancy or existing lease records. */
+export async function updateRoom({
+  roomId,
+  roomNumber,
+  typeId,
+  reservedForName = '',
+  hasAirConditioning = false,
+  hasPrivateBathroom = false,
+}) {
+  const normalizedNumber = String(roomNumber || '').trim().replace(/^0+/, '');
+  if (!/^\d{1,4}$/.test(normalizedNumber)) {
+    throw new Error('Enter a room number using 1 to 4 digits.');
+  }
+
+  const cleanReservedName = String(reservedForName || '').replace(/\s+/g, ' ').trim();
+  if (cleanReservedName.length > 60) {
+    throw new Error('Occupant name must be 60 characters or fewer.');
+  }
+  if (cleanReservedName && !/\p{L}/u.test(cleanReservedName)) {
+    throw new Error('Occupant name must include at least one letter.');
+  }
+
+  const liveStore = isSupabaseConfigured && supabase;
+  const store = liveStore
+    ? null
+    : getNormalizedMockDatabase();
+  const [rooms, roomTypes, leases] = liveStore
+    ? await Promise.all([
+      readCollection(COLLECTIONS.ROOMS),
+      readCollection(COLLECTIONS.ROOM_TYPES),
+      readCollection(COLLECTIONS.LEASES),
+    ])
+    : [
+      store[COLLECTIONS.ROOMS] || [],
+      store[COLLECTIONS.ROOM_TYPES] || [],
+      store[COLLECTIONS.LEASES] || [],
+    ];
+  const room = rooms.find((item) => item.id === roomId);
+  if (!room) throw new Error('This room no longer exists. Refresh the room list and try again.');
+
+  const roomType = roomTypes.find((type) => type.id === typeId);
+  if (!roomType) throw new Error('Choose a valid room type.');
+  if (
+    room.type_id !== typeId
+    && ![STANDARD_ROOM_TYPE_ID, PREMIUM_ROOM_TYPE_ID].includes(roomType.id)
+  ) {
+    throw new Error('Choose a Double Room option.');
+  }
+  if (Number(roomType.max_capacity) <= 1 && room.type_id !== typeId) {
+    throw new Error('Only double-occupancy room types can be selected.');
+  }
+
+  const formattedNumber = normalizedNumber.padStart(2, '0');
+  if (rooms.some((item) => (
+    item.id !== room.id
+    && item.house_id === room.house_id
+    && String(parseInt(item.room_number, 10)) === normalizedNumber
+  ))) {
+    throw new Error('A room with that number already exists.');
+  }
+
+  const amenities = getRoomAmenities(typeId, hasAirConditioning, hasPrivateBathroom);
+  const effectiveTypeId = getEffectiveRoomTypeId(
+    typeId,
+    amenities.hasAirConditioning,
+    amenities.hasPrivateBathroom,
+  );
+  if (!roomTypes.some((type) => type.id === effectiveTypeId)) {
+    throw new Error('Apply the room options migration before assigning premium amenities.');
+  }
+  const typeChanged = room.type_id !== effectiveTypeId;
+  if (typeChanged && leases.some((lease) => lease.room_id === room.id && lease.status === 'active')) {
+    throw new Error('Room type cannot be changed while an active lease is assigned.');
+  }
+  const updates = {
+    room_number: formattedNumber,
+    type_id: effectiveTypeId,
+    has_air_conditioning: amenities.hasAirConditioning,
+    has_private_bathroom: amenities.hasPrivateBathroom,
+    reserved_for_name: cleanReservedName || null,
+  };
+
+  if (liveStore) {
+    await updateDocument(COLLECTIONS.ROOMS, room.id, updates);
+  } else {
+    Object.assign(room, updates);
+  }
+
+  return { ...room, ...updates };
 }
 
 /**
@@ -507,7 +641,7 @@ export async function getTenants() {
         name: `${tenant.first_name} ${tenant.last_name}`,
         initials: tenant.initials,
         room: roomNum,
-        type: 'Double',
+        type: roomType?.name || 'Room',
         dueDate,
         status,
         balance,
@@ -810,6 +944,7 @@ export async function getCurrentTenant(id = '2') {
       roomNumber: room ? parseInt(room.room_number, 10) : null,
       roomType: roomType?.name || null,
       hasAirConditioning: Boolean(room?.has_air_conditioning),
+      hasPrivateBathroom: Boolean(room?.has_private_bathroom),
       electricityCharge: Number(invoice?.utility_charge) || 0,
       billingPeriod: invoice?.billing_period || null,
       outstandingBalance: balance,
@@ -903,8 +1038,11 @@ export async function getAvailableRoomsForInitialAssignment(tenantId) {
       return {
         id: room.id,
         number: room.room_number,
-        type: 'Double Occupancy',
+        type: type?.name || 'Room',
         description: getRoomDescription(type),
+        roomRate: toMoney(Number(type?.base_rent || 0)),
+        hasAirConditioning: Boolean(room.has_air_conditioning),
+        hasPrivateBathroom: Boolean(room.has_private_bathroom),
         maxCapacity: capacity,
         occupantNames: roomStats ? (roomStats.occupant_names || []) : roomLeases
           .map((lease) => (store[COLLECTIONS.TENANTS] || []).find((item) => item.id === lease.tenant_id))
@@ -1505,6 +1643,11 @@ export async function getAvailableRoomsForChange(tenantId) {
         number: room.room_number,
         type: type?.name || 'Room',
         monthlyRent: type?.base_rent || 0,
+        tenantRent: type
+          ? toMoney(Number(type.base_rent || 0) / Math.max(1, Number(type.max_capacity) || 1))
+          : 0,
+        hasAirConditioning: Boolean(room.has_air_conditioning),
+        hasPrivateBathroom: Boolean(room.has_private_bathroom),
       };
     });
 }
@@ -2195,8 +2338,11 @@ export async function getVacantRoomsForAssignment() {
           id: room.id,
           roomNumber: room.room_number,
           displayNumber: parseInt(room.room_number, 10),
-          type: 'Double Occupancy',
+          type: type?.name || 'Room',
           description: getRoomDescription(type),
+          roomRate: Number(type?.base_rent) || 0,
+          hasAirConditioning: Boolean(room.has_air_conditioning),
+          hasPrivateBathroom: Boolean(room.has_private_bathroom),
           baseRent: type ? toMoney(Number(type.base_rent || 0) / Math.max(1, Number(type.max_capacity) || 1)) : 2500,
           securityDeposit: firstOccupantCoveredInitialCharges
             ? 0

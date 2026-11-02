@@ -41,14 +41,14 @@ export const COLLECTIONS = {
  * 
  * 3. ROOM_TYPES: Category & pricing defaults (Eliminates transitive dependency from rooms)
  *    - PK: type_id
- *    - Fields: name ('Double'), base_rent, max_capacity (2)
+ *    - Fields: name, base_rent, max_capacity (2)
  * 
  * 4. ROOMS: Physical units
  *    - PK: room_id
  *    - FK: house_id -> BOARDING_HOUSES.house_id
  *    - FK: type_id -> ROOM_TYPES.type_id
- *    - Fields: room_number ('01'..'17'), status ('occupied'|'vacant'|'maintenance'),
- *      has_air_conditioning (boolean),
+ *    - Fields: room_number ('01'..'18'), status ('occupied'|'vacant'|'maintenance'),
+ *      has_air_conditioning (boolean), has_private_bathroom (boolean),
  *      reserved_for_name (optional; a prospective occupant shown while the room remains vacant)
  * 
  * 5. TENANTS: Tenant personal records (Independent of room assignment)

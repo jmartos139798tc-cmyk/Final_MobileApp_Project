@@ -40,6 +40,7 @@ export default function TenantApplicationStatusCard({ tenant, tenantId, refreshK
   const [request, setRequest] = useState(null);
   const [availableRooms, setAvailableRooms] = useState([]);
   const [selectedRoomId, setSelectedRoomId] = useState('');
+  const [expandedRoomId, setExpandedRoomId] = useState('');
   const [modalVisible, setModalVisible] = useState(false);
   const [loadingRooms, setLoadingRooms] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -358,25 +359,54 @@ export default function TenantApplicationStatusCard({ tenant, tenantId, refreshK
               <ScrollView style={{ flexShrink: 1 }} keyboardShouldPersistTaps="handled">
                 {availableRooms.map((room) => {
                   const selected = selectedRoomId === room.id;
+                  const expanded = expandedRoomId === room.id;
                   return (
-                    <TouchableOpacity
+                    <View
                       key={room.id}
-                      onPress={() => { setSelectedRoomId(room.id); setPaymentAmount(String(room.estimatedRent)); setSecurityDepositAmount(String(room.securityDeposit)); setDeferSecurityDeposit(false); setError(''); }}
-                      accessibilityRole="radio"
-                      accessibilityState={{ selected }}
-                      style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, padding: 13, marginBottom: 8, borderRadius: 11, borderWidth: 1, borderColor: selected ? colors.accent : colors.cardBorder, backgroundColor: selected ? colors.accentBg : colors.bg }}
+                      style={{ marginBottom: 8, borderRadius: 11, borderWidth: 1, borderColor: selected ? colors.accent : colors.cardBorder, backgroundColor: selected ? colors.accentBg : colors.bg, overflow: 'hidden' }}
                     >
-                      <View style={{ flex: 1, minWidth: 0 }}>
-                        <Text style={{ color: colors.text, fontSize: fs(14), fontWeight: '800' }}>Room {room.number}</Text>
-                        <Text style={{ color: colors.textSecondary, fontSize: fs(12), lineHeight: 17, marginTop: 5 }}>{room.type} · {room.occupancy} occupants</Text>
-                        <Text style={{ color: colors.textSecondary, fontSize: fs(11), lineHeight: 16, marginTop: 2 }}>{room.description}</Text>
-                        <Text style={{ color: colors.textSecondary, fontSize: fs(12), lineHeight: 17, marginTop: 2 }}>Price: ₱{room.estimatedRent.toLocaleString()}/month</Text>
-                        {room.maxCapacity > 1 && room.occupantNames?.length > 0 && (
-                          <Text style={{ color: colors.textSecondary, fontSize: fs(12), lineHeight: 17, marginTop: 3 }}>Current tenant: {room.occupantNames.join(', ')}</Text>
-                        )}
-                      </View>
-                      <Ionicons style={{ marginTop: 1 }} name={selected ? 'radio-button-on' : 'radio-button-off'} size={21} color={selected ? colors.accent : colors.textMuted} />
-                    </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => {
+                          const isSelectedRoom = selectedRoomId === room.id;
+                          setSelectedRoomId(room.id);
+                          setExpandedRoomId(isSelectedRoom && expanded ? '' : room.id);
+                          setPaymentAmount(String(room.estimatedRent));
+                          setSecurityDepositAmount(String(room.securityDeposit));
+                          setDeferSecurityDeposit(false);
+                          setError('');
+                        }}
+                        accessibilityRole="radio"
+                        accessibilityState={{ selected }}
+                        accessibilityLabel={`Room ${room.number}, ${room.type}, ${room.roomRate.toLocaleString()} pesos per month`}
+                        style={{ minHeight: 54, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingVertical: 11, paddingHorizontal: 12 }}
+                      >
+                        <Text numberOfLines={1} style={{ flex: 1, minWidth: 0, color: colors.text, fontSize: fs(14), fontWeight: '800' }}>
+                          Room {room.number} · {room.type}
+                        </Text>
+                        <Text style={{ color: colors.textSecondary, fontSize: fs(12), fontWeight: '700' }}>
+                          ₱{room.roomRate.toLocaleString()}/mo
+                        </Text>
+                        <Ionicons name={selected ? 'radio-button-on' : 'radio-button-off'} size={21} color={selected ? colors.accent : colors.textMuted} />
+                      </TouchableOpacity>
+                      {expanded && (
+                        <View style={{ paddingHorizontal: 12, paddingBottom: 11, paddingTop: 1, borderTopWidth: 1, borderTopColor: colors.cardBorder }}>
+                          <Text style={{ color: colors.textSecondary, fontSize: fs(12), lineHeight: 17, marginTop: 6 }}>
+                            {room.occupancy} occupants · {room.description}
+                          </Text>
+                          <Text style={{ color: colors.textSecondary, fontSize: fs(11), lineHeight: 16, marginTop: 3 }}>
+                            {room.hasAirConditioning ? 'Air-conditioned' : 'Not air-conditioned'} · {room.hasPrivateBathroom ? 'Private CR' : 'No private CR'}
+                          </Text>
+                          <Text style={{ color: colors.textSecondary, fontSize: fs(12), lineHeight: 17, marginTop: 3 }}>
+                            Your rent share: ₱{room.estimatedRent.toLocaleString()}/tenant/month
+                          </Text>
+                          {room.maxCapacity > 1 && room.occupantNames?.length > 0 && (
+                            <Text style={{ color: colors.textSecondary, fontSize: fs(12), lineHeight: 17, marginTop: 3 }}>
+                              Current tenant{room.occupantNames.length > 1 ? 's' : ''}: {room.occupantNames.join(', ')}
+                            </Text>
+                          )}
+                        </View>
+                      )}
+                    </View>
                   );
                 })}
                 {availableRooms.length > 0 && (

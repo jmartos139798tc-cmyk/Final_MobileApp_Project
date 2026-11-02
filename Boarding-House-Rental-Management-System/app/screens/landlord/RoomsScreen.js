@@ -207,6 +207,9 @@ export default function RoomsScreen() {
           {filteredRooms.map((room) => {
             const statusColor = getStatusColor(room.status);
             const isVacant = room.status === 'vacant';
+            const roomOccupants = room.occupants?.length
+              ? room.occupants
+              : (room.tenant ? [room.tenant] : []);
 
             return (
               <TouchableOpacity 
@@ -262,18 +265,27 @@ export default function RoomsScreen() {
                     {room.type}
                   </Text>
 
-                  {room.tenant ? (
+                  <Text style={{ fontSize: fs(12), fontWeight: '800', color: colors.accent, marginTop: 3 }}>
+                    ₱{room.baseRent.toLocaleString()} / room / month
+                  </Text>
+                  {(room.hasAirConditioning || room.hasPrivateBathroom) && (
+                    <Text numberOfLines={1} style={{ fontSize: fs(10), fontWeight: '600', color: colors.textSecondary, marginTop: 3 }}>
+                      {[room.hasAirConditioning ? 'Air-conditioned' : null, room.hasPrivateBathroom ? 'Private CR' : null].filter(Boolean).join(' · ')}
+                    </Text>
+                  )}
+
+                  {roomOccupants.length > 0 ? (
                     <>
-                      <Text 
-                        numberOfLines={1} 
-                        style={{ 
-                          fontSize: fs(14), 
-                          fontWeight: '700', 
-                          color: colors.text, 
-                          marginTop: 3 
+                      <Text
+                        numberOfLines={2}
+                        style={{
+                          fontSize: fs(14),
+                          fontWeight: '700',
+                          color: colors.text,
+                          marginTop: 3,
                         }}
                       >
-                        {room.tenant}
+                        {roomOccupants.join(' - ')}
                       </Text>
                       {room.balance > 0 ? (
                         <Text 
@@ -388,6 +400,14 @@ export default function RoomsScreen() {
                   <Text style={{ fontSize: fs(13), color: colors.textMuted, marginTop: 5 }}>
                     {selectedRoom.description}
                   </Text>
+                  <Text style={{ fontSize: fs(15), color: colors.accent, fontWeight: '800', marginTop: 10 }}>
+                    ₱{selectedRoom.baseRent.toLocaleString()} / room / month
+                  </Text>
+                  {(selectedRoom.hasAirConditioning || selectedRoom.hasPrivateBathroom) && (
+                    <Text style={{ fontSize: fs(13), color: colors.textSecondary, marginTop: 5 }}>
+                      {[selectedRoom.hasAirConditioning ? 'Air-conditioned' : null, selectedRoom.hasPrivateBathroom ? 'Private CR' : null].filter(Boolean).join(' · ')}
+                    </Text>
+                  )}
                 </View>
 
                 {/* Details */}
@@ -428,21 +448,29 @@ export default function RoomsScreen() {
                     )}
                   </View>
 
-                  {selectedRoom.tenant && (
+                  {(selectedRoom.occupants?.length || selectedRoom.tenant) && (
                     <>
-                      {/* Tenant Name */}
+                      {/* Tenant Names */}
                       <View style={{ marginBottom: 20 }}>
                         <Text style={{ fontSize: fs(12), fontWeight: '700', color: colors.textMuted, textTransform: 'uppercase', marginBottom: 6 }}>
-                          Current Tenant
+                          Current Tenant{(selectedRoom.occupants?.length || 1) > 1 ? 's' : ''}
                         </Text>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                          <View style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: colors.accentBg, alignItems: 'center', justifyContent: 'center' }}>
-                            <Ionicons name="person-outline" size={20} color={colors.accent} />
+                        {(selectedRoom.occupants?.length
+                          ? selectedRoom.occupants
+                          : [selectedRoom.tenant]
+                        ).map((name, index) => (
+                          <View
+                            key={`${selectedRoom.id}-occupant-${index}`}
+                            style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 }}
+                          >
+                            <View style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: colors.accentBg, alignItems: 'center', justifyContent: 'center' }}>
+                              <Ionicons name="person-outline" size={20} color={colors.accent} />
+                            </View>
+                            <Text style={{ flex: 1, fontSize: fs(16), fontWeight: '700', color: colors.text }}>
+                              {name}
+                            </Text>
                           </View>
-                          <Text style={{ fontSize: fs(16), fontWeight: '700', color: colors.text }}>
-                            {selectedRoom.tenant}
-                          </Text>
-                        </View>
+                        ))}
                       </View>
 
                       {/* Payment Status */}
@@ -542,4 +570,3 @@ export default function RoomsScreen() {
     </View>
   );
 }
-
