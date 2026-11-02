@@ -385,6 +385,9 @@ export default function RoomsScreen() {
                   <Text style={{ fontSize: fs(14), color: colors.textSecondary, marginTop: 4 }}>
                     {selectedRoom.type}
                   </Text>
+                  <Text style={{ fontSize: fs(13), color: colors.textMuted, marginTop: 5 }}>
+                    {selectedRoom.description}
+                  </Text>
                 </View>
 
                 {/* Details */}

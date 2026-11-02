@@ -47,6 +47,7 @@ export default function TenantApplicationStatusCard({ tenant, tenantId, refreshK
   const [error, setError] = useState('');
   const [paymentAmount, setPaymentAmount] = useState('');
   const [securityDepositAmount, setSecurityDepositAmount] = useState('');
+  const [deferSecurityDeposit, setDeferSecurityDeposit] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [paymentDate, setPaymentDate] = useState(toLocalDateString(new Date()));
   const [calendarMonth, setCalendarMonth] = useState(new Date());
@@ -86,6 +87,7 @@ export default function TenantApplicationStatusCard({ tenant, tenantId, refreshK
             ? request.securityDepositPaidAmount
             : initialRoom.securityDeposit)
         : '');
+      setDeferSecurityDeposit(false);
       setPaymentMethod(request?.paymentMethod || 'cash');
       const initialPaymentDate = request?.paymentDate || toLocalDateString(new Date());
       setPaymentDate(initialPaymentDate);
@@ -359,7 +361,7 @@ export default function TenantApplicationStatusCard({ tenant, tenantId, refreshK
                   return (
                     <TouchableOpacity
                       key={room.id}
-                      onPress={() => { setSelectedRoomId(room.id); setPaymentAmount(String(room.estimatedRent)); setSecurityDepositAmount(String(room.securityDeposit)); setError(''); }}
+                      onPress={() => { setSelectedRoomId(room.id); setPaymentAmount(String(room.estimatedRent)); setSecurityDepositAmount(String(room.securityDeposit)); setDeferSecurityDeposit(false); setError(''); }}
                       accessibilityRole="radio"
                       accessibilityState={{ selected }}
                       style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, padding: 13, marginBottom: 8, borderRadius: 11, borderWidth: 1, borderColor: selected ? colors.accent : colors.cardBorder, backgroundColor: selected ? colors.accentBg : colors.bg }}
@@ -367,6 +369,7 @@ export default function TenantApplicationStatusCard({ tenant, tenantId, refreshK
                       <View style={{ flex: 1, minWidth: 0 }}>
                         <Text style={{ color: colors.text, fontSize: fs(14), fontWeight: '800' }}>Room {room.number}</Text>
                         <Text style={{ color: colors.textSecondary, fontSize: fs(12), lineHeight: 17, marginTop: 5 }}>{room.type} · {room.occupancy} occupants</Text>
+                        <Text style={{ color: colors.textSecondary, fontSize: fs(11), lineHeight: 16, marginTop: 2 }}>{room.description}</Text>
                         <Text style={{ color: colors.textSecondary, fontSize: fs(12), lineHeight: 17, marginTop: 2 }}>Price: ₱{room.estimatedRent.toLocaleString()}/month</Text>
                         {room.maxCapacity > 1 && room.occupantNames?.length > 0 && (
                           <Text style={{ color: colors.textSecondary, fontSize: fs(12), lineHeight: 17, marginTop: 3 }}>Current tenant: {room.occupantNames.join(', ')}</Text>
@@ -387,11 +390,30 @@ export default function TenantApplicationStatusCard({ tenant, tenantId, refreshK
                 <Text style={{ color: colors.text, fontSize: fs(13), fontWeight: '700', marginTop: 5, marginBottom: 6 }}>Amount paid toward security deposit *</Text>
                 )}
                 {!selectedRoom?.firstOccupantCoveredInitialCharges && (
-                <TextInput value={securityDepositAmount} onChangeText={setSecurityDepositAmount} keyboardType="decimal-pad" placeholder="Enter amount paid" placeholderTextColor={colors.textMuted} accessibilityLabel="Amount paid toward security deposit" style={{ backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 10, padding: 11, color: colors.text, marginBottom: 5 }} />
+                <>
+                <TextInput value={deferSecurityDeposit ? '0' : securityDepositAmount} onChangeText={setSecurityDepositAmount} editable={!deferSecurityDeposit} keyboardType="decimal-pad" placeholder="Enter amount paid" placeholderTextColor={colors.textMuted} accessibilityLabel="Amount paid toward security deposit" style={{ backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 10, padding: 11, color: colors.text, marginBottom: 8 }} />
+                <TouchableOpacity
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: deferSecurityDeposit }}
+                  onPress={() => {
+                    const next = !deferSecurityDeposit;
+                    setDeferSecurityDeposit(next);
+                    setSecurityDepositAmount(next ? '0' : String(selectedRoom?.securityDeposit || 0));
+                    setError('');
+                  }}
+                  style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 9, padding: 11, borderRadius: 10, borderWidth: 1, borderColor: colors.cardBorder, backgroundColor: colors.bg, marginBottom: 6 }}
+                >
+                  <Ionicons name={deferSecurityDeposit ? 'checkbox' : 'square-outline'} size={20} color={deferSecurityDeposit ? colors.accent : colors.textMuted} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: colors.text, fontSize: fs(12), fontWeight: '700' }}>My landlord approved paying the security deposit later</Text>
+                    <Text style={{ color: colors.textSecondary, fontSize: fs(11), lineHeight: 16, marginTop: 3 }}>PHP {Number(selectedRoom?.securityDeposit || 0).toLocaleString()} will be added to your outstanding balance.</Text>
+                  </View>
+                </TouchableOpacity>
+                </>
                 )}
                 <View style={{ backgroundColor: colors.accentBg, borderRadius: 10, padding: 11, marginTop: 7, marginBottom: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                   <Text style={{ color: colors.text, fontSize: fs(13), fontWeight: '700' }}>Total paid (advance + deposit)</Text>
-                  <Text style={{ color: colors.text, fontSize: fs(14), fontWeight: '800' }}>PHP {((Number(paymentAmount) || 0) + (Number(securityDepositAmount) || 0)).toLocaleString()}</Text>
+                  <Text style={{ color: colors.text, fontSize: fs(14), fontWeight: '800' }}>PHP {((Number(paymentAmount) || 0) + (deferSecurityDeposit ? 0 : Number(securityDepositAmount) || 0)).toLocaleString()}</Text>
                 </View>
                 <Text style={{ color: colors.textSecondary, fontSize: fs(12), marginBottom: 6 }}>Payment method *</Text>
                 <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>

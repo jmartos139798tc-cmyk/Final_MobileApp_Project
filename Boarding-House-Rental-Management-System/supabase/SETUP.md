@@ -42,7 +42,7 @@ declare
 begin
   select id into landlord_id
   from auth.users
-  where lower(email) = lower('landlord@example.com');
+  where lower(email) = lower('landlord@email.com');
 
   if landlord_id is null then
     raise exception 'Create and confirm the landlord account before running this SQL';

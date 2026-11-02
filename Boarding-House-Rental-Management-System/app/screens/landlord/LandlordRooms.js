@@ -165,7 +165,7 @@ export default function RoomsScreen() {
       setRooms((currentRooms) => [...currentRooms, {
         id: String(newRoom.id).replace('room-', ''),
         number: newRoom.room_number,
-        type: selectedType?.name?.includes('Single') ? 'Single' : 'Double',
+        type: 'Double',
         tenant: null,
         status: newRoom.status,
         balance: 0,

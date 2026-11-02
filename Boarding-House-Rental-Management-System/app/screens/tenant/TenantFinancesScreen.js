@@ -344,7 +344,7 @@ export default function TenantFinancesScreen({ user, onNavigateToApplication }) 
                         </View>
                         {hasPending && <Text style={{ fontSize: fs(11), fontWeight: '600', color: colors.warningText }}>Proof pending</Text>}
                       </View>
-                      <Text style={{ fontSize: fs(12), color: colors.textSecondary }}>
+                      <Text style={{ fontSize: fs(12), color: Number(item.balance) <= 0 ? colors.successText : colors.dangerText, fontWeight: '600' }}>
                         Remaining ₱{Number(item.balance).toLocaleString()}
                       </Text>
                     </View>

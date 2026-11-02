@@ -26,16 +26,15 @@ export const SEED_DATA = {
 
   // 3. ROOM_TYPES (Keep room types for adding rooms)
   [COLLECTIONS.ROOM_TYPES]: [
-    { id: 'type-single', name: 'Single Occupancy', base_rent: 2500, max_capacity: 1, description: 'Private room with single bed and study desk' },
-    { id: 'type-double', name: 'Double Occupancy', base_rent: 3500, max_capacity: 2, description: 'Shared room with bunk beds and shared closet' },
+    { id: 'type-double', name: 'Double Occupancy', base_rent: 3500, max_capacity: 2, description: 'Shared room with bunk beds, shared closet, and its own bathroom.' },
   ],
 
   // 4. ROOMS
   [COLLECTIONS.ROOMS]: [
-    { id: 'room-1', house_id: 'bh-1', room_number: '01', type_id: 'type-single', status: 'occupied' },
+    { id: 'room-1', house_id: 'bh-1', room_number: '01', type_id: 'type-double', status: 'occupied' },
     { id: 'room-2', house_id: 'bh-1', room_number: '02', type_id: 'type-double', status: 'occupied' },
-    { id: 'room-3', house_id: 'bh-1', room_number: '03', type_id: 'type-single', status: 'vacant' },
-    { id: 'room-4', house_id: 'bh-1', room_number: '04', type_id: 'type-single', status: 'vacant' },
+    { id: 'room-3', house_id: 'bh-1', room_number: '03', type_id: 'type-double', status: 'vacant' },
+    { id: 'room-4', house_id: 'bh-1', room_number: '04', type_id: 'type-double', status: 'vacant' },
     { id: 'room-5', house_id: 'bh-1', room_number: '05', type_id: 'type-double', status: 'vacant' },
   ],
 

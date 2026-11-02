@@ -282,7 +282,13 @@ function getTenantOverviewInvoice(invoices, leaseId, payments) {
 
 function formatRoomType(roomType) {
   if (!roomType) return 'Room';
-  return roomType.name.includes('Single') ? 'Single' : 'Double';
+  return 'Double';
+}
+
+function getRoomDescription(roomType) {
+  const description = String(roomType?.description || '').trim();
+  if (/own bathroom/i.test(description)) return description;
+  return `${description ? `${description.replace(/[.!?]+$/, '')}. ` : ''}Double occupancy room with its own bathroom.`;
 }
 
 function toRoomListItem(room, roomTypes, leases = [], tenants = [], invoices = [], payments = []) {
@@ -308,6 +314,7 @@ function toRoomListItem(room, roomTypes, leases = [], tenants = [], invoices = [
     id: String(room.id).replace('room-', ''),
     number: room.room_number,
     type: formatRoomType(roomType),
+    description: getRoomDescription(roomType),
     hasAirConditioning: Boolean(room.has_air_conditioning),
     tenant: tenant ? tenant.first_name : null,
     status,
@@ -385,11 +392,12 @@ export async function getRoomTypes() {
   const roomTypes = isSupabaseConfigured && supabase
     ? await readCollection(COLLECTIONS.ROOM_TYPES)
     : (store[COLLECTIONS.ROOM_TYPES] || []);
-  return roomTypes.map((type) => ({
+  return roomTypes.filter((type) => Number(type.max_capacity) > 1).map((type) => ({
     id: type.id,
     name: type.name,
     baseRent: type.base_rent,
     maxCapacity: type.max_capacity,
+    description: getRoomDescription(type),
   })).sort((first, second) => (
     first.baseRent - second.baseRent || first.name.localeCompare(second.name)
   ));
@@ -425,6 +433,7 @@ export async function addRoom({ roomNumber, typeId, reservedForName = '', hasAir
     ];
   const roomType = roomTypes.find((type) => type.id === typeId);
   if (!roomType) throw new Error('Choose a valid room type.');
+  if (Number(roomType.max_capacity) <= 1) throw new Error('Only double-occupancy rooms can be created.');
   const boardingHouse = boardingHouses[0];
   if (!boardingHouse?.id) {
     throw new Error('No boarding house is configured. Apply the boarding house setup migration before adding rooms.');
@@ -498,7 +507,7 @@ export async function getTenants() {
         name: `${tenant.first_name} ${tenant.last_name}`,
         initials: tenant.initials,
         room: roomNum,
-        type: roomType ? (roomType.name.includes('Single') ? 'Single' : 'Double') : 'Single',
+        type: 'Double',
         dueDate,
         status,
         balance,
@@ -869,6 +878,7 @@ export async function getAvailableRoomsForInitialAssignment(tenantId) {
   return (store[COLLECTIONS.ROOMS] || [])
     .filter((room) => {
       const type = roomTypes.find((item) => item.id === room.type_id);
+      if (!type || Number(type.max_capacity) <= 1) return false;
       const occupants = liveRoomOccupancy?.has(room.id)
         ? Number(liveRoomOccupancy.get(room.id).occupant_count) || 0
         : leases.filter((lease) => lease.status === 'active' && lease.room_id === room.id).length;
@@ -893,7 +903,8 @@ export async function getAvailableRoomsForInitialAssignment(tenantId) {
       return {
         id: room.id,
         number: room.room_number,
-        type: type?.name || 'Room',
+        type: 'Double Occupancy',
+        description: getRoomDescription(type),
         maxCapacity: capacity,
         occupantNames: roomStats ? (roomStats.occupant_names || []) : roomLeases
           .map((lease) => (store[COLLECTIONS.TENANTS] || []).find((item) => item.id === lease.tenant_id))
@@ -2164,6 +2175,7 @@ export async function getVacantRoomsForAssignment() {
     return rooms
       .filter((room) => {
         const type = roomTypes.find((rt) => rt.id === room.type_id);
+        if (!type || Number(type.max_capacity) <= 1) return false;
         const capacity = Math.max(1, Number(type?.max_capacity) || 1);
         return activeLeases.filter((lease) => lease.room_id === room.id).length < capacity
           && (room.status === 'vacant' || (room.status === 'occupied' && capacity > 1));
@@ -2183,7 +2195,8 @@ export async function getVacantRoomsForAssignment() {
           id: room.id,
           roomNumber: room.room_number,
           displayNumber: parseInt(room.room_number, 10),
-          type: type ? type.name : 'Room',
+          type: 'Double Occupancy',
+          description: getRoomDescription(type),
           baseRent: type ? toMoney(Number(type.base_rent || 0) / Math.max(1, Number(type.max_capacity) || 1)) : 2500,
           securityDeposit: firstOccupantCoveredInitialCharges
             ? 0
@@ -2332,6 +2345,7 @@ export async function approveTenant({
   approvedBy,
   initialPaymentAmount,
   securityDepositPaidAmount = 0,
+  allowDeferredSecurityDeposit = false,
   initialPaymentMethod = 'cash',
   initialPaymentDate,
   initialPaymentReference = '',
@@ -2399,6 +2413,9 @@ export async function approveTenant({
     }
     if (!Number.isFinite(verifiedSecurityDepositPayment) || verifiedSecurityDepositPayment < 0 || verifiedSecurityDepositPayment > securityDeposit) {
       throw new Error('The verified security deposit payment must be between zero and the room security deposit.');
+    }
+    if (securityDeposit - verifiedSecurityDepositPayment > 0 && !allowDeferredSecurityDeposit) {
+      throw new Error('Approve carrying the unpaid security deposit as outstanding before approving this tenant.');
     }
 
     const verifiedInitialPayment = Number(initialPaymentAmount) || 0;

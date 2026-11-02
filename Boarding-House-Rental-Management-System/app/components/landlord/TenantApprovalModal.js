@@ -14,6 +14,7 @@ export default function TenantApprovalModal({ visible, tenant, onClose, onSucces
   const [selectedRoomId, setSelectedRoomId] = useState('');
   const [monthlyRent, setMonthlyRent] = useState('');
   const [securityDepositAmount, setSecurityDepositAmount] = useState('');
+  const [allowDeferredSecurityDeposit, setAllowDeferredSecurityDeposit] = useState(false);
   const [dueDay, setDueDay] = useState('5');
   const [dueDate, setDueDate] = useState(() => {
     const today = new Date();
@@ -32,6 +33,10 @@ export default function TenantApprovalModal({ visible, tenant, onClose, onSucces
   const [receiptZoom, setReceiptZoom] = useState(1);
   const [receiptImageFailed, setReceiptImageFailed] = useState(false);
   const pinchDistance = useRef(null);
+  const reportedDepositPaid = Number(tenant?.securityDepositPaidAmount) || 0;
+  const configuredSecurityDeposit = Number(securityDepositAmount) || 0;
+  const securityDepositBalance = Math.max(0, configuredSecurityDeposit - reportedDepositPaid);
+  const deferredSecurityDepositBalance = allowDeferredSecurityDeposit ? securityDepositBalance : 0;
 
   useEffect(() => {
     if (visible) {
@@ -44,6 +49,7 @@ export default function TenantApprovalModal({ visible, tenant, onClose, onSucces
       setLoadingRooms(true);
       setRoomLoadFailed(false);
       setError('');
+      setAllowDeferredSecurityDeposit(false);
       const rooms = await getVacantRoomsForAssignment();
       setVacantRooms(rooms);
 
@@ -69,6 +75,7 @@ export default function TenantApprovalModal({ visible, tenant, onClose, onSucces
     setSelectedRoomId(room.id);
     setMonthlyRent(String(room.baseRent));
     setSecurityDepositAmount(String(room.securityDeposit ?? room.baseRent));
+    setAllowDeferredSecurityDeposit(false);
     setError('');
   };
 
@@ -86,6 +93,7 @@ export default function TenantApprovalModal({ visible, tenant, onClose, onSucces
         roomId: selectedRoomId,
         monthlyRent: rent,
         securityDepositAmount: Number(securityDepositAmount),
+        allowDeferredSecurityDeposit,
         // Approval confirms the tenant-submitted amounts and records them on the initial invoice.
         securityDepositPaidAmount: Number(tenant?.securityDepositPaidAmount) || 0,
         dueDay: day,
@@ -134,6 +142,11 @@ export default function TenantApprovalModal({ visible, tenant, onClose, onSucces
       }
       if ((Number(tenant.securityDepositPaidAmount) || 0) > deposit) {
         setError('The security deposit paid cannot exceed the room security deposit.');
+        return;
+      }
+      const unpaidDeposit = Math.max(0, deposit - (Number(tenant?.securityDepositPaidAmount) || 0));
+      if (unpaidDeposit > 0 && !allowDeferredSecurityDeposit) {
+        setError('Allow the unpaid security deposit to be added to the tenant’s outstanding balance, or update the deposit payment before approving.');
         return;
       }
 
@@ -380,6 +393,7 @@ export default function TenantApprovalModal({ visible, tenant, onClose, onSucces
                       <Text style={{ fontSize: fs(13), color: colors.textSecondary, marginTop: 2 }}>
                         {room.type} · {room.occupancy}/{room.maxCapacity} occupants · ₱{room.baseRent.toLocaleString()}/tenant/month
                       </Text>
+                      <Text style={{ fontSize: fs(11), color: colors.textMuted, marginTop: 3 }}>{room.description}</Text>
                     </View>
 
                     <View
@@ -453,6 +467,29 @@ export default function TenantApprovalModal({ visible, tenant, onClose, onSucces
                 marginBottom: 16,
               }}
             />
+
+            <Pressable
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: allowDeferredSecurityDeposit }}
+              disabled={submitting}
+              onPress={() => {
+                setAllowDeferredSecurityDeposit((value) => !value);
+                setError('');
+              }}
+              style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10, padding: 12, marginTop: -6, marginBottom: 16, borderRadius: 10, borderWidth: 1, borderColor: colors.cardBorder, backgroundColor: colors.bg }}
+            >
+              <Ionicons name={allowDeferredSecurityDeposit ? 'checkbox' : 'square-outline'} size={21} color={allowDeferredSecurityDeposit ? colors.accent : colors.textMuted} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: colors.text, fontSize: fs(13), fontWeight: '700' }}>I approve carrying the unpaid deposit as outstanding</Text>
+                <Text style={{ color: colors.textSecondary, fontSize: fs(12), lineHeight: 17, marginTop: 3 }}>
+                  {allowDeferredSecurityDeposit
+                    ? `Approved: PHP ${deferredSecurityDepositBalance.toLocaleString()} will be added to the tenant’s outstanding balance.`
+                    : securityDepositBalance > 0
+                      ? `PHP ${securityDepositBalance.toLocaleString()} is unpaid. Check to approve carrying this amount on the initial invoice.`
+                      : 'The security deposit is fully covered by the tenant’s reported payment.'}
+                </Text>
+              </View>
+            </Pressable>
 
             {/* Initial invoice due date */}
             <Text style={{ fontSize: fs(14), fontWeight: '700', color: colors.text, marginBottom: 8 }}>
@@ -696,6 +733,7 @@ export default function TenantApprovalModal({ visible, tenant, onClose, onSucces
                 ['Room', `Room ${vacantRooms.find((room) => room.id === selectedRoomId)?.displayNumber || ''}`],
                 ['1 month advance reported paid', `PHP ${Number(tenant?.initialPaymentAmount || 0).toLocaleString()}`],
                 ['Security deposit reported paid', `PHP ${Number(tenant?.securityDepositPaidAmount || 0).toLocaleString()}`],
+                ['Security deposit balance carried forward', `PHP ${deferredSecurityDepositBalance.toLocaleString()}`],
                 ['Total reported sent', `PHP ${(Number(tenant?.initialPaymentAmount || 0) + Number(tenant?.securityDepositPaidAmount || 0)).toLocaleString()}`],
                 ['Date Approve', new Date().toLocaleDateString()],
               ].map(([label, value]) => (

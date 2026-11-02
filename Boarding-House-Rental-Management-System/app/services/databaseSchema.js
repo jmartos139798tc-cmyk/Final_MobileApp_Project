@@ -41,7 +41,7 @@ export const COLLECTIONS = {
  * 
  * 3. ROOM_TYPES: Category & pricing defaults (Eliminates transitive dependency from rooms)
  *    - PK: type_id
- *    - Fields: name ('Single'|'Double'), base_rent, max_capacity
+ *    - Fields: name ('Double'), base_rent, max_capacity (2)
  * 
  * 4. ROOMS: Physical units
  *    - PK: room_id
@@ -137,7 +137,7 @@ export const COLLECTIONS = {
  * Normalization Audit:
  * 
  * - Why separate ROOM_TYPES from ROOMS?
- *   If base_rent or capacity were stored directly in ROOMS, changing the base rent for Single rooms
+ *   If base_rent or capacity were stored directly in ROOMS, changing the base rent for double rooms
  *   would require updating 12 rows. That is an UPDATE ANOMALY caused by a transitive dependency:
  *   room_number -> type -> base_rent. In 3NF, base_rent depends strictly on type_id.
  * 
