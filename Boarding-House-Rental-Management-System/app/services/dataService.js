@@ -133,7 +133,7 @@ function getInvoicePaymentBreakdown(invoice, payments = []) {
 
 function normalizePaymentChargeType(chargeType) {
   const normalized = chargeType === 'utility' ? 'electricity' : chargeType || 'unallocated';
-  if (!['rent', 'electricity', 'water', 'wifi', 'other', 'unallocated'].includes(normalized)) {
+  if (!['rent', 'electricity', 'water', 'wifi', 'other', 'security_deposit', 'unallocated'].includes(normalized)) {
     throw new Error('Choose a valid invoice item for this payment.');
   }
   return normalized;
@@ -834,7 +834,30 @@ export async function getTenantSettingsProfile(tenantId) {
 
 /** Return available initial room options for tenants awaiting or retrying review. */
 export async function getAvailableRoomsForInitialAssignment(tenantId) {
-  const store = await getStore(COLLECTIONS.TENANTS, COLLECTIONS.LEASES, COLLECTIONS.ROOM_TYPES, COLLECTIONS.ROOMS);
+  const store = await getStore(
+    COLLECTIONS.TENANTS,
+    COLLECTIONS.LEASES,
+    COLLECTIONS.ROOM_TYPES,
+    COLLECTIONS.ROOMS,
+    COLLECTIONS.INVOICES,
+    COLLECTIONS.PAYMENTS,
+  );
+  let liveRoomOccupancy = null;
+  let liveRoomPaymentStatus = null;
+  if (isSupabaseConfigured && supabase) {
+    const { data, error } = await supabase.rpc('get_double_room_occupancy');
+    if (error) {
+      const missingRpc = error.code === 'PGRST202'
+        || /get_double_room_occupancy.*schema cache|schema cache.*get_double_room_occupancy/i.test(error.message || '');
+      throw new Error(missingRpc
+        ? 'The double-room occupancy database migration has not been applied to this Supabase project. Apply supabase/migrations/20261105120000_tenant_double_room_occupants.sql, then reopen Room & payment setup.'
+        : error.message || 'Could not load current double-room occupants.');
+    }
+    liveRoomOccupancy = new Map((data || []).map((item) => [item.room_id, item]));
+    const { data: paymentStatus, error: paymentStatusError } = await supabase.rpc('get_double_room_initial_payment_status');
+    if (paymentStatusError) throw new Error(paymentStatusError.message || 'Could not load the room’s existing payment status.');
+    liveRoomPaymentStatus = new Map((paymentStatus || []).map((item) => [item.room_id, item.initial_charges_fully_paid === true]));
+  }
   const tenantKey = String(tenantId || '');
   const tenant = (store[COLLECTIONS.TENANTS] || []).find((item) => item.id === tenantKey);
   if (!tenant || !['pending', 'rejected'].includes(tenant.account_status)) return [];
@@ -846,18 +869,43 @@ export async function getAvailableRoomsForInitialAssignment(tenantId) {
   return (store[COLLECTIONS.ROOMS] || [])
     .filter((room) => {
       const type = roomTypes.find((item) => item.id === room.type_id);
-      const occupants = leases.filter((lease) => lease.status === 'active' && lease.room_id === room.id).length;
+      const occupants = liveRoomOccupancy?.has(room.id)
+        ? Number(liveRoomOccupancy.get(room.id).occupant_count) || 0
+        : leases.filter((lease) => lease.status === 'active' && lease.room_id === room.id).length;
       const capacity = Math.max(1, Number(type?.max_capacity) || 1);
       return occupants < capacity && (room.status === 'vacant' || (room.status === 'occupied' && capacity > 1));
     })
     .map((room) => {
       const type = roomTypes.find((item) => item.id === room.type_id);
+      const roomStats = liveRoomOccupancy?.get(room.id);
+      const roomLeases = leases.filter((lease) => lease.status === 'active' && lease.room_id === room.id);
+      const occupants = roomStats ? Number(roomStats.occupant_count) || 0 : roomLeases.length;
+      const capacity = Math.max(1, Number(type?.max_capacity) || 1);
+      const firstOccupantCoveredInitialCharges = liveRoomPaymentStatus?.get(room.id)
+        ?? (roomLeases.length > 0 && roomLeases.every((lease) => {
+          const invoice = (store[COLLECTIONS.INVOICES] || []).find((item) => item.lease_id === lease.id && item.invoice_type === 'initial');
+          if (!invoice) return false;
+          const breakdown = getInvoicePaymentBreakdown(invoice, store[COLLECTIONS.PAYMENTS] || []);
+          const rent = breakdown.find((charge) => charge.type === 'rent');
+          const deposit = breakdown.find((charge) => charge.type === 'security_deposit');
+          return Boolean(rent && rent.balance === 0 && (!deposit || deposit.balance === 0));
+        }));
       return {
         id: room.id,
         number: room.room_number,
         type: type?.name || 'Room',
+        maxCapacity: capacity,
+        occupantNames: roomStats ? (roomStats.occupant_names || []) : roomLeases
+          .map((lease) => (store[COLLECTIONS.TENANTS] || []).find((item) => item.id === lease.tenant_id))
+          .filter(Boolean)
+          .map((occupant) => [occupant.first_name, occupant.last_name].filter(Boolean).join(' '))
+          .filter(Boolean),
         estimatedRent: type?.max_capacity > 1 ? toMoney(Number(type.base_rent || 0) / Number(type.max_capacity)) : (type?.base_rent || 0),
-        occupancy: `${leases.filter((lease) => lease.status === 'active' && lease.room_id === room.id).length}/${Math.max(1, Number(type?.max_capacity) || 1)}`,
+        securityDeposit: firstOccupantCoveredInitialCharges
+          ? 0
+          : (type?.max_capacity > 1 ? toMoney(Number(type.base_rent || 0) / Number(type.max_capacity)) : toMoney(Number(type?.base_rent || 0))),
+        firstOccupantCoveredInitialCharges,
+        occupancy: `${occupants}/${capacity}`,
       };
     })
     .sort((a, b) => String(a.number).localeCompare(String(b.number), undefined, { numeric: true }));
@@ -891,6 +939,8 @@ export async function getTenantRoomAssignmentRequest(tenantId) {
       estimatedRent: roomType?.base_rent || 0,
       status: request.status,
       initialPaymentAmount: request.initial_payment_amount || null,
+      securityDepositAmount: Number(request.security_deposit_amount) || 0,
+      securityDepositPaidAmount: Number(request.security_deposit_amount) || 0,
       paymentMethod: request.payment_method || 'cash',
       paymentDate: request.payment_date || null,
       paymentReference: request.payment_reference || '',
@@ -919,6 +969,8 @@ export async function getTenantRoomAssignmentRequest(tenantId) {
     estimatedRent: roomType?.base_rent || 0,
     status: request.status,
     initialPaymentAmount: request.initial_payment_amount || null,
+    securityDepositAmount: Number(request.security_deposit_amount) || 0,
+    securityDepositPaidAmount: Number(request.security_deposit_amount) || 0,
     paymentMethod: request.payment_method || 'cash',
     paymentDate: request.payment_date || null,
     paymentReference: request.payment_reference || '',
@@ -1006,7 +1058,7 @@ export async function uploadPaymentProof({ tenantId, asset }) {
 }
 
 /** Submit or change a tenant's preferred initial room; staff still assign the room. */
-export async function submitRoomAssignmentRequest({ tenantId, requestedRoomId, paymentAmount, paymentMethod, paymentDate, paymentReference, paymentProofPath }) {
+export async function submitRoomAssignmentRequest({ tenantId, requestedRoomId, paymentAmount, securityDepositPaidAmount, paymentMethod, paymentDate, paymentReference, paymentProofPath }) {
   const tenantKey = String(tenantId || '');
   if (isSupabaseConfigured && !supabase) {
     throw new Error('Supabase is required for room and payment setup. Check the Supabase project URL and publishable key.');
@@ -1017,6 +1069,8 @@ export async function submitRoomAssignmentRequest({ tenantId, requestedRoomId, p
     COLLECTIONS.ROOMS,
     COLLECTIONS.ROOM_TYPES,
     COLLECTIONS.ROOM_ASSIGNMENT_REQUESTS,
+    COLLECTIONS.INVOICES,
+    COLLECTIONS.PAYMENTS,
   );
   const tenant = (store[COLLECTIONS.TENANTS] || []).find((item) => item.id === tenantKey);
   if (!tenant) throw new Error('Your tenant profile is not available. Please sign in again.');
@@ -1036,6 +1090,20 @@ export async function submitRoomAssignmentRequest({ tenantId, requestedRoomId, p
     throw new Error('That room is full or unavailable. Refresh the list and choose another room.');
   }
   const expectedAmount = toMoney(Number(roomType?.base_rent || 0) / capacity);
+  const currentOccupants = (store[COLLECTIONS.LEASES] || [])
+    .filter((lease) => lease.status === 'active' && lease.room_id === room.id);
+  const existingInitialChargesPaid = capacity > 1 && currentOccupants.length > 0
+    && currentOccupants.every((lease) => {
+      const invoice = (store[COLLECTIONS.INVOICES] || []).find((item) =>
+        item.lease_id === lease.id && item.invoice_type === 'initial',
+      );
+      if (!invoice) return false;
+      const breakdown = getInvoicePaymentBreakdown(invoice, store[COLLECTIONS.PAYMENTS] || []);
+      const rent = breakdown.find((charge) => charge.type === 'rent');
+      const deposit = breakdown.find((charge) => charge.type === 'security_deposit');
+      return Boolean(rent && rent.balance === 0 && (!deposit || deposit.balance === 0));
+    });
+  const securityDepositDue = existingInitialChargesPaid ? 0 : expectedAmount;
   const normalizedPaymentMethod = String(paymentMethod || '').toLowerCase();
   if (!['cash', 'gcash'].includes(normalizedPaymentMethod)) throw new Error('Choose Cash or GCash as your payment method.');
   if (normalizedPaymentMethod === 'gcash' && !paymentProofPath) {
@@ -1045,6 +1113,13 @@ export async function submitRoomAssignmentRequest({ tenantId, requestedRoomId, p
   if (!Number.isFinite(Number(paymentAmount)) || Number(paymentAmount) <= 0) throw new Error('Enter a valid payment amount.');
   if (expectedAmount > 0 && Number(paymentAmount) > expectedAmount) {
     throw new Error(`The payment cannot be more than one month of rent (₱${expectedAmount.toLocaleString()}).`);
+  }
+
+  const paidSecurityDeposit = Number(securityDepositPaidAmount);
+  if (!Number.isFinite(paidSecurityDeposit) || paidSecurityDeposit < 0 || paidSecurityDeposit > securityDepositDue) {
+    throw new Error(existingInitialChargesPaid
+      ? 'The current tenant has already paid the room’s initial advance and security deposit. No security-deposit payment is due.'
+      : `Enter a security deposit payment from 0 to ${securityDepositDue.toLocaleString()} for this room.`);
   }
 
   const requestId = `assignment-${tenantKey}`;
@@ -1064,6 +1139,7 @@ export async function submitRoomAssignmentRequest({ tenantId, requestedRoomId, p
     tenant_id: tenantKey,
     requested_room_id: room.id,
     initial_payment_amount: Number(paymentAmount),
+    security_deposit_amount: toMoney(paidSecurityDeposit),
     payment_method: normalizedPaymentMethod,
     payment_date: paymentDate,
     payment_reference: paymentReference || '',
@@ -1108,6 +1184,8 @@ export async function submitRoomAssignmentRequest({ tenantId, requestedRoomId, p
     roomType: roomType?.name || 'Room',
     estimatedRent: roomType?.base_rent || 0,
     initialPaymentAmount: request.initial_payment_amount,
+    securityDepositAmount: request.security_deposit_amount,
+    securityDepositPaidAmount: request.security_deposit_amount,
     paymentMethod: request.payment_method,
     paymentDate: request.payment_date,
     paymentReference: request.payment_reference,
@@ -1127,6 +1205,15 @@ export async function getTenantBillingBreakdown(id = '2') {
   try {
     const tenantIdentifier = String(id || '2');
     const formattedId = tenantIdentifier.startsWith('tenant-') ? tenantIdentifier : `tenant-${tenantIdentifier}`;
+    if (isSupabaseConfigured && supabase) {
+      const { error } = await supabase.rpc('ensure_tenant_current_month_invoice', {
+        p_tenant_id: formattedId,
+        p_billing_period: getCurrentBillingPeriod(),
+      });
+      if (error) console.warn('Could not ensure current monthly invoice:', error.message || error);
+    } else {
+      await ensureMockCurrentMonthInvoice(formattedId);
+    }
     const store = await getStore(
       COLLECTIONS.BOARDING_HOUSES,
       COLLECTIONS.LEASES,
@@ -1140,6 +1227,17 @@ export async function getTenantBillingBreakdown(id = '2') {
 
     const lease = leases.find((l) => l.tenant_id === formattedId && l.status === 'active');
     const leaseInvoices = lease ? invoices.filter((item) => item.lease_id === lease.id) : [];
+    const leasePayments = payments.filter((payment) =>
+      leaseInvoices.some((item) => item.id === payment.invoice_id)
+    );
+    const latestReceiptPayment = [...leasePayments].sort((a, b) =>
+      String(b.payment_date || '').localeCompare(String(a.payment_date || ''))
+    )[0] || null;
+    const latestReceiptPayments = latestReceiptPayment
+      ? latestReceiptPayment.reference_no
+        ? leasePayments.filter((payment) => payment.reference_no === latestReceiptPayment.reference_no)
+        : [latestReceiptPayment]
+      : [];
     const invoice = lease ? getTenantOverviewInvoice(invoices, lease.id, payments) : null;
     const totalOutstanding = lease
       ? getLeaseOutstandingBalance(invoices, lease.id, payments)
@@ -1166,11 +1264,6 @@ export async function getTenantBillingBreakdown(id = '2') {
       const totalDue = getInvoiceTotalAmount(invoice);
       const outstanding = Math.max(0, totalDue - paidAmount);
       const latestPayment = [...invPayments].sort((a, b) => String(b.payment_date || '').localeCompare(String(a.payment_date || '')))[0];
-      const receiptPayments = latestPayment
-        ? latestPayment.reference_no
-          ? invPayments.filter((payment) => payment.reference_no === latestPayment.reference_no)
-          : [latestPayment]
-        : [];
       return {
         invoiceId: invoice.id,
         totalOutstanding,
@@ -1180,7 +1273,8 @@ export async function getTenantBillingBreakdown(id = '2') {
           : 'Current period',
         monthlyRent: invoice.rent_charge,
         electricity: invoice.utility_charge,
-        securityDeposit: 0,
+        securityDeposit: Number(invoice.security_deposit) || 0,
+        securityDepositPaidAmount: chargeBreakdown.find((charge) => charge.type === 'security_deposit')?.paid || 0,
         invoiceType: invoice.invoice_type || 'monthly',
         water: 0,
         additionalCharges: invoice.billing_period === `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`
@@ -1193,11 +1287,11 @@ export async function getTenantBillingBreakdown(id = '2') {
         totalDue,
         dueDate: invoice.due_date,
         paidAmount,
-        receiptAmount: receiptPayments.reduce((sum, payment) => toMoney(sum + (Number(payment.amount_paid) || 0)), 0),
+        receiptAmount: latestReceiptPayments.reduce((sum, payment) => toMoney(sum + (Number(payment.amount_paid) || 0)), 0),
         outstanding,
-        receiptNumber: latestPayment?.reference_no || null,
-        paymentDate: latestPayment?.payment_date || null,
-        paymentMethod: latestPayment?.payment_method || null,
+        receiptNumber: latestReceiptPayment?.reference_no || latestReceiptPayment?.id || null,
+        paymentDate: latestReceiptPayment?.payment_date || null,
+        paymentMethod: latestReceiptPayment?.payment_method || null,
         chargeBreakdown,
       };
     }
@@ -1223,6 +1317,159 @@ export async function getTenantBillingBreakdown(id = '2') {
     console.warn('Could not fetch billing breakdown:', error.message || error);
     throw error;
   }
+}
+
+async function ensureMockCurrentMonthInvoice(tenantId) {
+  const store = getNormalizedMockDatabase();
+  const lease = (store[COLLECTIONS.LEASES] || []).find((item) => item.tenant_id === tenantId && item.status === 'active');
+  if (!lease || !lease.start_date) return;
+  const period = getCurrentBillingPeriod();
+  if (period <= String(lease.start_date).slice(0, 7)) return;
+  const invoices = store[COLLECTIONS.INVOICES] || [];
+  if (invoices.some((item) => item.lease_id === lease.id && item.billing_period === period && item.invoice_type === 'monthly')) return;
+  const [year, month] = period.split('-').map(Number);
+  const maxDay = new Date(year, month, 0).getDate();
+  const dueDate = new Date(year, month - 1, Math.min(Math.max(1, Number(lease.due_day_of_month) || 1), maxDay));
+  const house = (store[COLLECTIONS.BOARDING_HOUSES] || []).find((item) => item.id === (store[COLLECTIONS.ROOMS] || []).find((room) => room.id === lease.room_id)?.house_id);
+  const wifi = getMonthlyWifiCharge(house, 100);
+  const invoice = {
+    id: `invoice-auto-${lease.id}-${period}`,
+    lease_id: lease.id,
+    billing_period: period,
+    invoice_type: 'monthly',
+    rent_charge: Number(lease.agreed_monthly_rent) || 0,
+    utility_charge: 0,
+    security_deposit: 0,
+    other_charges: wifi,
+    additional_charges: wifi > 0 ? [{ id: 'wifi', label: 'Wi-Fi', amount: wifi }] : [],
+    total_amount: (Number(lease.agreed_monthly_rent) || 0) + wifi,
+    due_date: dueDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+    status: 'unpaid',
+    created_at: new Date().toISOString(),
+    notes: `${period} monthly rent and Wi-Fi`,
+  };
+  invoices.push(invoice);
+}
+
+/** Return the tenant's latest move-out request, if one exists. */
+export async function getTenantMoveOutRequest(tenantId) {
+  if (!tenantId) return null;
+  const requests = await readWhere(COLLECTIONS.TENANT_MOVE_OUT_REQUESTS, 'tenant_id', String(tenantId));
+  return [...requests].sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))[0] || null;
+}
+
+function getMoveInPaymentSummary(store, tenantId) {
+  const leases = store[COLLECTIONS.LEASES] || [];
+  const lease = leases.find((item) => item.tenant_id === tenantId && item.status === 'active')
+    || [...leases].filter((item) => item.tenant_id === tenantId).sort((a, b) => String(b.start_date || '').localeCompare(String(a.start_date || '')))[0];
+  if (!lease) return { advanceTotal: 0, advancePaid: 0, securityDepositTotal: 0, securityDepositPaid: 0 };
+  const initialInvoice = (store[COLLECTIONS.INVOICES] || [])
+    .filter((item) => item.lease_id === lease.id && item.invoice_type === 'initial')
+    .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))[0];
+  if (!initialInvoice) {
+    const deposit = Number(lease.security_deposit_amount) || 0;
+    return {
+      advanceTotal: Number(lease.agreed_monthly_rent) || 0,
+      advancePaid: 0,
+      securityDepositTotal: deposit,
+      securityDepositPaid: lease.security_deposit_paid ? deposit : 0,
+    };
+  }
+  const payments = (store[COLLECTIONS.PAYMENTS] || []).filter((item) => item.invoice_id === initialInvoice.id);
+  const breakdown = getInvoicePaymentBreakdown(initialInvoice, payments);
+  const rentItem = breakdown.find((item) => item.type === 'rent');
+  const depositItem = breakdown.find((item) => item.type === 'security_deposit');
+  const securityDepositTotal = Number(initialInvoice.security_deposit) || Number(lease.security_deposit_amount) || 0;
+  return {
+    advanceTotal: Number(initialInvoice.rent_charge) || Number(lease.agreed_monthly_rent) || 0,
+    advancePaid: Number(rentItem?.paid) || 0,
+    securityDepositTotal,
+    securityDepositPaid: Number(depositItem?.paid) || (lease.security_deposit_paid ? securityDepositTotal : 0),
+  };
+}
+
+/** Amount paid toward the tenant's initial advance and security deposit. */
+export async function getTenantMoveOutFinancialSummary(tenantId) {
+  const store = await getStore(COLLECTIONS.LEASES, COLLECTIONS.INVOICES, COLLECTIONS.PAYMENTS);
+  return getMoveInPaymentSummary(store, String(tenantId || ''));
+}
+
+/** List pending move-out requests for staff approval. */
+export async function getPendingMoveOutRequests() {
+  const store = await getStore(
+    COLLECTIONS.TENANT_MOVE_OUT_REQUESTS,
+    COLLECTIONS.TENANTS,
+    COLLECTIONS.LEASES,
+    COLLECTIONS.ROOMS,
+    COLLECTIONS.INVOICES,
+    COLLECTIONS.PAYMENTS,
+  );
+  const tenants = store[COLLECTIONS.TENANTS] || [];
+  const leases = store[COLLECTIONS.LEASES] || [];
+  const rooms = store[COLLECTIONS.ROOMS] || [];
+  return (store[COLLECTIONS.TENANT_MOVE_OUT_REQUESTS] || [])
+    .filter((request) => request.status === 'pending')
+    .map((request) => {
+      const tenant = tenants.find((item) => item.id === request.tenant_id);
+      const lease = leases.find((item) => item.tenant_id === request.tenant_id && item.status === 'active');
+      const room = rooms.find((item) => item.id === lease?.room_id);
+      return {
+        ...request,
+        tenant_name: tenant ? `${tenant.first_name || ''} ${tenant.last_name || ''}`.trim() : 'Tenant',
+        tenant_phone: tenant?.phone || '',
+        room_number: room?.room_number || '',
+        ...getMoveInPaymentSummary(store, request.tenant_id),
+      };
+    })
+    .sort((a, b) => String(a.created_at || '').localeCompare(String(b.created_at || '')));
+}
+
+/** Save a tenant's planned move-out date for landlord review. */
+export async function submitTenantMoveOutRequest({ tenantId, moveOutDate }) {
+  if (!tenantId) throw new Error('Your tenant account could not be identified.');
+  const dateParts = String(moveOutDate || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const selected = dateParts ? new Date(Number(dateParts[1]), Number(dateParts[2]) - 1, Number(dateParts[3])) : null;
+  if (!selected || selected.getFullYear() !== Number(dateParts[1]) || selected.getMonth() !== Number(dateParts[2]) - 1 || selected.getDate() !== Number(dateParts[3])) throw new Error('Choose a valid move-out date.');
+  const today = new Date();
+  const todayString = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  if (moveOutDate <= todayString) throw new Error('The move-out date must be after today.');
+
+  const tenantKey = String(tenantId);
+  const [tenants, leases, requests] = await Promise.all([
+    readWhere(COLLECTIONS.TENANTS, 'id', tenantKey),
+    readWhere(COLLECTIONS.LEASES, 'tenant_id', tenantKey),
+    readWhere(COLLECTIONS.TENANT_MOVE_OUT_REQUESTS, 'tenant_id', tenantKey),
+  ]);
+  if (!tenants.length || !leases.some((lease) => lease.status === 'active')) throw new Error('An active room assignment is required to request move-out.');
+  if (requests.some((item) => item.status === 'pending')) throw new Error('You already have a move-out request waiting for review.');
+
+  const request = {
+    id: `moveout-${tenantKey}-${Date.now()}`,
+    tenant_id: tenantKey,
+    requested_move_out_date: moveOutDate,
+    status: 'pending',
+    created_at: new Date().toISOString(),
+  };
+  if (isSupabaseConfigured && supabase) {
+    await writeDocument(COLLECTIONS.TENANT_MOVE_OUT_REQUESTS, request.id, request);
+  } else {
+    (getNormalizedMockDatabase()[COLLECTIONS.TENANT_MOVE_OUT_REQUESTS] || []).push(request);
+  }
+  return request;
+}
+
+/** Allow landlord or caretaker to record a move-out request decision. */
+export async function reviewTenantMoveOutRequest(requestId, status, reviewNotes = '') {
+  if (!['approved', 'declined'].includes(status)) throw new Error('Choose an approval or decline decision.');
+  const updates = { status, reviewed_at: new Date().toISOString(), review_notes: String(reviewNotes || '') };
+  if (isSupabaseConfigured && supabase) {
+    const reviewerId = await getCurrentUserId();
+    await updateDocument(COLLECTIONS.TENANT_MOVE_OUT_REQUESTS, requestId, { ...updates, reviewed_by: reviewerId });
+  } else {
+    const request = (getNormalizedMockDatabase()[COLLECTIONS.TENANT_MOVE_OUT_REQUESTS] || []).find((item) => item.id === requestId);
+    if (request) Object.assign(request, updates);
+  }
+  return { id: requestId, ...updates };
 }
 
 /**
@@ -1901,10 +2148,18 @@ export async function updateComplaintStatus(complaintId, newStatus) {
  */
 export async function getVacantRoomsForAssignment() {
   try {
-    const store = await getStore(COLLECTIONS.ROOMS, COLLECTIONS.ROOM_TYPES, COLLECTIONS.LEASES);
+    const store = await getStore(
+      COLLECTIONS.ROOMS,
+      COLLECTIONS.ROOM_TYPES,
+      COLLECTIONS.LEASES,
+      COLLECTIONS.INVOICES,
+      COLLECTIONS.PAYMENTS,
+    );
     const rooms = store[COLLECTIONS.ROOMS] || [];
     const roomTypes = store[COLLECTIONS.ROOM_TYPES] || [];
     const activeLeases = (store[COLLECTIONS.LEASES] || []).filter((lease) => lease.status === 'active');
+    const invoices = store[COLLECTIONS.INVOICES] || [];
+    const payments = store[COLLECTIONS.PAYMENTS] || [];
     
     return rooms
       .filter((room) => {
@@ -1915,14 +2170,27 @@ export async function getVacantRoomsForAssignment() {
       })
       .map((room) => {
         const type = roomTypes.find((rt) => rt.id === room.type_id);
+        const roomLeases = activeLeases.filter((lease) => lease.room_id === room.id);
+        const firstOccupantCoveredInitialCharges = roomLeases.length > 0 && roomLeases.every((lease) => {
+          const invoice = invoices.find((item) => item.lease_id === lease.id && item.invoice_type === 'initial');
+          if (!invoice) return false;
+          const breakdown = getInvoicePaymentBreakdown(invoice, payments);
+          const rent = breakdown.find((charge) => charge.type === 'rent');
+          const deposit = breakdown.find((charge) => charge.type === 'security_deposit');
+          return Boolean(rent && rent.balance === 0 && (!deposit || deposit.balance === 0));
+        });
         return {
           id: room.id,
           roomNumber: room.room_number,
           displayNumber: parseInt(room.room_number, 10),
           type: type ? type.name : 'Room',
           baseRent: type ? toMoney(Number(type.base_rent || 0) / Math.max(1, Number(type.max_capacity) || 1)) : 2500,
+          securityDeposit: firstOccupantCoveredInitialCharges
+            ? 0
+            : type ? toMoney(Number(type.base_rent || 0) / Math.max(1, Number(type.max_capacity) || 1)) : 2500,
+          firstOccupantCoveredInitialCharges,
           maxCapacity: type ? type.max_capacity : 1,
-          occupancy: activeLeases.filter((lease) => lease.room_id === room.id).length,
+          occupancy: roomLeases.length,
         };
       })
       .sort((a, b) => a.displayNumber - b.displayNumber);
@@ -1977,6 +2245,8 @@ export async function getPendingTenantRegistrations() {
           preferredRoomId: preferredRoom?.id || null,
           preferredRoomNumber: preferredRoom?.room_number || null,
           initialPaymentAmount: roomRequest?.initial_payment_amount || null,
+          securityDepositAmount: Number(roomRequest?.security_deposit_amount) || 0,
+          securityDepositPaidAmount: Number(roomRequest?.security_deposit_amount) || 0,
           paymentMethod: roomRequest?.payment_method || 'cash',
           paymentDate: roomRequest?.payment_date || null,
           paymentReference: roomRequest?.payment_reference || '',
@@ -2001,26 +2271,29 @@ export async function getPendingTenantRegistrations() {
   }
 }
 
-/** Return the live count of submitted tenant applications without loading payment proofs. */
+/** Count pending tenant applications and move-out requests for the landlord badge. */
 export async function getPendingTenantRegistrationCount() {
   const store = isSupabaseConfigured && supabase
     ? null
-    : await getStore(COLLECTIONS.TENANTS, COLLECTIONS.ROOM_ASSIGNMENT_REQUESTS);
-  const [tenants, roomRequests] = supabase
+    : await getStore(COLLECTIONS.TENANTS, COLLECTIONS.ROOM_ASSIGNMENT_REQUESTS, COLLECTIONS.TENANT_MOVE_OUT_REQUESTS);
+  const [tenants, roomRequests, moveOutRequests] = supabase
     ? await Promise.all([
       readCollection(COLLECTIONS.TENANTS),
       readCollection(COLLECTIONS.ROOM_ASSIGNMENT_REQUESTS),
+      readCollection(COLLECTIONS.TENANT_MOVE_OUT_REQUESTS),
     ])
     : [
       store[COLLECTIONS.TENANTS] || [],
       store[COLLECTIONS.ROOM_ASSIGNMENT_REQUESTS] || [],
+      store[COLLECTIONS.TENANT_MOVE_OUT_REQUESTS] || [],
     ];
   const pendingTenantIds = new Set(tenants
     .filter((tenant) => tenant.account_status === 'pending')
     .map((tenant) => tenant.id));
-  return new Set(roomRequests
+  const pendingRegistrations = new Set(roomRequests
     .filter((request) => request.status === 'pending' && pendingTenantIds.has(request.tenant_id))
     .map((request) => request.tenant_id)).size;
+  return pendingRegistrations + moveOutRequests.filter((request) => request.status === 'pending').length;
 }
 
 /** Return the live count of tenant payment receipts waiting for staff review. */
@@ -2053,10 +2326,12 @@ export async function approveTenant({
   tenantId,
   roomId,
   monthlyRent,
+  securityDepositAmount: requestedSecurityDepositAmount,
   dueDay,
   dueDate: requestedDueDate,
   approvedBy,
   initialPaymentAmount,
+  securityDepositPaidAmount = 0,
   initialPaymentMethod = 'cash',
   initialPaymentDate,
   initialPaymentReference = '',
@@ -2068,6 +2343,8 @@ export async function approveTenant({
       COLLECTIONS.ROOMS,
       COLLECTIONS.LEASES,
       COLLECTIONS.ROOM_TYPES,
+      COLLECTIONS.INVOICES,
+      COLLECTIONS.PAYMENTS,
     );
     const wifiCharge = getWifiCharge(store);
     const tenants = store[COLLECTIONS.TENANTS] || [];
@@ -2083,7 +2360,19 @@ export async function approveTenant({
     if (!room) throw new Error('Room not found');
     const roomType = (store[COLLECTIONS.ROOM_TYPES] || []).find((item) => item.id === room.type_id);
     const roomCapacity = Math.max(1, Number(roomType?.max_capacity) || 1);
-    const currentOccupants = leases.filter((lease) => lease.status === 'active' && lease.room_id === roomId).length;
+    const roomLeases = leases.filter((lease) => lease.status === 'active' && lease.room_id === roomId);
+    const currentOccupants = roomLeases.length;
+    const existingInitialChargesPaid = roomCapacity > 1 && roomLeases.length > 0
+      && roomLeases.every((lease) => {
+        const invoice = (store[COLLECTIONS.INVOICES] || []).find((item) =>
+          item.lease_id === lease.id && item.invoice_type === 'initial',
+        );
+        if (!invoice) return false;
+        const breakdown = getInvoicePaymentBreakdown(invoice, store[COLLECTIONS.PAYMENTS] || []);
+        const rent = breakdown.find((charge) => charge.type === 'rent');
+        const deposit = breakdown.find((charge) => charge.type === 'security_deposit');
+        return Boolean(rent && rent.balance === 0 && (!deposit || deposit.balance === 0));
+      });
     if (currentOccupants >= roomCapacity || (room.status !== 'vacant' && !(room.status === 'occupied' && roomCapacity > 1))) {
       throw new Error('Room is full or unavailable and cannot accept another tenant');
     }
@@ -2093,6 +2382,24 @@ export async function approveTenant({
     
     const rent = toMoney(monthlyRent);
     if (isNaN(rent) || rent <= 0) throw new Error('Invalid monthly rent amount');
+    const roomBasedSecurityDeposit = roomType
+      ? toMoney(Number(roomType.base_rent || 0) / roomCapacity)
+      : rent;
+    const rawSecurityDeposit = requestedSecurityDepositAmount != null
+      ? requestedSecurityDepositAmount
+      : roomBasedSecurityDeposit;
+    const depositAmount = Number(rawSecurityDeposit);
+    if (!Number.isFinite(depositAmount) || depositAmount < 0) {
+      throw new Error('Invalid security deposit amount');
+    }
+    const securityDeposit = existingInitialChargesPaid ? 0 : toMoney(depositAmount);
+    const verifiedSecurityDepositPayment = Number(securityDepositPaidAmount) || 0;
+    if (existingInitialChargesPaid && verifiedSecurityDepositPayment > 0) {
+      throw new Error('The current tenant has already paid the room’s initial advance and security deposit. Ask the applicant to resubmit without a security-deposit payment.');
+    }
+    if (!Number.isFinite(verifiedSecurityDepositPayment) || verifiedSecurityDepositPayment < 0 || verifiedSecurityDepositPayment > securityDeposit) {
+      throw new Error('The verified security deposit payment must be between zero and the room security deposit.');
+    }
 
     const verifiedInitialPayment = Number(initialPaymentAmount) || 0;
     const verifiedInitialPaymentMethod = initialPaymentMethod === 'gcash' ? 'gcash' : 'cash';
@@ -2122,18 +2429,18 @@ export async function approveTenant({
     
     const now = new Date();
     const approvedAtStr = now.toISOString();
-    const dateStr = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     const startDate = now.toISOString().split('T')[0];
     
-    // Start the next billing cycle 30 days after the advance is paid in full.
+    // The next monthly rent cycle starts next month. The initial invoice keeps
+    // any unpaid advance, security deposit, and recurring add-ons outstanding.
     const advancePaidInFull = verifiedInitialPayment >= rent && initialPaymentDateObj;
-    const dueDate = advancePaidInFull
-      ? addDaysToDate(initialPaymentDateObj, 30)
-      : requestedDueDate ? new Date(`${requestedDueDate}T00:00:00`) : new Date(now);
-    if (!advancePaidInFull && !requestedDueDate) {
-      dueDate.setMonth(dueDate.getMonth() + 1);
-      dueDate.setDate(dueDayNum);
-    }
+    const requestedDate = requestedDueDate ? new Date(`${requestedDueDate}T00:00:00`) : null;
+    const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const lastDayOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 2, 0).getDate();
+    const nextMonthDueDate = new Date(now.getFullYear(), now.getMonth() + 1, Math.min(dueDayNum, lastDayOfNextMonth));
+    const dueDate = requestedDate && !Number.isNaN(requestedDate.getTime()) && requestedDate >= nextMonthStart
+      ? requestedDate
+      : nextMonthDueDate;
     if (Number.isNaN(dueDate.getTime())) throw new Error('Choose a valid due date');
     const effectiveDueDay = dueDate.getDate();
     const dueDateStr = dueDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -2159,8 +2466,9 @@ export async function approveTenant({
       end_date: null,
       agreed_monthly_rent: rent,
       due_day_of_month: effectiveDueDay,
-      security_deposit_amount: 0,
-      security_deposit_paid: false,
+      security_deposit_amount: securityDeposit,
+      security_deposit_paid: securityDeposit <= 0
+        || (verifiedInitialPayment >= rent && verifiedSecurityDepositPayment >= securityDeposit),
       status: 'active',
     };
     
@@ -2172,26 +2480,29 @@ export async function approveTenant({
       rent_charge: rent,
       utility_charge: 0,
       water_charge: 0,
-      security_deposit: 0,
+      security_deposit: securityDeposit,
       other_charges: wifiCharge.amount,
       additional_charges: [wifiCharge],
-      total_amount: rent + wifiCharge.amount,
+      total_amount: rent + securityDeposit + wifiCharge.amount,
       due_date: dueDateStr,
-      status: verifiedInitialPayment >= rent + wifiCharge.amount ? 'paid' : verifiedInitialPayment > 0 ? 'partial' : 'unpaid',
+      status: verifiedInitialPayment + verifiedSecurityDepositPayment >= rent + securityDeposit + wifiCharge.amount
+        ? 'paid'
+        : verifiedInitialPayment + verifiedSecurityDepositPayment > 0 ? 'partial' : 'unpaid',
       created_at: approvedAtStr,
-      notes: 'Initial payment: 1 month advance',
+      notes: 'Initial payment: 1 month advance + security deposit',
     };
 
-    const initialPayment = verifiedInitialPayment > 0 ? {
+    const totalInitialPayment = toMoney(verifiedInitialPayment + verifiedSecurityDepositPayment);
+    const initialPayment = totalInitialPayment > 0 ? {
       id: initialPaymentId,
       invoice_id: invoiceId,
-      amount_paid: verifiedInitialPayment,
-      charge_type: 'rent',
+      amount_paid: totalInitialPayment,
+      charge_type: 'unallocated',
       payment_date: initialPaymentDateStr,
       payment_method: verifiedInitialPaymentMethod,
       reference_no: String(initialPaymentReference || '').trim() || `INITIAL-${tenantId}`,
       received_by_user_id: approvedBy || await getCurrentUserId(),
-      notes: 'Initial advance payment verified with tenant application proof.',
+      notes: 'Tenant advance and security deposit payments verified at approval.',
     } : null;
     
     const notification = {
@@ -2240,6 +2551,40 @@ export async function approveTenant({
         const oldTenantElectricity = toMoney(roomElectricity / roomCapacity);
         leases.filter((item) => item.status === 'active' && item.room_id === roomId).forEach((occupantLease) => {
           occupantLease.agreed_monthly_rent = rent;
+          if (!existingInitialChargesPaid) {
+            const initialInvoice = currentPeriodInvoices.find((item) =>
+              item.lease_id === occupantLease.id && item.invoice_type === 'initial',
+            );
+            if (initialInvoice) {
+              const previousRent = Number(initialInvoice.rent_charge) || 0;
+              const previousDeposit = Number(initialInvoice.security_deposit) || 0;
+              const nextTotal = toMoney(
+                (Number(initialInvoice.total_amount) || 0)
+                - previousRent
+                - previousDeposit
+                + rent
+                + securityDeposit,
+              );
+              Object.assign(initialInvoice, {
+                rent_charge: rent,
+                security_deposit: securityDeposit,
+                total_amount: nextTotal,
+              });
+              const initialPayments = (mockStore[COLLECTIONS.PAYMENTS] || [])
+                .filter((payment) => payment.invoice_id === initialInvoice.id);
+              const paidTotal = initialPayments.reduce(
+                (sum, payment) => sum + (Number(payment.amount_paid) || 0),
+                0,
+              );
+              initialInvoice.status = paidTotal >= nextTotal
+                ? 'paid'
+                : paidTotal > 0 ? 'partial' : 'unpaid';
+              occupantLease.security_deposit_amount = securityDeposit;
+              occupantLease.security_deposit_paid = securityDeposit <= 0
+                || getInvoicePaymentBreakdown(initialInvoice, initialPayments)
+                  .find((charge) => charge.type === 'security_deposit')?.balance === 0;
+            }
+          }
           const currentInvoice = currentPeriodInvoices.find((item) => item.lease_id === occupantLease.id
             && item.billing_period === newInvoice.billing_period && item.invoice_type === 'monthly');
           if (!currentInvoice) return;
@@ -2684,7 +3029,7 @@ export async function getInvoiceWithPayments(invoiceId, excludePaymentId = null)
     
     return {
       ...invoice,
-      security_deposit: 0,
+      security_deposit: Number(invoice.security_deposit) || 0,
       total_amount: getInvoiceTotalAmount(invoice),
       tenantName: tenant ? `${tenant.first_name} ${tenant.last_name}` : null,
       roomNumber: room ? parseInt(room.room_number, 10) : null,

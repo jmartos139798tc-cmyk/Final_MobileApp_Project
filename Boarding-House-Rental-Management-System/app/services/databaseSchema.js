@@ -24,6 +24,7 @@ export const COLLECTIONS = {
   ROOM_CHANGE_REQUESTS: 'room_change_requests',
   ANNOUNCEMENTS: 'announcements',
   TENANT_NOTIFICATIONS: 'tenant_notifications',
+  TENANT_MOVE_OUT_REQUESTS: 'tenant_move_out_requests',
 };
 
 /**
@@ -66,7 +67,7 @@ export const COLLECTIONS = {
  *    - FK: tenant_id -> TENANTS.tenant_id
  *    - FK: room_id -> ROOMS.room_id
  *    - Fields: start_date, end_date, agreed_monthly_rent, due_day_of_month, 
- *      security_deposit_amount (legacy, always 0), security_deposit_paid (legacy, always false),
+ *      security_deposit_amount (one month of per-tenant room rent), security_deposit_paid,
  *      status ('active'|'terminated')
  * 
  * 8. UTILITY_READINGS: Electricity consumption records per room
@@ -78,7 +79,7 @@ export const COLLECTIONS = {
  *    - PK: invoice_id
  *    - FK: lease_id -> LEASES.lease_id
  *    - Fields: billing_period ('2026-09'), invoice_type ('initial'|'monthly'|'final'),
- *      rent_charge, utility_charge, water_charge, security_deposit (legacy, always 0), other_charges, additional_charges,
+ *      rent_charge, utility_charge, water_charge, security_deposit (initial invoice only), other_charges, additional_charges,
  *      total_amount, due_date, status ('paid'|'unpaid'|'partial'), created_at, notes
  *    - Per-item paid/partial/unpaid states are derived from PAYMENTS.charge_type and amount_paid.
  *    - Tenant is determined through lease_id -> LEASES.tenant_id; do not duplicate tenant_id here.

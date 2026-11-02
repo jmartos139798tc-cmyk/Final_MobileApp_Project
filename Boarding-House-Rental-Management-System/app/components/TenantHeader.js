@@ -27,6 +27,8 @@ export default function TenantHeader({
   onNotificationRead,
   onNotificationsPress,
   onSettingsPress,
+  onMoveOutPress,
+  showMoveOut = false,
   isDark,
   onThemeToggle,
 }) {
@@ -364,6 +366,20 @@ export default function TenantHeader({
             <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 0.8, paddingHorizontal: 12, paddingTop: 8, paddingBottom: 6, textTransform: 'uppercase' }}>
               Profile
             </Text>
+
+            {showMoveOut && <TouchableOpacity
+              onPress={() => {
+                setProfileMenuVisible(false);
+                onMoveOutPress?.();
+              }}
+              activeOpacity={0.75}
+              accessibilityRole="button"
+              accessibilityLabel="Request to move out"
+              style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 12, borderRadius: 11 }}
+            >
+              <Ionicons name="exit-outline" size={19} color={colors.textSecondary} />
+              <Text style={{ flex: 1, marginLeft: 12, color: colors.text, fontSize: 14, fontWeight: '600' }}>Request to move out</Text>
+            </TouchableOpacity>}
 
             <TouchableOpacity
               onPress={() => {

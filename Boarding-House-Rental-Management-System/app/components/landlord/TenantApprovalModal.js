@@ -13,6 +13,7 @@ export default function TenantApprovalModal({ visible, tenant, onClose, onSucces
   const [roomLoadFailed, setRoomLoadFailed] = useState(false);
   const [selectedRoomId, setSelectedRoomId] = useState('');
   const [monthlyRent, setMonthlyRent] = useState('');
+  const [securityDepositAmount, setSecurityDepositAmount] = useState('');
   const [dueDay, setDueDay] = useState('5');
   const [dueDate, setDueDate] = useState(() => {
     const today = new Date();
@@ -29,13 +30,14 @@ export default function TenantApprovalModal({ visible, tenant, onClose, onSucces
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [receiptViewerVisible, setReceiptViewerVisible] = useState(false);
   const [receiptZoom, setReceiptZoom] = useState(1);
+  const [receiptImageFailed, setReceiptImageFailed] = useState(false);
   const pinchDistance = useRef(null);
 
   useEffect(() => {
     if (visible) {
       loadVacantRooms();
     }
-  }, [visible, tenant?.tenantId, tenant?.preferredRoomId]);
+  }, [visible, tenant?.tenantId, tenant?.preferredRoomId, tenant?.initialPaymentAmount, tenant?.securityDepositPaidAmount]);
 
   const loadVacantRooms = async () => {
     try {
@@ -50,6 +52,7 @@ export default function TenantApprovalModal({ visible, tenant, onClose, onSucces
         const initialRoom = preferredRoom || rooms[0];
         setSelectedRoomId(initialRoom.id);
         setMonthlyRent(String(initialRoom.baseRent));
+        setSecurityDepositAmount(String(initialRoom.securityDeposit ?? initialRoom.baseRent));
       } else {
         setError('No available rooms for assignment.');
       }
@@ -65,6 +68,7 @@ export default function TenantApprovalModal({ visible, tenant, onClose, onSucces
   const handleRoomSelect = (room) => {
     setSelectedRoomId(room.id);
     setMonthlyRent(String(room.baseRent));
+    setSecurityDepositAmount(String(room.securityDeposit ?? room.baseRent));
     setError('');
   };
 
@@ -81,9 +85,12 @@ export default function TenantApprovalModal({ visible, tenant, onClose, onSucces
         tenantId: tenant.tenantId,
         roomId: selectedRoomId,
         monthlyRent: rent,
+        securityDepositAmount: Number(securityDepositAmount),
+        // Approval confirms the tenant-submitted amounts and records them on the initial invoice.
+        securityDepositPaidAmount: Number(tenant?.securityDepositPaidAmount) || 0,
         dueDay: day,
         dueDate,
-        initialPaymentAmount: tenant.initialPaymentAmount,
+        initialPaymentAmount: Number(tenant?.initialPaymentAmount) || 0,
         initialPaymentMethod: tenant.paymentMethod,
         initialPaymentDate: tenant.paymentDate,
         initialPaymentReference: tenant.paymentReference,
@@ -117,6 +124,16 @@ export default function TenantApprovalModal({ visible, tenant, onClose, onSucces
       const rent = parseFloat(monthlyRent);
       if (isNaN(rent) || rent <= 0) {
         setError('Please enter a valid monthly rent amount');
+        return;
+      }
+
+      const deposit = Number(securityDepositAmount);
+      if (!securityDepositAmount.trim() || !Number.isFinite(deposit) || deposit < 0) {
+        setError('Please enter a valid security deposit amount');
+        return;
+      }
+      if ((Number(tenant.securityDepositPaidAmount) || 0) > deposit) {
+        setError('The security deposit paid cannot exceed the room security deposit.');
         return;
       }
 
@@ -174,6 +191,10 @@ export default function TenantApprovalModal({ visible, tenant, onClose, onSucces
     setReceiptZoom(1);
     setReceiptViewerVisible(true);
   };
+
+  useEffect(() => {
+    setReceiptImageFailed(false);
+  }, [tenant?.paymentProofUrl]);
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={() => !submitting && onClose()}>
@@ -240,47 +261,55 @@ export default function TenantApprovalModal({ visible, tenant, onClose, onSucces
             </View>
           </View>
 
-          {!!tenant.preferredRoomNumber && (
-            <View style={{ backgroundColor: colors.accentBg, padding: 11, borderRadius: 10, marginTop: -8, marginBottom: 14 }}>
-              <Text style={{ fontSize: fs(13), color: colors.accent, fontWeight: '700' }}>
-                Tenant preference: Room {tenant.preferredRoomNumber}. {preferredRoomAvailable ? 'It is selected by default; confirm it or choose another available room.' : 'It is full or unavailable; choose another available room.'}
-              </Text>
-            </View>
-          )}
-
-          {!!tenant.initialPaymentAmount && (
-            <View style={{ backgroundColor: colors.accentBg, padding: 12, borderRadius: 10, marginBottom: 14 }}>
-              <Text style={{ fontSize: fs(13), color: colors.accent, fontWeight: '800', marginBottom: 4 }}>
-                {tenant.paymentProofUrl ? 'Initial payment proof submitted' : 'Initial cash payment reported'}
-              </Text>
-              <Text style={{ fontSize: fs(12), color: colors.textSecondary, marginBottom: 9 }}>
-                ₱{Number(tenant.initialPaymentAmount || 0).toLocaleString()} · paid {tenant.paymentDate || 'date not provided'}{tenant.paymentReference ? ` · Ref ${tenant.paymentReference}` : ''}
-              </Text>
-              <Text style={{ fontSize: fs(12), color: colors.textSecondary, marginBottom: 9 }}>
-                Payment method: {tenant.paymentMethod === 'gcash' ? 'GCash' : 'Cash'}
-              </Text>
-              {tenant.paymentProofUrl ? (
-                <>
-                  <TouchableOpacity
-                    accessibilityRole="button"
-                    accessibilityLabel="Open payment proof image to zoom"
-                    onPress={openReceiptViewer}
-                    style={{ height: 150, borderRadius: 8, backgroundColor: colors.card, overflow: 'hidden' }}
-                  >
-                    <Image source={{ uri: tenant.paymentProofUrl }} resizeMode="contain" style={{ width: '100%', height: '100%' }} />
-                    <View style={{ position: 'absolute', right: 8, bottom: 8, backgroundColor: 'rgba(0,0,0,0.62)', borderRadius: 16, padding: 7 }}>
-                      <Ionicons name="expand-outline" size={17} color="#fff" />
-                    </View>
-                  </TouchableOpacity>
-                  <Text style={{ fontSize: fs(11), color: colors.warningText, fontWeight: '700', marginTop: 7 }}>Verify the receipt before approving the application.</Text>
-                </>
+          {String(tenant?.paymentMethod || '').toLowerCase() === 'gcash' && (
+            <View style={{ backgroundColor: colors.bg, padding: 12, borderRadius: 12, marginBottom: 16 }}>
+              <Text style={{ fontSize: fs(14), fontWeight: '700', color: colors.text, marginBottom: 8 }}>GCash payment proof</Text>
+              {tenant?.paymentProofUrl && !receiptImageFailed ? (
+                <TouchableOpacity
+                  accessibilityRole="button"
+                  accessibilityLabel="Open and zoom GCash payment proof"
+                  onPress={openReceiptViewer}
+                  activeOpacity={0.8}
+                >
+                  <Image
+                    source={{ uri: tenant.paymentProofUrl }}
+                    resizeMode="cover"
+                    onError={() => setReceiptImageFailed(true)}
+                    style={{ width: '100%', height: 180, borderRadius: 8, backgroundColor: colors.card }}
+                  />
+                  <Text style={{ color: colors.accent, fontSize: fs(12), fontWeight: '700', marginTop: 6 }}>Tap to view and zoom</Text>
+                </TouchableOpacity>
               ) : (
-                <Text style={{ fontSize: fs(11), color: colors.warningText, fontWeight: '700', marginTop: 3 }}>
-                  Confirm that the cash was received before approving the application.
+                <Text style={{ color: colors.textSecondary, fontSize: fs(13), lineHeight: 19 }}>
+                  {receiptImageFailed ? 'The proof image could not be loaded. Close and reopen this request to refresh it.' : 'No GCash proof image was attached to this request.'}
                 </Text>
               )}
             </View>
           )}
+
+          <View style={{ backgroundColor: colors.bg, padding: 12, borderRadius: 12, marginBottom: 16 }}>
+            <Text style={{ fontSize: fs(14), fontWeight: '700', color: colors.text, marginBottom: 10 }}>Tenant-submitted room & payment setup</Text>
+            <View style={{ gap: 7 }}>
+              {[
+                ['Preferred room', tenant?.preferredRoomNumber ? `Room ${tenant.preferredRoomNumber}` : 'Not specified'],
+                ['1 month advance reported paid', `PHP ${Number(tenant?.initialPaymentAmount || 0).toLocaleString()}`],
+                ['Security deposit reported paid', `PHP ${Number(tenant?.securityDepositPaidAmount || 0).toLocaleString()}`],
+                ['Total reported sent', `PHP ${(Number(tenant?.initialPaymentAmount || 0) + Number(tenant?.securityDepositPaidAmount || 0)).toLocaleString()}`],
+                ['Payment method', String(tenant?.paymentMethod || 'cash').toUpperCase()],
+                ['Payment date', tenant?.paymentDate || 'Not provided'],
+                ...(tenant?.paymentReference ? [['Reference', tenant.paymentReference]] : []),
+                ['Review status', tenant?.paymentProofStatus || 'Awaiting staff review'],
+              ].map(([label, value]) => (
+                <View key={label} style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
+                  <Text style={{ flex: 1, color: colors.textSecondary, fontSize: fs(12) }}>{label}</Text>
+                  <Text style={{ flex: 1, color: colors.text, fontSize: fs(12), fontWeight: '600', textAlign: 'right' }}>{value}</Text>
+                </View>
+              ))}
+            </View>
+            <Text style={{ color: colors.textMuted, fontSize: fs(11), lineHeight: 16, marginTop: 10 }}>
+              These are the amounts the tenant reported in setup. Confirm the payment details before approving; approved amounts are recorded against the initial invoice.
+            </Text>
+          </View>
 
           {/* Error Display */}
           {!!error && (
@@ -399,6 +428,32 @@ export default function TenantApprovalModal({ visible, tenant, onClose, onSucces
               }}
             />
 
+            <Text style={{ fontSize: fs(14), fontWeight: '700', color: colors.text, marginBottom: 8 }}>
+              Security Deposit <Text style={{ color: colors.dangerText }}>*</Text>
+            </Text>
+            <TextInput
+              value={securityDepositAmount}
+              onChangeText={(value) => {
+                setSecurityDepositAmount(value);
+                setError('');
+              }}
+              placeholder="Enter security deposit"
+              placeholderTextColor={colors.textMuted}
+              keyboardType="numeric"
+              editable={!submitting}
+              style={{
+                backgroundColor: colors.bg,
+                borderWidth: 1,
+                borderColor: colors.cardBorder,
+                borderRadius: 8,
+                paddingHorizontal: 12,
+                paddingVertical: 12,
+                fontSize: fs(15),
+                color: colors.text,
+                marginBottom: 16,
+              }}
+            />
+
             {/* Initial invoice due date */}
             <Text style={{ fontSize: fs(14), fontWeight: '700', color: colors.text, marginBottom: 8 }}>
               Initial Payment Due Date <Text style={{ color: colors.dangerText }}>*</Text>
@@ -472,53 +527,24 @@ export default function TenantApprovalModal({ visible, tenant, onClose, onSucces
 
             {/* Payment Summary */}
             {parseFloat(monthlyRent) > 0 && (
-              <View
-                style={{
-                  backgroundColor: colors.successBg,
-                  padding: 16,
-                  borderRadius: 12,
-                  marginBottom: 16,
-                }}
-              >
-                <Text style={{ fontSize: fs(14), fontWeight: '700', color: colors.successText, marginBottom: 12 }}>
-                  Initial Payment Summary
-                </Text>
+              <View style={{ backgroundColor: colors.successBg, padding: 16, borderRadius: 12, marginBottom: 16 }}>
+                <Text style={{ fontSize: fs(14), fontWeight: '700', color: colors.successText, marginBottom: 12 }}>Tenant-submitted payment amounts</Text>
                 <View style={{ gap: 8 }}>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                    <Text style={{ fontSize: fs(14), color: colors.text }}>One month rent</Text>
-                    <Text style={{ fontSize: fs(14), fontWeight: '600', color: colors.text }}>
-                      ₱{parseFloat(monthlyRent).toLocaleString()}
-                    </Text>
+                    <Text style={{ fontSize: fs(14), color: colors.text }}>1 month advance reported paid</Text>
+                    <Text style={{ fontSize: fs(14), fontWeight: '600', color: colors.text }}>PHP {Number(tenant?.initialPaymentAmount || 0).toLocaleString()}</Text>
                   </View>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                    <Text style={{ fontSize: fs(14), color: colors.text }}>Tenant payment submitted</Text>
-                    <Text style={{ fontSize: fs(14), fontWeight: '600', color: colors.text }}>
-                      ₱{Number(tenant.initialPaymentAmount || 0).toLocaleString()}
-                    </Text>
+                    <Text style={{ fontSize: fs(14), color: colors.text }}>Security deposit reported paid</Text>
+                    <Text style={{ fontSize: fs(14), fontWeight: '600', color: colors.text }}>PHP {Number(tenant?.securityDepositPaidAmount || 0).toLocaleString()}</Text>
                   </View>
+                  <View style={{ height: 1, backgroundColor: colors.cardBorder, marginVertical: 4 }} />
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                    <Text style={{ flex: 1, marginRight: 8, fontSize: fs(14), color: colors.text }}>Remaining rent if approved</Text>
-                    <Text style={{ fontSize: fs(14), fontWeight: '600', color: colors.text }}>
-                      ₱{Math.max(0, parseFloat(monthlyRent) - Number(tenant.initialPaymentAmount || 0)).toLocaleString()}
-                    </Text>
-                  </View>
-                  <View
-                    style={{
-                      height: 1,
-                      backgroundColor: colors.cardBorder,
-                      marginVertical: 4,
-                    }}
-                  />
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                    <Text style={{ flex: 1, marginRight: 8, fontSize: fs(15), fontWeight: '700', color: colors.text }}>Total Due (1 month advance)</Text>
-                    <Text style={{ fontSize: fs(16), fontWeight: '700', color: colors.successText }}>
-                      ₱{calculateInitialPayment().toLocaleString()}
-                    </Text>
+                    <Text style={{ flex: 1, marginRight: 8, fontSize: fs(15), fontWeight: '700', color: colors.text }}>Total reported sent</Text>
+                    <Text style={{ fontSize: fs(16), fontWeight: '700', color: colors.successText }}>PHP {(Number(tenant?.initialPaymentAmount || 0) + Number(tenant?.securityDepositPaidAmount || 0)).toLocaleString()}</Text>
                   </View>
                 </View>
-                <Text style={{ fontSize: fs(11), color: colors.textSecondary, lineHeight: 16, marginTop: 10 }}>
-                  If approved, the payment is credited to the initial invoice. Any remaining rent, Wi-Fi, and other initial charges stay in the tenant&apos;s balance.
-                </Text>
+                <Text style={{ color: colors.textMuted, fontSize: fs(11), lineHeight: 16, marginTop: 10 }}>Room rent and deposit charges are set above and determine the invoice; these figures show the tenant’s submitted payment amounts.</Text>
               </View>
             )}
           </ScrollView>
@@ -662,18 +688,16 @@ export default function TenantApprovalModal({ visible, tenant, onClose, onSucces
               <View style={{ width: 52, height: 52, borderRadius: 26, backgroundColor: colors.accentBg, alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
                 <Ionicons name="person-add-outline" size={25} color={colors.accent} />
               </View>
-              <Text style={{ fontSize: fs(20), fontWeight: '800', color: colors.text, textAlign: 'center' }}>Approve tenant?</Text>
-              <Text style={{ fontSize: fs(14), color: colors.textSecondary, textAlign: 'center', marginTop: 6 }}>
-                {tenant.name} will be assigned to the selected room.
-              </Text>
+              <Text style={{ fontSize: fs(20), fontWeight: '800', color: colors.text, textAlign: 'center' }}>Confirm tenant approval</Text>
             </View>
 
             <View style={{ backgroundColor: colors.bg, borderRadius: 12, padding: 14, gap: 11, marginBottom: 20 }}>
               {[
                 ['Room', `Room ${vacantRooms.find((room) => room.id === selectedRoomId)?.displayNumber || ''}`],
-                ['Monthly rent', `PHP ${parseFloat(monthlyRent).toLocaleString()}`],
-                ['Initial payment', `PHP ${calculateInitialPayment().toLocaleString()}`],
-                ['Payment due', dueDate],
+                ['1 month advance reported paid', `PHP ${Number(tenant?.initialPaymentAmount || 0).toLocaleString()}`],
+                ['Security deposit reported paid', `PHP ${Number(tenant?.securityDepositPaidAmount || 0).toLocaleString()}`],
+                ['Total reported sent', `PHP ${(Number(tenant?.initialPaymentAmount || 0) + Number(tenant?.securityDepositPaidAmount || 0)).toLocaleString()}`],
+                ['Date Approve', new Date().toLocaleDateString()],
               ].map(([label, value]) => (
                 <View key={label} style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
                   <Text style={{ fontSize: fs(14), color: colors.textSecondary }}>{label}</Text>
@@ -695,7 +719,7 @@ export default function TenantApprovalModal({ visible, tenant, onClose, onSucces
                 disabled={submitting}
                 style={{ flex: 1.25, minHeight: 48, borderRadius: 11, backgroundColor: colors.successText, alignItems: 'center', justifyContent: 'center' }}
               >
-                {submitting ? <ActivityIndicator size="small" color="#fff" /> : <Text style={{ fontSize: fs(14), fontWeight: '700', color: '#fff' }}>Confirm approval</Text>}
+                {submitting ? <ActivityIndicator size="small" color="#fff" /> : <Text style={{ fontSize: fs(14), fontWeight: '700', color: '#fff' }}>Confirm and approve</Text>}
               </TouchableOpacity>
             </View>
           </Pressable>

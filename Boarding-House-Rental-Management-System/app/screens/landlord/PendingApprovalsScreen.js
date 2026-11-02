@@ -4,7 +4,7 @@ import { View, Text, ScrollView, TouchableOpacity, RefreshControl, ActivityIndic
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../utils/ThemeContext';
 import { isMobile, getResponsivePadding, fs, spacing, cardStyle } from '../../utils/responsive';
-import { getPendingTenantRegistrations } from '../../services/dataService';
+import { getPendingTenantRegistrations, getPendingMoveOutRequests, reviewTenantMoveOutRequest } from '../../services/dataService';
 import TenantApprovalModal from '../../components/landlord/TenantApprovalModal';
 import TenantRejectionModal from '../../components/landlord/TenantRejectionModal';
 import TenantListPager from '../../components/landlord/TenantListPager';
@@ -17,6 +17,8 @@ export default function PendingApprovalsScreen() {
   const padding = getResponsivePadding();
   
   const [pendingTenants, setPendingTenants] = useState([]);
+  const [moveOutRequests, setMoveOutRequests] = useState([]);
+  const [reviewingMoveOutId, setReviewingMoveOutId] = useState(null);
   const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -31,8 +33,12 @@ export default function PendingApprovalsScreen() {
   const loadPendingTenants = async () => {
     try {
       setError(null);
-      const data = await getPendingTenantRegistrations();
+      const [data, requests] = await Promise.all([
+        getPendingTenantRegistrations(),
+        getPendingMoveOutRequests(),
+      ]);
       setPendingTenants(data);
+      setMoveOutRequests(requests);
     } catch (err) {
       console.error('Error loading pending tenants:', err);
       setError('Failed to load pending approvals. Please try again.');
@@ -49,6 +55,7 @@ export default function PendingApprovalsScreen() {
   useRealtimeRefresh('landlord-pending-approvals-list', [
     { table: 'tenants' },
     { table: 'room_assignment_requests' },
+    { table: 'tenant_move_out_requests' },
   ], () => {
     setRealtimeVersion((version) => version + 1);
   });
@@ -86,6 +93,20 @@ export default function PendingApprovalsScreen() {
     setSelectedTenant(null);
   };
 
+  const handleMoveOutDecision = async (request, status) => {
+    if (reviewingMoveOutId) return;
+    try {
+      setReviewingMoveOutId(request.id);
+      await reviewTenantMoveOutRequest(request.id, status);
+      await loadPendingTenants();
+    } catch (err) {
+      console.error('Could not review move-out request:', err);
+      setError(err?.message || 'Could not update the move-out request. Please try again.');
+    } finally {
+      setReviewingMoveOutId(null);
+    }
+  };
+
   const formatDate = (dateStr) => {
     try {
       const date = new Date(dateStr);
@@ -93,6 +114,12 @@ export default function PendingApprovalsScreen() {
     } catch {
       return dateStr;
     }
+  };
+  const formatMoveOutDate = (dateStr) => {
+    const match = String(dateStr || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!match) return dateStr || 'Date not provided';
+    return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
+      .toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
   };
 
   const pageCount = Math.max(1, Math.ceil(pendingTenants.length / TENANTS_PER_PAGE));
@@ -126,9 +153,66 @@ export default function PendingApprovalsScreen() {
           </Text>
           <Text style={{ fontSize: fs(32), color: colors.text, fontWeight: '700' }}>Pending Approvals</Text>
           <Text style={{ fontSize: fs(15), color: colors.textSecondary, marginTop: 4 }}>
-            Review and approve tenant registrations
+            Review tenant applications and move-out requests
           </Text>
         </View>
+
+        {moveOutRequests.length > 0 && (
+          <View style={{ marginBottom: spacing.lg }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.sm }}>
+              <Text style={{ color: colors.text, fontSize: fs(20), fontWeight: '800' }}>Move-out Requests</Text>
+              <View style={{ backgroundColor: colors.warningBg, borderRadius: 12, paddingHorizontal: 10, paddingVertical: 5 }}>
+                <Text style={{ color: colors.warningText, fontSize: fs(12), fontWeight: '800' }}>{moveOutRequests.length} PENDING</Text>
+              </View>
+            </View>
+            <View style={{ gap: spacing.sm }}>
+              {moveOutRequests.map((request) => (
+                <View key={request.id} style={{ ...cardStyle, backgroundColor: colors.card, borderColor: colors.cardBorder, padding: 16 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
+                    <View style={{ width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.accentBg }}>
+                      <Ionicons name="exit-outline" size={22} color={colors.accent} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: colors.text, fontSize: fs(17), fontWeight: '800' }}>{request.tenant_name}</Text>
+                      {!!request.room_number && <Text style={{ color: colors.textSecondary, fontSize: fs(13), marginTop: 3 }}>Room {request.room_number}</Text>}
+                      {!!request.tenant_phone && <Text style={{ color: colors.textSecondary, fontSize: fs(13), marginTop: 2 }}>{request.tenant_phone}</Text>}
+                      <Text style={{ color: colors.text, fontSize: fs(14), fontWeight: '700', marginTop: 10 }}>
+                        Planned leaving date: {formatMoveOutDate(request.requested_move_out_date)}
+                      </Text>
+                      <View style={{ marginTop: 10, gap: 5 }}>
+                        <Text style={{ color: colors.textSecondary, fontSize: fs(12) }}>
+                          1 month advance paid: <Text style={{ color: colors.text, fontWeight: '800' }}>₱{Number(request.advancePaid || 0).toLocaleString()} / ₱{Number(request.advanceTotal || 0).toLocaleString()}</Text>
+                        </Text>
+                        <Text style={{ color: colors.textSecondary, fontSize: fs(12) }}>
+                          Security deposit paid: <Text style={{ color: colors.text, fontWeight: '800' }}>₱{Number(request.securityDepositPaid || 0).toLocaleString()} / ₱{Number(request.securityDepositTotal || 0).toLocaleString()}</Text>
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={{ backgroundColor: colors.warningBg, borderRadius: 10, paddingHorizontal: 9, paddingVertical: 5 }}>
+                      <Text style={{ color: colors.warningText, fontSize: fs(10), fontWeight: '800' }}>PENDING</Text>
+                    </View>
+                  </View>
+                  <View style={{ flexDirection: 'row', gap: 10, marginTop: 15 }}>
+                    <TouchableOpacity
+                      disabled={Boolean(reviewingMoveOutId)}
+                      onPress={() => handleMoveOutDecision(request, 'declined')}
+                      style={{ flex: 1, minHeight: 44, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.dangerBg, opacity: reviewingMoveOutId ? 0.6 : 1 }}
+                    >
+                      <Text style={{ color: colors.dangerText, fontSize: fs(14), fontWeight: '800' }}>Decline</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      disabled={Boolean(reviewingMoveOutId)}
+                      onPress={() => handleMoveOutDecision(request, 'approved')}
+                      style={{ flex: 1, minHeight: 44, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.successText, opacity: reviewingMoveOutId ? 0.6 : 1 }}
+                    >
+                      {reviewingMoveOutId === request.id ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontSize: fs(14), fontWeight: '800' }}>Approve</Text>}
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
 
         {/* Error Display */}
         {error && (
@@ -151,7 +235,7 @@ export default function PendingApprovalsScreen() {
         )}
 
         {/* Pending Tenants List */}
-        {pendingTenants.length === 0 && !error ? (
+        {pendingTenants.length === 0 && moveOutRequests.length === 0 && !error ? (
           <View style={{ ...cardStyle, backgroundColor: colors.card, borderColor: colors.cardBorder, padding: 48, alignItems: 'center' }}>
             <Ionicons name="checkmark-done-circle-outline" size={64} color={colors.textMuted} />
             <Text style={{ fontSize: fs(18), fontWeight: '700', color: colors.text, marginTop: 16 }}>All Caught Up!</Text>

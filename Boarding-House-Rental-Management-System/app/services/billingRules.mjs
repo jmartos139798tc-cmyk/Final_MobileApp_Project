@@ -2,10 +2,7 @@
 export function getInvoiceTotalAmount(invoice) {
   const total = Number(invoice?.total_amount) || 0;
   const waterCharge = Number(invoice?.water_charge) || 0;
-  const legacyDeposit = invoice?.invoice_type === 'initial'
-    ? Number(invoice.security_deposit) || 0
-    : 0;
-  return Math.max(0, Math.round((total - waterCharge - legacyDeposit) * 100) / 100);
+  return Math.max(0, Math.round((total - waterCharge) * 100) / 100);
 }
 
 /** Match an already-recorded transaction so proof retries cannot duplicate it. */
@@ -56,14 +53,15 @@ export function getInvoiceChargeBreakdown(invoice, payments = []) {
   const rent = Math.max(0, Number(invoice?.rent_charge) || 0);
   const electricity = Math.max(0, Number(invoice?.utility_charge) || 0);
   const water = Math.max(0, Number(invoice?.water_charge) || 0);
+  const securityDeposit = invoice?.invoice_type === 'initial' ? Math.max(0, Number(invoice?.security_deposit) || 0) : 0;
   const additionalCharges = Array.isArray(invoice?.additional_charges) ? invoice.additional_charges : [];
   const wifiCharge = additionalCharges.find((charge) =>
     charge.id === 'wifi' || String(charge.label || '').toLowerCase() === 'wi-fi',
   );
   const wifi = Math.max(0, Number(wifiCharge?.amount ?? invoice?.other_charges) || 0);
-  const other = Math.max(0, Math.round((getInvoiceTotalAmount(invoice) - rent - electricity - wifi) * 100) / 100);
-  const totals = { rent, electricity, water, wifi, other };
-  const directPaid = { rent: 0, electricity: 0, water: 0, wifi: 0, other: 0 };
+  const other = Math.max(0, Math.round((getInvoiceTotalAmount(invoice) - rent - electricity - water - securityDeposit - wifi) * 100) / 100);
+  const totals = { rent, electricity, water, security_deposit: securityDeposit, wifi, other };
+  const directPaid = { rent: 0, electricity: 0, water: 0, security_deposit: 0, wifi: 0, other: 0 };
   let unallocatedPaid = 0;
 
   payments
@@ -84,10 +82,11 @@ export function getInvoiceChargeBreakdown(invoice, payments = []) {
     { type: 'rent', label: 'Rent' },
     { type: 'electricity', label: 'Electricity' },
     { type: 'water', label: 'Water' },
+    { type: 'security_deposit', label: 'Security deposit' },
     { type: 'wifi', label: 'Wi-Fi' },
     { type: 'other', label: 'Other charges' },
   ]
-    .filter((item) => item.type !== 'other' || totals.other > 0)
+    .filter((item) => (item.type !== 'other' || totals.other > 0) && (item.type !== 'security_deposit' || totals.security_deposit > 0))
     .map((item) => {
       const billed = Math.round(totals[item.type] * 100) / 100;
       const unallocatedForItem = Math.min(unallocatedPaid, Math.max(0, billed - directPaid[item.type]));

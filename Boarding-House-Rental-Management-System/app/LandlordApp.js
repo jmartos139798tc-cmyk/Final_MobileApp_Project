@@ -46,6 +46,7 @@ export default function LandlordApp({ user, onLogout }) {
     { table: 'complaints' },
     { table: 'payment_proofs' },
     { table: 'payments' },
+    { table: 'tenant_move_out_requests' },
   ], () => {
     setRealtimeVersion((version) => version + 1);
   });

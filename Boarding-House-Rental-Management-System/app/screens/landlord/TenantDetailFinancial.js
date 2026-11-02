@@ -4,7 +4,7 @@ import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'rea
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../utils/ThemeContext';
 import { isMobile, getResponsivePadding, fs, spacing, cardStyle, safeAreaTop } from '../../utils/responsive';
-import { getTenantFinancialSummary, getTenantPaymentHistory } from '../../services/dataService';
+import { getTenantFinancialSummary, getTenantPaymentHistory, getTenantMoveOutRequest, reviewTenantMoveOutRequest } from '../../services/dataService';
 import RecordPaymentModal from '../../components/landlord/RecordPaymentModal';
 import useRealtimeRefresh from '../../hooks/useRealtimeRefresh';
 
@@ -12,6 +12,7 @@ const PAYMENT_ITEM_LABELS = {
   rent: 'Rent',
   electricity: 'Electricity',
   water: 'Water',
+  security_deposit: 'Security deposit',
   wifi: 'Wi-Fi',
   other: 'Other charges',
   unallocated: 'Invoice balance',
@@ -29,10 +30,13 @@ export default function TenantDetailFinancial({ route, navigation }) {
   const [realtimeVersion, setRealtimeVersion] = useState(0);
   const [editingPayment, setEditingPayment] = useState(null);
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
+  const [moveOutRequest, setMoveOutRequest] = useState(null);
+  const [moveOutReviewing, setMoveOutReviewing] = useState(false);
 
   useRealtimeRefresh(`landlord-tenant-financial-detail-${tenantId}`, [
     { table: 'invoices' },
     { table: 'payments' },
+    { table: 'tenant_move_out_requests', filter: `tenant_id=eq.${tenantId}` },
   ], () => setRealtimeVersion((version) => version + 1));
 
   useEffect(() => {
@@ -44,18 +48,33 @@ export default function TenantDetailFinancial({ route, navigation }) {
       setLoading(true);
       setError(null);
       
-      const [summaryData, historyData] = await Promise.all([
+      const [summaryData, historyData, moveOutData] = await Promise.all([
         getTenantFinancialSummary(tenantId),
         getTenantPaymentHistory(tenantId),
+        getTenantMoveOutRequest(tenantId),
       ]);
       
       setSummary(summaryData);
       setPaymentHistory(historyData);
+      setMoveOutRequest(moveOutData);
     } catch (err) {
       console.error('Error loading tenant details:', err);
       setError('Failed to load tenant financial details.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const decideMoveOut = async (status) => {
+    if (!moveOutRequest?.id || moveOutReviewing) return;
+    try {
+      setMoveOutReviewing(true);
+      await reviewTenantMoveOutRequest(moveOutRequest.id, status);
+      await loadTenantDetails();
+    } catch (reviewError) {
+      setError(reviewError?.message || 'Could not save the move-out decision.');
+    } finally {
+      setMoveOutReviewing(false);
     }
   };
 
@@ -127,6 +146,31 @@ export default function TenantDetailFinancial({ route, navigation }) {
             </Text>
           )}
         </View>
+
+        {moveOutRequest && (
+          <View style={{ ...cardStyle, backgroundColor: colors.card, borderColor: colors.cardBorder, padding: 16, marginBottom: spacing.lg }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}>
+              <Ionicons name="exit-outline" size={20} color={colors.accent} />
+              <Text style={{ color: colors.text, fontSize: fs(16), fontWeight: '800' }}>Move-out request</Text>
+            </View>
+            <Text style={{ color: colors.textSecondary, fontSize: fs(14), marginTop: 10 }}>
+              Requested leaving date: {formatDate(moveOutRequest.requested_move_out_date)}
+            </Text>
+            <Text style={{ color: moveOutRequest.status === 'approved' ? colors.successText : colors.textMuted, fontSize: fs(13), fontWeight: '700', marginTop: 5, textTransform: 'capitalize' }}>
+              Status: {moveOutRequest.status}
+            </Text>
+            {moveOutRequest.status === 'pending' && (
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
+                <TouchableOpacity disabled={moveOutReviewing} onPress={() => decideMoveOut('declined')} style={{ flex: 1, minHeight: 42, borderRadius: 10, backgroundColor: colors.dangerBg, alignItems: 'center', justifyContent: 'center', opacity: moveOutReviewing ? 0.6 : 1 }}>
+                  <Text style={{ color: colors.dangerText, fontWeight: '700' }}>Decline</Text>
+                </TouchableOpacity>
+                <TouchableOpacity disabled={moveOutReviewing} onPress={() => decideMoveOut('approved')} style={{ flex: 1, minHeight: 42, borderRadius: 10, backgroundColor: colors.successBg, alignItems: 'center', justifyContent: 'center', opacity: moveOutReviewing ? 0.6 : 1 }}>
+                  <Text style={{ color: colors.successText, fontWeight: '700' }}>{moveOutReviewing ? 'Saving…' : 'Approve'}</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        )}
 
         {/* Financial Summary Cards */}
         <View style={{ gap: spacing.sm, marginBottom: spacing.lg }}>

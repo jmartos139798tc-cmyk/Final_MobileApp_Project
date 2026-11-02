@@ -399,6 +399,8 @@ export const SEED_DATA = {
       related_invoice_id: 'invoice-5',
     },
   ],
+
+  [COLLECTIONS.TENANT_MOVE_OUT_REQUESTS]: [],
 };
 
 // In-memory relational database state (clone of seed data)

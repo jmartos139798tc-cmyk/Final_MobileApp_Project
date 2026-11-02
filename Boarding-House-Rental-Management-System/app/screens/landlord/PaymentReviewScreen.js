@@ -23,6 +23,7 @@ const PAYMENT_ITEM_LABELS = {
   rent: 'Rent',
   electricity: 'Electricity',
   water: 'Water',
+  security_deposit: 'Security deposit',
   wifi: 'Wi-Fi',
   other: 'Other charges',
   unallocated: 'Invoice balance',

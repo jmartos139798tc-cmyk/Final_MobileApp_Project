@@ -46,6 +46,7 @@ export default function TenantApplicationStatusCard({ tenant, tenantId, refreshK
   const [submittingStage, setSubmittingStage] = useState('');
   const [error, setError] = useState('');
   const [paymentAmount, setPaymentAmount] = useState('');
+  const [securityDepositAmount, setSecurityDepositAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [paymentDate, setPaymentDate] = useState(toLocalDateString(new Date()));
   const [calendarMonth, setCalendarMonth] = useState(new Date());
@@ -78,6 +79,13 @@ export default function TenantApplicationStatusCard({ tenant, tenantId, refreshK
         : rooms[0]?.id || '');
       const initialRoom = rooms.find((room) => room.id === (request?.requestedRoomId && rooms.some((room) => room.id === request.requestedRoomId) ? request.requestedRoomId : rooms[0]?.id));
       setPaymentAmount(initialRoom ? String(initialRoom.estimatedRent) : request?.initialPaymentAmount?.toString() || '');
+      setSecurityDepositAmount(initialRoom
+        ? String(initialRoom.firstOccupantCoveredInitialCharges
+          ? 0
+          : request?.requestedRoomId === initialRoom.id && request?.securityDepositPaidAmount != null
+            ? request.securityDepositPaidAmount
+            : initialRoom.securityDeposit)
+        : '');
       setPaymentMethod(request?.paymentMethod || 'cash');
       const initialPaymentDate = request?.paymentDate || toLocalDateString(new Date());
       setPaymentDate(initialPaymentDate);
@@ -133,6 +141,14 @@ export default function TenantApplicationStatusCard({ tenant, tenantId, refreshK
       setError(`The payment cannot be more than one month of rent (₱${expectedAmount.toLocaleString()}).`);
       return;
     }
+    const depositAmount = Number(securityDepositAmount);
+    const depositDue = Number(selected?.securityDeposit || 0);
+    if (!securityDepositAmount.trim() || !Number.isFinite(depositAmount) || depositAmount < 0 || depositAmount > depositDue) {
+      setError(selected?.firstOccupantCoveredInitialCharges
+        ? 'The current tenant has already covered the room’s initial charges. Enter 0 for the security deposit.'
+        : `Enter a security deposit payment from 0 to ${depositDue.toLocaleString()} for this room.`);
+      return;
+    }
     if (!paymentDate.trim() || (paymentMethod === 'gcash' && !proofImage?.uri)) {
       setError(paymentMethod === 'gcash'
         ? 'Enter the payment date and attach your GCash payment proof.'
@@ -151,6 +167,7 @@ export default function TenantApplicationStatusCard({ tenant, tenantId, refreshK
         tenantId,
         requestedRoomId: selectedRoomId,
         paymentAmount,
+        securityDepositPaidAmount: depositAmount,
         paymentMethod,
         paymentDate,
         paymentReference: request?.paymentReference || '',
@@ -256,6 +273,7 @@ export default function TenantApplicationStatusCard({ tenant, tenantId, refreshK
                 <Text style={{ color: colors.textSecondary, fontSize: fs(11), marginTop: 3 }} numberOfLines={1}>
                   1 month advance
                 </Text>
+                {!!request?.securityDepositPaidAmount && <Text style={{ color: colors.textSecondary, fontSize: fs(11), marginTop: 3 }}>Security deposit paid: PHP {Number(request.securityDepositPaidAmount).toLocaleString()}</Text>}
               </View>
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 11, paddingHorizontal: 2 }}>
@@ -336,27 +354,25 @@ export default function TenantApplicationStatusCard({ tenant, tenantId, refreshK
               </View>
             ) : (
               <ScrollView style={{ flexShrink: 1 }} keyboardShouldPersistTaps="handled">
-                {selectedRoom && (
-                  <View style={{ backgroundColor: colors.accentBg, padding: 11, borderRadius: 10, marginBottom: 10 }}>
-                    <Text style={{ color: colors.text, fontSize: fs(12), fontWeight: '700' }}>One month rent</Text>
-                    <Text style={{ color: colors.textSecondary, fontSize: fs(12), marginBottom: 5 }}>₱{selectedRoom.estimatedRent.toLocaleString()}</Text>
-                  </View>
-                )}
                 {availableRooms.map((room) => {
                   const selected = selectedRoomId === room.id;
                   return (
                     <TouchableOpacity
                       key={room.id}
-                      onPress={() => { setSelectedRoomId(room.id); setPaymentAmount(String(room.estimatedRent)); setError(''); }}
+                      onPress={() => { setSelectedRoomId(room.id); setPaymentAmount(String(room.estimatedRent)); setSecurityDepositAmount(String(room.securityDeposit)); setError(''); }}
                       accessibilityRole="radio"
                       accessibilityState={{ selected }}
-                      style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 13, marginBottom: 8, borderRadius: 11, borderWidth: 1, borderColor: selected ? colors.accent : colors.cardBorder, backgroundColor: selected ? colors.accentBg : colors.bg }}
+                      style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, padding: 13, marginBottom: 8, borderRadius: 11, borderWidth: 1, borderColor: selected ? colors.accent : colors.cardBorder, backgroundColor: selected ? colors.accentBg : colors.bg }}
                     >
-                      <View style={{ flex: 1 }}>
+                      <View style={{ flex: 1, minWidth: 0 }}>
                         <Text style={{ color: colors.text, fontSize: fs(14), fontWeight: '800' }}>Room {room.number}</Text>
-                        <Text style={{ color: colors.textSecondary, fontSize: fs(12), marginTop: 3 }}>{room.type} · {room.occupancy} occupants · estimated rent ₱{room.estimatedRent.toLocaleString()}/month</Text>
+                        <Text style={{ color: colors.textSecondary, fontSize: fs(12), lineHeight: 17, marginTop: 5 }}>{room.type} · {room.occupancy} occupants</Text>
+                        <Text style={{ color: colors.textSecondary, fontSize: fs(12), lineHeight: 17, marginTop: 2 }}>Price: ₱{room.estimatedRent.toLocaleString()}/month</Text>
+                        {room.maxCapacity > 1 && room.occupantNames?.length > 0 && (
+                          <Text style={{ color: colors.textSecondary, fontSize: fs(12), lineHeight: 17, marginTop: 3 }}>Current tenant: {room.occupantNames.join(', ')}</Text>
+                        )}
                       </View>
-                      <Ionicons name={selected ? 'radio-button-on' : 'radio-button-off'} size={21} color={selected ? colors.accent : colors.textMuted} />
+                      <Ionicons style={{ marginTop: 1 }} name={selected ? 'radio-button-on' : 'radio-button-off'} size={21} color={selected ? colors.accent : colors.textMuted} />
                     </TouchableOpacity>
                   );
                 })}
@@ -364,7 +380,19 @@ export default function TenantApplicationStatusCard({ tenant, tenantId, refreshK
                   <>
                 <Text style={{ color: colors.text, fontSize: fs(13), fontWeight: '700', marginTop: 12, marginBottom: 6 }}>Amount paid toward one month advance *</Text>
                 <TextInput value={paymentAmount} onChangeText={setPaymentAmount} keyboardType="decimal-pad" placeholder="Enter amount paid" placeholderTextColor={colors.textMuted} style={{ backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 10, padding: 11, color: colors.text, marginBottom: 5 }} />
-                {selectedRoom ? <Text style={{ color: colors.textSecondary, fontSize: fs(11), marginBottom: 9 }}>Enter a partial or full payment up to the room&apos;s one month rent of ₱{selectedRoom.estimatedRent.toLocaleString()}. Any unpaid rent will be due with your initial invoice if your application is approved.</Text> : null}
+                <Text style={{ color: colors.textSecondary, fontSize: fs(12), marginTop: 5 }}>Security deposit due for this room: PHP {Number(selectedRoom?.securityDeposit || 0).toLocaleString()}</Text>
+                {selectedRoom?.firstOccupantCoveredInitialCharges ? (
+                  <Text style={{ color: colors.successText, fontSize: fs(12), marginTop: 5 }}>The current tenant has fully paid the room’s security deposit. You only need to pay your one-month advance.</Text>
+                ) : (
+                <Text style={{ color: colors.text, fontSize: fs(13), fontWeight: '700', marginTop: 5, marginBottom: 6 }}>Amount paid toward security deposit *</Text>
+                )}
+                {!selectedRoom?.firstOccupantCoveredInitialCharges && (
+                <TextInput value={securityDepositAmount} onChangeText={setSecurityDepositAmount} keyboardType="decimal-pad" placeholder="Enter amount paid" placeholderTextColor={colors.textMuted} accessibilityLabel="Amount paid toward security deposit" style={{ backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.cardBorder, borderRadius: 10, padding: 11, color: colors.text, marginBottom: 5 }} />
+                )}
+                <View style={{ backgroundColor: colors.accentBg, borderRadius: 10, padding: 11, marginTop: 7, marginBottom: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Text style={{ color: colors.text, fontSize: fs(13), fontWeight: '700' }}>Total paid (advance + deposit)</Text>
+                  <Text style={{ color: colors.text, fontSize: fs(14), fontWeight: '800' }}>PHP {((Number(paymentAmount) || 0) + (Number(securityDepositAmount) || 0)).toLocaleString()}</Text>
+                </View>
                 <Text style={{ color: colors.textSecondary, fontSize: fs(12), marginBottom: 6 }}>Payment method *</Text>
                 <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
                   {[

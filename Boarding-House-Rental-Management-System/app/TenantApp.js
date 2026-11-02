@@ -16,6 +16,7 @@ import TenantUpdatesScreen from './screens/tenant/TenantUpdatesScreen';
 import TenantFinancesScreen from './screens/tenant/TenantFinancesScreen';
 import TenantNotificationsScreen from './screens/tenant/TenantNotificationsScreen';
 import TenantSettingsScreen from './screens/tenant/TenantSettingsScreen';
+import TenantMoveOutScreen from './screens/tenant/TenantMoveOutScreen';
 import TenantApplicationScreen from './screens/tenant/TenantApplicationScreen';
 import TenantSetupRequiredScreen from './screens/tenant/TenantSetupRequiredScreen';
 import TenantBottomNav from './components/TenantBottomNav';
@@ -28,6 +29,7 @@ export default function TenantApp({ user, onLogout }) {
   const [notificationBadge, setNotificationBadge] = useState(0);
   const [notificationItems, setNotificationItems] = useState([]);
   const [tenantAccountStatus, setTenantAccountStatus] = useState(null);
+  const [tenantRoomAssignmentStatus, setTenantRoomAssignmentStatus] = useState(null);
   const [hasApplicationSetup, setHasApplicationSetup] = useState(false);
   const [realtimeVersion, setRealtimeVersion] = useState(0);
 
@@ -37,6 +39,7 @@ export default function TenantApp({ user, onLogout }) {
     let active = true;
     if (!tenantUser?.tenant_id) {
       setTenantAccountStatus(null);
+      setTenantRoomAssignmentStatus(null);
       return () => { active = false; };
     }
     Promise.all([
@@ -47,12 +50,14 @@ export default function TenantApp({ user, onLogout }) {
         if (active) {
           const accountStatus = tenant?.accountStatus || 'pending';
           setTenantAccountStatus(accountStatus);
+          setTenantRoomAssignmentStatus(request?.status || null);
           setHasApplicationSetup(accountStatus === 'approved' || Boolean(request));
         }
       })
       .catch(() => {
         if (active) {
           setTenantAccountStatus(null);
+          setTenantRoomAssignmentStatus(null);
           setHasApplicationSetup(false);
         }
       });
@@ -163,6 +168,8 @@ export default function TenantApp({ user, onLogout }) {
         return 'Notifications';
       case 'settings':
         return 'Settings';
+      case 'move-out':
+        return 'Request to move out';
       default:
         return 'Home';
     }
@@ -208,6 +215,8 @@ export default function TenantApp({ user, onLogout }) {
           onBack={() => setActiveScreen('home')}
           onUserUpdated={(updates) => setTenantUser((current) => ({ ...current, ...updates }))}
         />;
+      case 'move-out':
+        return <TenantMoveOutScreen user={tenantUser} onBack={() => setActiveScreen('home')} />;
       default:
         return <TenantHomeScreen user={tenantUser} onNavigateToNotifications={() => navigateToScreen('notifications')} onNavigateToApplication={() => navigateToScreen('application')} />;
     }
@@ -231,6 +240,8 @@ export default function TenantApp({ user, onLogout }) {
         onNotificationRead={handleNotificationRead}
         onNotificationsPress={() => navigateToScreen('notifications')}
         onSettingsPress={() => setActiveScreen('settings')}
+        onMoveOutPress={() => setActiveScreen('move-out')}
+        showMoveOut={tenantAccountStatus === 'approved' && tenantRoomAssignmentStatus === 'approved'}
         isDark={isDark}
         onThemeToggle={toggleTheme}
       />

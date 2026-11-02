@@ -3,7 +3,7 @@ import { View, Text, ScrollView, TouchableOpacity, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { isMobile, isDesktop, getResponsivePadding, fs, spacing, cardStyle, cardShadow } from '../../utils/responsive';
 import { useTheme } from '../../utils/ThemeContext';
-import { getCurrentTenant, getTenantBillingBreakdown, getAnnouncements, getTenantNotifications } from '../../services/dataService';
+import { getCurrentTenant, getTenantBillingBreakdown, getTenantPaymentHistory, getAnnouncements, getTenantNotifications } from '../../services/dataService';
 import AnnouncementDetailsModal from '../../components/AnnouncementDetailsModal';
 import useRealtimeRefresh from '../../hooks/useRealtimeRefresh';
 
@@ -57,15 +57,30 @@ export default function TenantHomeScreen({ user, onNavigateToNotifications, onNa
       try {
         if (!hasLoadedOnce.current) setLoading(true);
         setError(null);
-        const [tenantData, billingData, announcementsData, notificationsData] = await Promise.all([
+        const [tenantData, billingData, paymentHistory, announcementsData, notificationsData] = await Promise.all([
           getCurrentTenant(user?.tenant_id),
           getTenantBillingBreakdown(user?.tenant_id),
+          getTenantPaymentHistory(user?.tenant_id),
           getAnnouncements(),
           getTenantNotifications(user?.tenant_id),
         ]);
         if (isMounted) {
           setTenant(tenantData);
-          setBilling(billingData);
+          const latestPayment = paymentHistory?.[0];
+          const receiptPayments = latestPayment
+            ? latestPayment.referenceNo
+              ? paymentHistory.filter((payment) => payment.referenceNo === latestPayment.referenceNo)
+              : [latestPayment]
+            : [];
+          setBilling({
+            ...billingData,
+            receiptNumber: latestPayment?.referenceNo || latestPayment?.id || billingData.receiptNumber,
+            receiptAmount: latestPayment
+              ? receiptPayments.reduce((total, payment) => total + (Number(payment.amount) || 0), 0)
+              : billingData.receiptAmount,
+            paymentDate: latestPayment?.date || billingData.paymentDate,
+            paymentMethod: latestPayment?.method || billingData.paymentMethod,
+          });
           const applicationRejected = tenantData?.accountStatus === 'rejected';
           const visibleNotifications = applicationRejected
             ? (notificationsData || []).filter((notification) => notification.type === 'rejection')
@@ -331,7 +346,7 @@ export default function TenantHomeScreen({ user, onNavigateToNotifications, onNa
                 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                     <Ionicons name="home-outline" size={17} color={colors.textMuted} />
-                    <Text style={{ fontSize: fs(14), color: colors.textSecondary, fontWeight: '600' }}>{billing.invoiceType === 'initial' ? '1 Month Advance' : 'Monthly rent'}</Text>
+                    <Text style={{ fontSize: fs(14), color: colors.textSecondary, fontWeight: '600' }}>{billing.invoiceType === 'initial' ? 'Monthly rent' : 'Monthly rent'}</Text>
                   </View>
                   <Text style={{ fontSize: fs(16), color: colors.text, fontWeight: '700' }}>
                     ₱{billing.monthlyRent.toLocaleString()}
@@ -400,7 +415,7 @@ export default function TenantHomeScreen({ user, onNavigateToNotifications, onNa
                     Total Due
                   </Text>
                   <Text style={{ fontSize: fs(17), color: colors.accent, fontWeight: '900' }}>
-                    ₱{billing.totalDue.toLocaleString()}
+                    ₱{outstandingBalance.toLocaleString()}
                   </Text>
                 </View>
               </View>
@@ -570,9 +585,19 @@ export default function TenantHomeScreen({ user, onNavigateToNotifications, onNa
                 <Text style={{ fontSize: fs(13), color: colors.textMuted }}>Tenant</Text>
                 <Text style={{ fontSize: fs(13), fontWeight: '700', color: colors.text }}>{tenant.name} (Room {tenant.roomNumber})</Text>
               </View>
+              {billing.invoiceType === 'initial' && <>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <Text style={{ fontSize: fs(13), color: colors.textMuted }}>1 month advance</Text>
+                  <Text style={{ fontSize: fs(13), fontWeight: '700', color: colors.text }}>₱{Number(billing.monthlyRent || 0).toLocaleString()}</Text>
+                </View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <Text style={{ fontSize: fs(13), color: colors.textMuted }}>Security deposit</Text>
+                  <Text style={{ fontSize: fs(13), fontWeight: '700', color: colors.text }}>₱{Number(billing.securityDepositPaidAmount || 0).toLocaleString()}</Text>
+                </View>
+              </>}
               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <Text style={{ fontSize: fs(13), color: colors.textMuted }}>Period</Text>
-                <Text style={{ fontSize: fs(13), fontWeight: '700', color: colors.text }}>{billing.month || 'Current period'}</Text>
+                <Text style={{ fontSize: fs(13), color: colors.textMuted }}>Approved Amount Paid</Text>
+                <Text style={{ fontSize: fs(13), fontWeight: '700', color: colors.success }}>PHP {Number(billing.receiptAmount || 0).toLocaleString()}</Text>
               </View>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                 <Text style={{ fontSize: fs(13), color: colors.textMuted }}>Payment Date</Text>
@@ -584,7 +609,10 @@ export default function TenantHomeScreen({ user, onNavigateToNotifications, onNa
               </View>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                 <Text style={{ fontSize: fs(13), color: colors.textMuted }}>Amount Paid</Text>
-                <Text style={{ fontSize: fs(13), fontWeight: '700', color: colors.success }}>₱{billing.receiptAmount.toLocaleString()}</Text>
+                <Text style={{ fontSize: fs(13), fontWeight: '700', color: colors.success }}>₱{(billing.invoiceType === 'initial'
+                  ? Number(billing.monthlyRent || 0) + Number(billing.securityDepositPaidAmount || 0)
+                  : billing.receiptAmount
+                ).toLocaleString()}</Text>
               </View>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: colors.divider, paddingTop: 8 }}>
                 <Text style={{ fontSize: fs(13), fontWeight: '700', color: colors.textMuted }}>Balance Due</Text>

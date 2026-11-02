@@ -12,6 +12,7 @@ const PAYMENT_ITEM_LABELS = {
   rent: 'Rent',
   electricity: 'Electricity',
   water: 'Water',
+  security_deposit: 'Security deposit',
   wifi: 'Wi-Fi',
   other: 'Other charges',
   unallocated: 'Invoice balance',
@@ -380,6 +381,9 @@ export default function TenantFinancesScreen({ user, onNavigateToApplication }) 
                 <Text style={{ fontSize: fs(12), color: colors.successText }}>Last Payment Receipt</Text>
                 <Text style={{ fontSize: fs(12), fontWeight: '600', color: colors.successText, width: '100%', flexShrink: 1, marginTop: 2 }}>
                   {String(billingBreakdown.receiptNumber).replace(/(.{10})/g, '$1\u200B')}
+                </Text>
+                <Text style={{ fontSize: fs(14), fontWeight: '700', color: colors.successText, marginTop: 4 }}>
+                  Amount: ₱{Number(billingBreakdown.receiptAmount || 0).toLocaleString()}
                 </Text>
                 <Text style={{ fontSize: fs(11), color: colors.successText, marginTop: 2 }}>
                   Paid on {billingBreakdown.paymentDate}
