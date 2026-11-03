@@ -13,7 +13,7 @@ import {
   cardStyle,
   getGridColumns,
 } from '../../utils/responsive';
-import { addRoom, getRooms, getRoomTypes, updateRoom } from '../../services/dataService';
+import { addRoom, deleteRoom, getRooms, getRoomTypes, updateRoom } from '../../services/dataService';
 import {
   isRoomLimitReached,
   PREMIUM_ROOM_TYPE_ID,
@@ -81,10 +81,14 @@ export default function RoomsScreen() {
   const [roomNumber, setRoomNumber] = useState('');
   const [occupantName, setOccupantName] = useState('');
   const [selectedTypeId, setSelectedTypeId] = useState('');
+  const [monthlyRent, setMonthlyRent] = useState('');
   const [hasAirConditioning, setHasAirConditioning] = useState(false);
   const [hasPrivateBathroom, setHasPrivateBathroom] = useState(false);
   const [formError, setFormError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [roomPendingDelete, setRoomPendingDelete] = useState(null);
+  const [deleteError, setDeleteError] = useState('');
+  const [deletingRoomId, setDeletingRoomId] = useState(null);
   const occupantNameInputRef = useRef(null);
 
   const loadData = async () => {
@@ -119,6 +123,7 @@ export default function RoomsScreen() {
     }
     setEditingRoom(null);
     setRoomNumber('');
+    setMonthlyRent('');
     setOccupantName('');
     setSelectedTypeId(STANDARD_ROOM_TYPE_ID);
     setFormError('');
@@ -142,6 +147,7 @@ export default function RoomsScreen() {
   const openEditRoom = (room) => {
     setEditingRoom(room);
     setRoomNumber(room.number);
+    setMonthlyRent(String(room.baseRent || ''));
     setOccupantName(room.reservedFor || '');
     setSelectedTypeId(room.typeId || '');
     setHasAirConditioning(
@@ -182,7 +188,6 @@ export default function RoomsScreen() {
   const saveRoom = async () => {
     if (saving) return;
     setFormError('');
-    if (hasAirConditioning !== hasPrivateBathroom) return;
     const cleanRoomNumber = roomNumber.trim();
     if (!/^\d{1,4}$/.test(cleanRoomNumber)) {
       setFormError('Enter a room number using 1 to 4 digits.');
@@ -194,6 +199,12 @@ export default function RoomsScreen() {
       setFormError(selectedTypeId === PREMIUM_ROOM_TYPE_ID
         ? 'Premium room type is missing from Supabase. Run npx supabase db push from the project folder, then reload the app.'
         : 'Choose a room type.');
+      return;
+    }
+
+    const cleanMonthlyRent = monthlyRent.trim();
+    if (!/^\d+(?:\.\d{1,2})?$/.test(cleanMonthlyRent) || Number(cleanMonthlyRent) <= 0) {
+      setFormError('Enter a valid monthly room price greater than zero.');
       return;
     }
 
@@ -223,6 +234,7 @@ export default function RoomsScreen() {
           roomId: editingRoom.databaseId,
           roomNumber: cleanRoomNumber,
           typeId: selectedTypeId,
+          monthlyRent: Number(cleanMonthlyRent),
           reservedForName: cleanOccupantName,
           hasAirConditioning,
           hasPrivateBathroom,
@@ -231,6 +243,7 @@ export default function RoomsScreen() {
         await addRoom({
           roomNumber: cleanRoomNumber,
           typeId: selectedTypeId,
+          monthlyRent: Number(cleanMonthlyRent),
           reservedForName: cleanOccupantName,
           hasAirConditioning,
           hasPrivateBathroom,
@@ -252,11 +265,32 @@ export default function RoomsScreen() {
     }
   };
 
+  const openDeleteRoom = (room) => {
+    if (room.status !== 'vacant' || deletingRoomId) return;
+    setDeleteError('');
+    setRoomPendingDelete(room);
+  };
+
+  const confirmDeleteRoom = async () => {
+    if (!roomPendingDelete || deletingRoomId) return;
+    const roomId = roomPendingDelete.databaseId;
+    setDeletingRoomId(roomId);
+    setDeleteError('');
+    try {
+      await deleteRoom(roomId);
+      setRooms((current) => current.filter((room) => room.databaseId !== roomId));
+      setRoomPendingDelete(null);
+    } catch (err) {
+      setDeleteError(getRoomErrorMessage(err, 'Could not delete this room. Please try again.'));
+    } finally {
+      setDeletingRoomId(null);
+    }
+  };
+
   const totalCount = rooms.length;
   const roomLimitReached = isRoomLimitReached(totalCount);
-  const mixedRoomAmenities = hasAirConditioning !== hasPrivateBathroom;
   const saveDisabled = saving || loadingRoomTypes || roomTypes.length === 0
-    || mixedRoomAmenities || (!editingRoom && roomLimitReached);
+    || (!editingRoom && roomLimitReached);
   const occupiedCount = rooms.filter((room) => room.status !== 'vacant').length;
   const vacantCount = rooms.filter((room) => room.status === 'vacant').length;
 
@@ -321,10 +355,7 @@ export default function RoomsScreen() {
   );
   const isDoubleRoomType = [STANDARD_ROOM_TYPE_ID, PREMIUM_ROOM_TYPE_ID].includes(selectedTypeId);
   const roomTypeLabel = isDoubleRoomType ? 'Double Room' : (roomTypeDetails?.name || 'Double Room');
-  const displayedRoomPrice = Number(
-    roomTypeDetails?.baseRent
-      ?? (selectedTypeId === PREMIUM_ROOM_TYPE_ID ? 5000 : 3500),
-  );
+  const displayedRoomPrice = Number(monthlyRent) || 0;
   const amenitiesLabel = `${hasAirConditioning ? 'Air-conditioned' : 'Not air-conditioned'} · ${hasPrivateBathroom ? 'Private CR' : 'No private CR'}`;
   const renderAmenitySelector = (label, value, setValue, description, disabled = false) => (
     <View style={{ marginTop: 13, padding: 13, borderRadius: 12, borderWidth: 1, borderColor: colors.cardBorder, backgroundColor: colors.bg }}>
@@ -497,11 +528,8 @@ export default function RoomsScreen() {
               : (room.tenant ? [room.tenant] : []);
 
             return (
-              <TouchableOpacity
+              <View
                 key={room.id}
-                accessibilityRole="button"
-                accessibilityLabel={`Edit room ${room.number}, ${room.type}, ${room.baseRent.toLocaleString()} pesos per month`}
-                onPress={() => openEditRoom(room)}
                 style={[
                   cardStyle,
                   { 
@@ -526,13 +554,29 @@ export default function RoomsScreen() {
                   }}>
                     {room.number}
                   </Text>
-                <View style={{ backgroundColor: getBadge(room).bg, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 4 }}>
-                  <Text style={{ color: getBadge(room).fg, fontSize: fs(9), fontWeight: '800' }}>
-                    {getBadge(room).label}
-                  </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <View style={{ backgroundColor: getBadge(room).bg, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 4 }}>
+                    <Text style={{ color: getBadge(room).fg, fontSize: fs(9), fontWeight: '800' }}>{getBadge(room).label}</Text>
+                  </View>
+                  {isVacant && (
+                    <TouchableOpacity
+                      accessibilityRole="button"
+                      accessibilityLabel={`Delete room ${room.number}`}
+                      onPress={(event) => { event.stopPropagation?.(); openDeleteRoom(room); }}
+                      style={{ width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.errorBg || '#FEE2E2' }}
+                    >
+                      <Ionicons name="trash-outline" size={16} color={colors.error || '#B91C1C'} />
+                    </TouchableOpacity>
+                  )}
                 </View>
                 </View>
 
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel={`Edit room ${room.number}, ${room.type}, ${room.baseRent.toLocaleString()} pesos per month`}
+                onPress={() => openEditRoom(room)}
+                style={{ flex: 1, justifyContent: 'space-between' }}
+              >
                 {/* Card Bottom: Type, Tenant & Balance/Status */}
                 <View>
                   <Text 
@@ -614,6 +658,7 @@ export default function RoomsScreen() {
                   )}
                 </View>
               </TouchableOpacity>
+              </View>
             );
             })}
           </View>
@@ -703,7 +748,17 @@ export default function RoomsScreen() {
             </View>
             <Text style={{ marginTop: 13, marginBottom: 8, color: colors.textSecondary, fontSize: fs(13), fontWeight: '700' }}>Monthly room price</Text>
             <View style={{ width: '100%', padding: 13, borderRadius: 12, borderWidth: 1, borderColor: colors.ownerAccent, backgroundColor: colors.ownerAccentBg }}>
-              <Text style={{ fontSize: fs(12), fontWeight: '800', color: colors.ownerAccent }}>₱{displayedRoomPrice.toLocaleString()} / month</Text>
+              <TextInput
+                value={monthlyRent}
+                editable={!saving && !editingRoom?.tenant}
+                onChangeText={(value) => { setMonthlyRent(value.replace(/[^\d.]/g, '')); setFormError(''); }}
+                placeholder="Enter amount in pesos"
+                placeholderTextColor={colors.textMuted}
+                keyboardType="decimal-pad"
+                accessibilityLabel="Monthly room price"
+                style={{ minHeight: 42, paddingHorizontal: 10, borderRadius: 9, borderWidth: 1, borderColor: colors.cardBorder, color: colors.text, backgroundColor: colors.bg, fontSize: fs(15) }}
+              />
+              <Text style={{ fontSize: fs(12), fontWeight: '800', color: colors.ownerAccent, marginTop: 8 }}>₱{displayedRoomPrice.toLocaleString()} / month</Text>
               <Text style={{ fontSize: fs(12), color: colors.textMuted, marginTop: 5 }}>{amenitiesLabel}</Text>
             </View>
             {editingRoom?.tenant && <Text style={{ color: colors.textMuted, fontSize: fs(11), marginTop: 8 }}>An active lease is using this room. Its room type and monthly price cannot be changed.</Text>}
@@ -714,7 +769,7 @@ export default function RoomsScreen() {
               'Air conditioning',
               hasAirConditioning,
               (value) => updateRoomAmenity('airConditioning', value),
-              'Choose both Yes or both No to set the room price.',
+              'Air conditioning alone is ₱3,500/month. With a private CR, the room is ₱5,000/month.',
               Boolean(editingRoom?.tenant),
             )}
             {selectedTypeId === PREMIUM_ROOM_TYPE_ID && !premiumRoomTypeAvailable && (
@@ -726,13 +781,8 @@ export default function RoomsScreen() {
               'Private CR',
               hasPrivateBathroom,
               (value) => updateRoomAmenity('privateBathroom', value),
-              'Choose both Yes or both No to set the room price.',
+              'A private CR alone is ₱3,500/month. With air conditioning, the room is ₱5,000/month.',
               Boolean(editingRoom?.tenant),
-            )}
-            {mixedRoomAmenities && (
-              <Text accessibilityRole="alert" style={{ color: colors.danger, marginTop: 10, fontSize: fs(13), fontWeight: '600' }}>
-                Please choose both Yes or both No.
-              </Text>
             )}
 
               <View>
@@ -768,6 +818,33 @@ export default function RoomsScreen() {
             </View>
           </KeyboardAvoidingView>
         </View>
+      </Modal>
+      <Modal
+        visible={!!roomPendingDelete}
+        transparent
+        animationType="fade"
+        onRequestClose={() => !deletingRoomId && setRoomPendingDelete(null)}
+      >
+        <Pressable onPress={() => !deletingRoomId && setRoomPendingDelete(null)} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.48)', justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+          <Pressable onPress={() => {}} style={{ width: '100%', maxWidth: 420, borderRadius: 22, padding: 22, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.cardBorder }}>
+            <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: colors.errorBg || '#FEE2E2', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
+              <Ionicons name="trash-outline" size={22} color={colors.error || '#B91C1C'} />
+            </View>
+            <Text style={{ color: colors.text, fontSize: fs(20), fontWeight: '900' }}>Delete room?</Text>
+            <Text style={{ color: colors.textSecondary, fontSize: fs(14), lineHeight: 21, marginTop: 8 }}>
+              Room {roomPendingDelete?.number} will be removed. This cannot be undone.
+            </Text>
+            {!!deleteError && <Text accessibilityRole="alert" style={{ color: colors.danger, fontSize: fs(13), lineHeight: 19, marginTop: 12 }}>{deleteError}</Text>}
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 22 }}>
+              <TouchableOpacity disabled={!!deletingRoomId} onPress={() => { setRoomPendingDelete(null); setDeleteError(''); }} style={{ minHeight: 44, paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center', borderRadius: 999, borderWidth: 1, borderColor: colors.cardBorder }}>
+                <Text style={{ color: colors.text, fontWeight: '700' }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity disabled={!!deletingRoomId} onPress={confirmDeleteRoom} style={{ minHeight: 44, minWidth: 104, paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center', borderRadius: 999, backgroundColor: colors.danger, opacity: deletingRoomId ? 0.7 : 1 }}>
+                {deletingRoomId ? <ActivityIndicator size="small" color="#ffffff" /> : <Text style={{ color: '#ffffff', fontWeight: '800' }}>Delete</Text>}
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
       </Modal>
     </View>
   );

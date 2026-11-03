@@ -324,7 +324,7 @@ function toRoomListItem(room, roomTypes, leases = [], tenants = [], invoices = [
     type: formatRoomType(roomType),
     typeId: room.type_id,
     databaseId: room.id,
-    baseRent: Number(roomType?.base_rent) || 0,
+    baseRent: Number(room.monthly_rent ?? roomType?.base_rent) || 0,
     description: getRoomDescription(roomType),
     hasAirConditioning: Boolean(room.has_air_conditioning),
     hasPrivateBathroom: Boolean(room.has_private_bathroom),
@@ -423,10 +423,13 @@ export async function getRoomTypes() {
 export async function addRoom({
   roomNumber,
   typeId,
+  monthlyRent,
   reservedForName = '',
   hasAirConditioning = false,
   hasPrivateBathroom = false,
 }) {
+  const rent = Number(monthlyRent);
+  if (!Number.isFinite(rent) || rent <= 0) throw new Error('Enter a valid monthly room price greater than zero.');
   const normalizedNumber = String(roomNumber || '').trim().replace(/^0+/, '');
   if (!/^\d{1,4}$/.test(normalizedNumber)) {
     throw new Error('Enter a room number using 1 to 4 digits.');
@@ -492,6 +495,7 @@ export async function addRoom({
     house_id: boardingHouse.id,
     room_number: formattedNumber,
     type_id: effectiveTypeId,
+    monthly_rent: rent,
     has_air_conditioning: amenities.hasAirConditioning,
     has_private_bathroom: amenities.hasPrivateBathroom,
     status: 'vacant',
@@ -507,15 +511,45 @@ export async function addRoom({
   return newRoom;
 }
 
+/** Delete a vacant room that has no lease history. */
+export async function deleteRoom(roomId) {
+  if (!roomId) throw new Error('Select a room to delete.');
+  const liveStore = isSupabaseConfigured && supabase;
+  const [rooms, leases] = liveStore
+    ? await Promise.all([readCollection(COLLECTIONS.ROOMS), readCollection(COLLECTIONS.LEASES)])
+    : [
+      getNormalizedMockDatabase()[COLLECTIONS.ROOMS] || [],
+      getNormalizedMockDatabase()[COLLECTIONS.LEASES] || [],
+    ];
+  const room = rooms.find((item) => item.id === roomId);
+  if (!room) throw new Error('Room not found. Refresh the list and try again.');
+  if (room.status !== 'vacant' || leases.some((lease) => lease.room_id === roomId)) {
+    throw new Error('Only vacant rooms with no lease history can be deleted.');
+  }
+
+  if (liveStore) {
+    const { data, error } = await supabase.from('rooms').delete().eq('id', roomId).select('id');
+    if (error) throw error;
+    if (!data?.length) throw new Error('Room was not deleted. Check that you are signed in as the owner, then refresh and try again.');
+  } else {
+    const mockRooms = getNormalizedMockDatabase()[COLLECTIONS.ROOMS];
+    const roomIndex = mockRooms.findIndex((item) => item.id === roomId);
+    if (roomIndex >= 0) mockRooms.splice(roomIndex, 1);
+  }
+}
+
 /** Update room details without changing its occupancy or existing lease records. */
 export async function updateRoom({
   roomId,
   roomNumber,
   typeId,
+  monthlyRent,
   reservedForName = '',
   hasAirConditioning = false,
   hasPrivateBathroom = false,
 }) {
+  const rent = Number(monthlyRent);
+  if (!Number.isFinite(rent) || rent <= 0) throw new Error('Enter a valid monthly room price greater than zero.');
   const normalizedNumber = String(roomNumber || '').trim().replace(/^0+/, '');
   if (!/^\d{1,4}$/.test(normalizedNumber)) {
     throw new Error('Enter a room number using 1 to 4 digits.');
@@ -584,6 +618,7 @@ export async function updateRoom({
   const updates = {
     room_number: formattedNumber,
     type_id: effectiveTypeId,
+    monthly_rent: rent,
     has_air_conditioning: amenities.hasAirConditioning,
     has_private_bathroom: amenities.hasPrivateBathroom,
     reserved_for_name: cleanReservedName || null,
@@ -2340,13 +2375,13 @@ export async function getVacantRoomsForAssignment() {
           displayNumber: parseInt(room.room_number, 10),
           type: type?.name || 'Room',
           description: getRoomDescription(type),
-          roomRate: Number(type?.base_rent) || 0,
+          roomRate: Number(room.monthly_rent ?? type?.base_rent) || 0,
           hasAirConditioning: Boolean(room.has_air_conditioning),
           hasPrivateBathroom: Boolean(room.has_private_bathroom),
-          baseRent: type ? toMoney(Number(type.base_rent || 0) / Math.max(1, Number(type.max_capacity) || 1)) : 2500,
+          baseRent: toMoney(Number(room.monthly_rent ?? type?.base_rent ?? 0) / Math.max(1, Number(type?.max_capacity) || 1)),
           securityDeposit: firstOccupantCoveredInitialCharges
             ? 0
-            : type ? toMoney(Number(type.base_rent || 0) / Math.max(1, Number(type.max_capacity) || 1)) : 2500,
+            : toMoney(Number(room.monthly_rent ?? type?.base_rent ?? 0) / Math.max(1, Number(type?.max_capacity) || 1)),
           firstOccupantCoveredInitialCharges,
           maxCapacity: type ? type.max_capacity : 1,
           occupancy: roomLeases.length,
@@ -2543,7 +2578,7 @@ export async function approveTenant({
     const rent = toMoney(monthlyRent);
     if (isNaN(rent) || rent <= 0) throw new Error('Invalid monthly rent amount');
     const roomBasedSecurityDeposit = roomType
-      ? toMoney(Number(roomType.base_rent || 0) / roomCapacity)
+      ? toMoney(Number(room.monthly_rent ?? roomType.base_rent ?? 0) / roomCapacity)
       : rent;
     const rawSecurityDeposit = requestedSecurityDepositAmount != null
       ? requestedSecurityDepositAmount
