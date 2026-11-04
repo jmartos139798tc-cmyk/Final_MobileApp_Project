@@ -2353,7 +2353,7 @@ export async function getVacantRoomsForAssignment() {
     return rooms
       .filter((room) => {
         const type = roomTypes.find((rt) => rt.id === room.type_id);
-        if (!type || Number(type.max_capacity) <= 1) return false;
+        if (!type) return false;
         const capacity = Math.max(1, Number(type?.max_capacity) || 1);
         return activeLeases.filter((lease) => lease.room_id === room.id).length < capacity
           && (room.status === 'vacant' || (room.status === 'occupied' && capacity > 1));
